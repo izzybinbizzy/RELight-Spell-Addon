@@ -1,14 +1,24 @@
-#include <SKSE/SKSE.h>
-#include <RE/Skyrim.h>
+// RELight - Spell Addon - SKSE plugin
+// Copyright (C) 2026 izzydoingit
+//
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+// General Public License as published by the Free Software Foundation, either version 3 of the License,
+// or (at your option) any later version. See LICENSE.txt.
+//
+// THE FILES, AND WHAT EACH ONE IS FOR
+//   main.cpp     this file - the hooks, and the shipped feature: spell lights go out while you sneak
+//   Options.cpp  the probe - one installer option switched on and off while the game runs
+//   Menu.cpp     the probe's one tick box, in SKSE Menu Framework's Mod Control Panel
+//   Plugin.h     what those three share      PCH.h  what they all include
 
-#include <vector>
+#include "Plugin.h"
 
 namespace
 {
-	RE::BSSpinLock                        gLock;
+	RE::BSSpinLock                          gLock;
 	std::vector<RE::NiPointer<RE::NiLight>> gMagicLights;
 	std::vector<RE::NiPointer<RE::NiLight>> gCulled;
-	bool                                  gWasSneaking = false;
+	bool                                    gWasSneaking = false;
 
 	bool PlayerSneaking()
 	{
@@ -72,7 +82,9 @@ namespace
 	void UncullAll()
 	{
 		for (auto& l : gCulled) {
-			if (l) {
+			// a light the probe is holding out for a switched-off option stays out: standing up is not a
+			// reason to give it back, and the two passes must not be able to fight over the same light
+			if (l && !Plugin::HeldOutForOption(l.get())) {
 				l->SetAppCulled(false);
 			}
 		}
@@ -118,9 +130,16 @@ namespace
 		static RE::NiAVObject* thunk(T* a_this, bool a_backgroundLoading)
 		{
 			auto* root = func(a_this, a_backgroundLoading);
-			if (root && PlayerSneaking()) {
+			if (root) {
 				RE::BSSpinLockGuard lock(gLock);
-				CullTree(root);
+				if (PlayerSneaking()) {
+					CullTree(root);
+				} else {
+					// RE::Light hangs its light on this 3D inside its own Load3D hook, so a light for a
+					// switched-off option exists the moment this returns. Putting it out here rather than
+					// on the next player update is what decides whether it ever shows for a frame.
+					Plugin::CullOptionLightsUnder(root);
+				}
 			}
 			return root;
 		}
@@ -145,6 +164,9 @@ namespace
 			}
 			Prune(gCulled);
 			gWasSneaking = sneaking;
+			// after the sneaking pass, in the same frame, so a light given back above and then held out
+			// here never reaches the screen in between
+			Plugin::UpdateOptionLights();
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -198,6 +220,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
 		if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			InstallLate();
+			Plugin::RegisterMenu();
 		}
 	});
 	return true;
