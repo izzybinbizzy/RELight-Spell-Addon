@@ -40,6 +40,7 @@ namespace Plugin
 			"turnundeadhazard",
 		};
 
+		bool                                    gSneakOn = false;
 		bool                                    gRunesOn = true;
 		std::vector<RE::NiPointer<RE::NiLight>> gHeldOut;
 		std::size_t                             gLitLastPass = 0;
@@ -108,6 +109,20 @@ namespace Plugin
 		{
 			std::erase_if(gHeldOut, [](const RE::NiPointer<RE::NiLight>& l) { return !l || l->GetRefCount() <= 1; });
 		}
+	}
+
+	bool SneakOn()
+	{
+		return gSneakOn;
+	}
+
+	void SetSneakOn(bool a_on)
+	{
+		if (gSneakOn == a_on) {
+			return;
+		}
+		gSneakOn = a_on;
+		SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
 	}
 
 	bool RunesOn()

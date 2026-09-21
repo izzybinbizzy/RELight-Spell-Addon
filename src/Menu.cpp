@@ -22,6 +22,16 @@ namespace Plugin
 
 		void __stdcall RenderProbe()
 		{
+			ImGuiMCP::TextColored(kNote, "%s", "Lights off while sneaking");
+			bool sneak = SneakOn();
+			if (ImGuiMCP::Checkbox("Lights off while sneaking", &sneak)) {
+				SetSneakOn(sneak);
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
+				"hazards - and the ones already lit go out. They come back when you stand up.");
+			ImGuiMCP::Separator();
+
 			ImGuiMCP::TextColored(kNote, "%s", "Probe - one option, switched while the game runs");
 			ImGuiMCP::TextWrapped("%s",
 				"This is a test of one thing: whether an installer option can be turned on and off from a menu "

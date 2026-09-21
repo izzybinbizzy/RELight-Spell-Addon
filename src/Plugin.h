@@ -27,6 +27,12 @@ namespace Plugin
 	// on the ground and stays lit, so it can be watched while the box is ticked and unticked; the fireball
 	// explosion flash is in the same option, so a Fireball answers the loading half.
 
+	// 🌙 LIGHTS OFF WHILE SNEAKING - the mod's one shipped feature, a SETTING now rather than an
+	// installer option. HIS CALL, 2026-09-21: the plugin always installs, so the choice moved in here.
+	// ⛛ Default OFF, which is what the installer's unticked option meant, so nobody's game changes.
+	bool SneakOn();
+	void SetSneakOn(bool a_on);
+
 	bool RunesOn();
 	void SetRunesOn(bool a_on);
 

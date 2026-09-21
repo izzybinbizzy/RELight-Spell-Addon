@@ -22,6 +22,11 @@ namespace
 
 	bool PlayerSneaking()
 	{
+		// 🌙 the setting is what decides now, not the installer: with it off this whole feature is
+		// inert, which is exactly what an unticked option used to mean
+		if (!Plugin::SneakOn()) {
+			return false;
+		}
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		return player && player->IsSneaking();
 	}
@@ -155,7 +160,7 @@ namespace
 		static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 		{
 			func(a_this, a_delta);
-			bool sneaking = a_this && a_this->IsSneaking();
+			bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
 			RE::BSSpinLockGuard lock(gLock);
 			if (sneaking) {
 				CullSpellLights();
