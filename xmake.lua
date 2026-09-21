@@ -1,6 +1,6 @@
 -- RELight - Spell Addon - SKSE plugin. GPL-3.0-or-later, see LICENSE.txt.
 set_xmakever("3.0.0")
-set_project("RELightSpellAddonSneak")
+set_project("RelightSpellAddon")
 set_version("1.0.0")
 set_license("GPL-3.0-or-later")
 set_arch("x64")
@@ -16,12 +16,12 @@ set_config("skyrim_vr", false)
 
 includes("lib/commonlibsse-ng")
 
-target("RELightSpellAddonSneak", function()
+target("RelightSpellAddon", function()
     add_deps("commonlibsse-ng")
     add_rules("commonlibsse-ng.plugin", {
-        name = "RELightSpellAddonSneak",
+        name = "RelightSpellAddon",
         author = "izzydoingit",
-        description = "RELight - Spell Addon - spell lights go out while you sneak",
+        description = "RELight - Spell Addon - its settings menu, and spell lights going out while you sneak",
     })
     -- the source is split by job (see the file map at the top of src/main.cpp); every .cpp in src is built
     add_files("src/*.cpp")
