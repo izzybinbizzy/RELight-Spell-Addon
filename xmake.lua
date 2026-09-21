@@ -1,5 +1,5 @@
 set_xmakever("3.0.0")
-set_project("AetherialRadianceSneak")
+set_project("RELightSpellAddonSneak")
 set_version("1.0.0")
 set_arch("x64")
 set_languages("c++23")
@@ -14,12 +14,12 @@ set_config("skyrim_vr", false)
 
 includes("lib/commonlibsse-ng")
 
-target("AetherialRadianceSneak", function()
+target("RELightSpellAddonSneak", function()
     add_deps("commonlibsse-ng")
     add_rules("commonlibsse-ng.plugin", {
-        name = "AetherialRadianceSneak",
+        name = "RELightSpellAddonSneak",
         author = "izzydoingit",
-        description = "Aetherial Radiance - spell lights go out while you sneak",
+        description = "RELight - Spell Addon - spell lights go out while you sneak",
     })
     add_files("src/main.cpp")
 end)
