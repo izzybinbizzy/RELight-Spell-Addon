@@ -2,19 +2,22 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// THE PROBE - one installer option, switched on and off while the game runs.
+// THE SWITCHES - every plain tick-box option the installer put down gets one, and a switched-off option's
+// lights are put out while the game runs.
 //
-// How a light is matched to an option, and why it is done this way:
+// ✅ THE ROUTE IS PROVED: this was the Runes probe, and in his game on 2026-09-21 a rune went dark without
+// a flicker when its box was unticked and came straight back when it was ticked (*"fire rune is good"*).
+// What changed is only where the list comes from - the option's own data file instead of twelve names
+// typed into this file.
+//
+// How a light is matched to an option:
 //   - RE::Light names every light it makes from a config "RL" + the node it hung it on (LightManager.cpp),
-//     so the two letters are a cheap way to leave every other light in the game alone;
-//   - the light hangs under the object's own 3D, so walking up its parents to the reference gives the
-//     object it belongs to;
-//   - that reference's base record carries the mesh, and the mesh is what our configs claim. The bare end
-//     of the path, with no folder and no .nif, is exactly the key the configs are written with.
-// So: light -> reference -> mesh name -> is that one of this option's twelve.
+//     so the two letters leave every other light in the game alone;
+//   - the light hangs under the object's own 3D, so walking up its parents to the reference gives the object;
+//   - the reference's base form is what the data files name, by form or by mesh key (Data.cpp).
 //
 // It never edits a config, a record or a file. A light it puts out is held in a list and given back the
-// moment the box is ticked again.
+// moment the switch is turned on again.
 
 #include "Plugin.h"
 
@@ -22,43 +25,12 @@ namespace Plugin
 {
 	namespace
 	{
-		// The Runes option, read off `RELight - Spell Addon 1.0.zip` (Full tier) rather than typed from
-		// memory: twelve claims, and `fireballexp01` is among them, which is why a Fireball answers the
-		// second half of the question.
-		constexpr std::array<std::string_view, 12> kRuneMeshes{
-			"ashexp01",
-			"explosionfrost01",
-			"explosionparalysis01",
-			"fireballexp01",
-			"healinghazard",
-			"runeashprojectile",
-			"runefireprojectile01",
-			"runefrenzyprojectile",
-			"runelightningprojectile01",
-			"runeparalysisprojectile01",
-			"runepoisonprojectile",
-			"turnundeadhazard",
-		};
-
-		bool                                    gSneakOn = false;
-		bool                                    gRunesOn = true;
-		std::vector<RE::NiPointer<RE::NiLight>> gHeldOut;
-		std::size_t                             gLitLastPass = 0;
-
-		// the bare end of a mesh path, lowercased: "Magic\RuneFireProjectile01.nif" -> "runefireprojectile01"
-		std::string MeshKey(std::string_view a_path)
+		struct Held
 		{
-			const auto slash = a_path.find_last_of("\\/");
-			if (slash != std::string_view::npos) {
-				a_path.remove_prefix(slash + 1);
-			}
-			if (a_path.size() > 4 && (a_path.ends_with(".nif") || a_path.ends_with(".NIF"))) {
-				a_path.remove_suffix(4);
-			}
-			std::string out{ a_path };
-			std::ranges::transform(out, out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return out;
-		}
+			RE::NiPointer<RE::NiLight> light;
+			std::size_t                option;
+		};
+		std::vector<Held> gHeldOut;
 
 		bool IsReLightLight(RE::NiLight* a_light)
 		{
@@ -79,143 +51,91 @@ namespace Plugin
 			return nullptr;
 		}
 
-		// true when this light belongs to a mesh the Runes option claims
-		bool BelongsToRunes(RE::NiLight* a_light)
+		std::size_t OptionOfLight(RE::NiLight* a_light)
 		{
 			if (!IsReLightLight(a_light)) {
-				return false;
+				return kNone;
 			}
 			auto* ref = ReferenceOf(a_light);
-			if (!ref) {
-				return false;
-			}
-			auto* base = ref->GetBaseObject();
-			if (!base) {
-				return false;
-			}
-			auto* model = base->As<RE::TESModel>();
-			if (!model) {
-				return false;
-			}
-			const char* path = model->GetModel();
-			if (!path || !*path) {
-				return false;
-			}
-			const auto key = MeshKey(path);
-			return std::ranges::find(kRuneMeshes, key) != kRuneMeshes.end();
+			return ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		}
 
-		void Prune()
+		bool Off(std::size_t a_option)
 		{
-			std::erase_if(gHeldOut, [](const RE::NiPointer<RE::NiLight>& l) { return !l || l->GetRefCount() <= 1; });
+			auto& opts = Options();
+			return a_option < opts.size() && opts[a_option].switchable && !opts[a_option].on;
 		}
-	}
-
-	bool SneakOn()
-	{
-		return gSneakOn;
-	}
-
-	void SetSneakOn(bool a_on)
-	{
-		if (gSneakOn == a_on) {
-			return;
-		}
-		gSneakOn = a_on;
-		SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
-	}
-
-	bool RunesOn()
-	{
-		return gRunesOn;
-	}
-
-	std::size_t RunesLit()
-	{
-		return gLitLastPass;
-	}
-
-	std::size_t RunesHeldOut()
-	{
-		return gHeldOut.size();
 	}
 
 	bool HeldOutForOption(RE::NiLight* a_light)
 	{
-		return std::ranges::any_of(gHeldOut, [a_light](const RE::NiPointer<RE::NiLight>& l) { return l.get() == a_light; });
-	}
-
-	void SetRunesOn(bool a_on)
-	{
-		if (gRunesOn == a_on) {
-			return;
-		}
-		gRunesOn = a_on;
-		SKSE::log::info("probe: Runes turned {}", a_on ? "on" : "off");
+		return std::ranges::any_of(gHeldOut, [a_light](const Held& h) { return h.light.get() == a_light; });
 	}
 
 	void UpdateOptionLights()
 	{
+		auto& opts = Options();
+		for (auto& o : opts) {
+			o.lit = 0;
+			o.heldOut = 0;
+		}
+		// give back whatever belongs to a switch that is on again, and forget what has unloaded
+		std::erase_if(gHeldOut, [](Held& h) {
+			if (!h.light || h.light->GetRefCount() <= 1) {
+				return true;
+			}
+			if (!Off(h.option)) {
+				h.light->SetAppCulled(false);
+				return true;
+			}
+			return false;
+		});
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		if (!ssn) {
 			return;
 		}
-		std::size_t lit = 0;
-		if (gRunesOn) {
-			// give back every light this option was holding out, and nothing else
-			for (auto& l : gHeldOut) {
-				if (l) {
-					l->SetAppCulled(false);
-				}
+		for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
+			if (!bsLight || !bsLight->light) {
+				continue;
 			}
-			gHeldOut.clear();
-			for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
-				if (bsLight && bsLight->light && !bsLight->light->GetAppCulled() && BelongsToRunes(bsLight->light.get())) {
-					++lit;
-				}
+			auto*      niLight = bsLight->light.get();
+			const auto opt = OptionOfLight(niLight);
+			if (opt == kNone) {
+				continue;
 			}
-		} else {
-			for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
-				if (!bsLight || !bsLight->light) {
-					continue;
+			if (Off(opt)) {
+				if (!niLight->GetAppCulled()) {
+					niLight->SetAppCulled(true);
+					gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(niLight), opt });
 				}
-				auto* niLight = bsLight->light.get();
-				if (niLight->GetAppCulled() || !BelongsToRunes(niLight)) {
-					continue;
-				}
-				niLight->SetAppCulled(true);
-				gHeldOut.emplace_back(niLight);
+			} else if (!niLight->GetAppCulled()) {
+				++opts[opt].lit;
 			}
-			Prune();
 		}
-		gLitLastPass = lit;
+		for (auto& h : gHeldOut) {
+			if (h.option < opts.size()) {
+				++opts[h.option].heldOut;
+			}
+		}
 	}
 
 	void CullOptionLightsUnder(RE::NiAVObject* a_root)
 	{
-		if (!a_root || gRunesOn) {
+		if (!a_root) {
 			return;
 		}
-		// The reference is read once from the root: a light under this 3D belongs to this object, and its
-		// own parent walk would reach the same place. Doing it here is what stops a switched-off light
-		// showing for the frame between the object loading and the next player update.
+		// The reference is read once from the root: a light under this 3D belongs to this object. Doing it
+		// here is what stops a switched-off light showing for the frame between the object loading and the
+		// next player update - the half of the probe that decided whether it ever flashes.
 		auto* ref = ReferenceOf(a_root);
-		if (!ref) {
+		const auto opt = ref ? OptionOf(ref->GetBaseObject()) : kNone;
+		if (!Off(opt)) {
 			return;
 		}
-		auto* base = ref->GetBaseObject();
-		auto* model = base ? base->As<RE::TESModel>() : nullptr;
-		const char* path = model ? model->GetModel() : nullptr;
-		if (!path || !*path) {
-			return;
-		}
-		if (std::ranges::find(kRuneMeshes, MeshKey(path)) == kRuneMeshes.end()) {
-			return;
-		}
-		RE::BSVisit::TraverseScenegraphLights(a_root, [](RE::NiPointLight* a_light) {
+		RE::BSVisit::TraverseScenegraphLights(a_root, [opt](RE::NiPointLight* a_light) {
 			if (a_light && !a_light->GetAppCulled() && IsReLightLight(a_light)) {
 				a_light->SetAppCulled(true);
-				gHeldOut.emplace_back(a_light);
+				gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(a_light), opt });
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});

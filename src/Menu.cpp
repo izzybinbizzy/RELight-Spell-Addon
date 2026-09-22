@@ -2,11 +2,9 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// The one tick box the probe needs, in SKSE Menu Framework's Mod Control Panel, under its own section so
-// nothing of RE::Light's own menu is touched.
-//
-// It says what it is doing while it does it: how many of this option's lights are lit, and how many it is
-// holding out. That is there so the answer does not have to be guessed from what the room looks like.
+// The settings page, in SKSE Menu Framework's Mod Control Panel, under its own section so nothing of
+// RE::Light's own menu is touched: Brightness, lights off while sneaking, and one switch per option the
+// installer put down. Every change is saved at once (Settings.cpp).
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -20,53 +18,67 @@ namespace Plugin
 	{
 		const ImGuiMCP::ImVec4 kNote{ 1.0f, 0.85f, 0.4f, 1.0f };
 
-		void __stdcall RenderProbe()
+		void __stdcall RenderSettings()
 		{
-			ImGuiMCP::TextColored(kNote, "%s", "Lights off while sneaking");
+			int b = BrightnessPercent();
+			if (ImGuiMCP::SliderInt("Brightness", &b, 10, 200, "%d%%")) {
+				SetBrightnessPercent(b);
+			}
+			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+				SaveSettings();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				"Every light this mod makes, and only those. 100% is the measured brightness; about 30% is what the "
+				"old Reduced download was. The reach does not change.");
+
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox("Lights off while sneaking", &sneak)) {
 				SetSneakOn(sneak);
+				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
 				"hazards - and the ones already lit go out. They come back when you stand up.");
-			ImGuiMCP::Separator();
 
-			ImGuiMCP::TextColored(kNote, "%s", "Probe - one option, switched while the game runs");
-			ImGuiMCP::TextWrapped("%s",
-				"This is a test of one thing: whether an installer option can be turned on and off from a menu "
-				"instead of at install time. Only Runes is wired up. Nothing is written to disk and nothing else "
-				"in the mod changes.");
-			ImGuiMCP::Separator();
-
-			bool on = RunesOn();
-			if (ImGuiMCP::Checkbox("Runes", &on)) {
-				SetRunesOn(on);
+			auto&       opts = Options();
+			std::string shown;
+			for (std::size_t i = 0; i < opts.size(); ++i) {
+				auto& o = opts[i];
+				if (!o.switchable) {
+					continue;
+				}
+				if (o.download != shown) {
+					shown = o.download;
+					ImGuiMCP::Separator();
+					ImGuiMCP::TextColored(kNote, "%s", shown.c_str());
+				}
+				ImGuiMCP::PushID(static_cast<int>(i));
+				bool on = o.on;
+				if (ImGuiMCP::Checkbox(o.name.c_str(), &on)) {
+					SetOptionOn(i, on);
+					SaveSettings();
+				}
+				ImGuiMCP::SameLine();
+				if (o.on) {
+					ImGuiMCP::TextDisabled("%zu lit", o.lit);
+				} else {
+					ImGuiMCP::TextDisabled("off - %zu held out", o.heldOut);
+				}
+				ImGuiMCP::PopID();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				"Rune lights, the three rune explosions and the fireball explosion flash. Untick it while a rune "
-				"is on the ground in front of you.");
-
 			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled("lit right now: %zu", RunesLit());
-			ImGuiMCP::TextDisabled("held out by the probe: %zu", RunesHeldOut());
-
-			ImGuiMCP::Separator();
-			ImGuiMCP::TextWrapped("%s",
-				"What to look for. Place a Fire Rune and leave it on the ground, then untick the box: the rune "
-				"should go dark without a flicker, and tick it again and the light should come straight back. "
-				"Then, with the box unticked, cast a Fireball at a wall - the explosion should never flash.");
+			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) right now", DataFiles(), LiveStreamLights());
 		}
 	}
 
 	void RegisterMenu()
 	{
 		if (!SKSEMenuFramework::IsInstalled()) {
-			SKSE::log::warn("SKSE Menu Framework is not installed, so the probe has no tick box; the option stays on");
+			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
 		}
 		SKSEMenuFramework::SetSection("RELight - Spell Addon");
-		SKSEMenuFramework::AddSectionItem("Probe", RenderProbe);
-		SKSE::log::info("probe: one tick box added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
+		SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
+		SKSE::log::info("settings page added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 }

@@ -6,10 +6,14 @@
 // or (at your option) any later version. See LICENSE.txt.
 //
 // THE FILES, AND WHAT EACH ONE IS FOR
-//   main.cpp     this file - the hooks, and the shipped feature: spell lights go out while you sneak
-//   Options.cpp  the probe - one installer option switched on and off while the game runs
-//   Menu.cpp     the probe's one tick box, in SKSE Menu Framework's Mod Control Panel
-//   Plugin.h     what those three share      PCH.h  what they all include
+//   main.cpp        this file - the hooks, and spell lights going out while you sneak
+//   Data.cpp        the data files the installer put down: what this mod lights, its switches, its streams
+//   Settings.cpp    the settings file
+//   Options.cpp     the switches - an option's lights put out while the game runs
+//   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
+//   Streams.cpp     lights that travel with sprays, breath shouts and beams
+//   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
+//   Plugin.h        what they share      PCH.h  what they all include
 
 #include "Plugin.h"
 
@@ -109,6 +113,10 @@ namespace
 				RE::BSSpinLockGuard lock(gLock);
 				Prune(gMagicLights);
 				gMagicLights.emplace_back(made);
+				// a light made from one of our hand-light records is ours for the brightness slider
+				if (Plugin::IsHandLightRecord(a_light)) {
+					Plugin::RememberHandLight(made);
+				}
 			}
 			return made;
 		}
@@ -136,6 +144,8 @@ namespace
 		{
 			auto* root = func(a_this, a_backgroundLoading);
 			if (root) {
+				// the travelling lights go on first, so that sneaking below puts them out with everything else
+				Plugin::HangStreamLights(a_this, root);
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);
@@ -172,6 +182,9 @@ namespace
 			// after the sneaking pass, in the same frame, so a light given back above and then held out
 			// here never reaches the screen in between
 			Plugin::UpdateOptionLights();
+			Plugin::UpdateStreamLights();
+			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
+			Plugin::UpdateBrightness();
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -224,6 +237,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	Install();
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
 		if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+			Plugin::LoadData();
+			Plugin::LoadSettings();
 			InstallLate();
 			Plugin::RegisterMenu();
 		}
