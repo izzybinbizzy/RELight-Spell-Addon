@@ -21,7 +21,7 @@ target("RelightSpellAddon", function()
     add_rules("commonlibsse-ng.plugin", {
         name = "RelightSpellAddon",
         author = "izzydoingit",
-        description = "RELight - Spell Addon - its settings menu, and spell lights going out while you sneak",
+        description = "RELight - Spell Addon - brightness, option switches, travelling lights and lights off while sneaking",
     })
     -- the source is split by job (see the file map at the top of src/main.cpp); every .cpp in src is built
     add_files("src/*.cpp")

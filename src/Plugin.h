@@ -2,54 +2,73 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// What the files share. Three jobs live in this plugin:
-//   main.cpp     the hooks, and the lights going out while you sneak
-//   Options.cpp  THE PROBE: one installer option switched on and off while the game runs
-//   Menu.cpp     the one tick box that switches it, in SKSE Menu Framework's Mod Control Panel
+// What the files share. The file map is at the top of main.cpp.
 
 #pragma once
 
 namespace Plugin
 {
-	// ---------------------------------------------------------------- the probe
+	// ------------------------------------------------------------------ Data.cpp: what the installed options light
 	//
-	// WHAT IT IS ASKING. Every option this mod installs is a set of mesh names, and the light RE::Light
-	// makes for one of those meshes hangs off that object's own 3D. RE::Light has no conditions, so an
-	// option cannot be switched off in a config the way the Light Placer build does it - the only route
-	// is this plugin finding those lights at run time and putting them out, which is the same thing the
-	// sneaking feature already does, pointed at an option instead of at crouching.
-	//
-	// The question only the game can answer is whether that LOOKS right: whether a light that is already
-	// lit goes quietly when the box is unticked, and whether one that should stay off ever shows for a
-	// frame when its object loads. One option is enough to answer both.
-	//
-	// ONE option, hardcoded, and it is Runes - twelve mesh names, read off the built archive. A rune sits
-	// on the ground and stays lit, so it can be watched while the box is ticked and unticked; the fireball
-	// explosion flash is in the same option, so a Fireball answers the loading half.
+	// Every layer the installer put down (Core, and each option he ticked) brings one small text file into
+	// Data\SKSE\Plugins\RelightSpellAddon\. The build writes them; this reads them once, when the game has
+	// loaded its data. They say three things: which objects this mod lights (the brightness slider scales
+	// those and nothing else), which layers are plain tick-box options (the menu draws a switch for each),
+	// and the sprays, breath shouts and beams whose lights this plugin hangs itself so they travel.
+	inline constexpr std::size_t kNone = static_cast<std::size_t>(-1);
 
-	// 🌙 LIGHTS OFF WHILE SNEAKING - the mod's one shipped feature, a SETTING now rather than an
-	// installer option. HIS CALL, 2026-09-21: the plugin always installs, so the choice moved in here.
-	// ⛛ Default OFF, which is what the installer's unticked option meant, so nobody's game changes.
-	bool SneakOn();
-	void SetSneakOn(bool a_on);
+	struct Option
+	{
+		std::string              download, name, id;  // id: "Spells - Runes", the settings file's key
+		int                      order{ 0 };          // a later layer overrides an earlier one
+		bool                     switchable{ false };
+		bool                     on{ true };
+		std::size_t              meshes{ 0 }, bases{ 0 }, streams{ 0 };
+		std::size_t              lit{ 0 }, heldOut{ 0 };  // counted every frame, shown in the menu
+	};
 
-	bool RunesOn();
-	void SetRunesOn(bool a_on);
+	struct Stream
+	{
+		std::string   key, node;  // node "-": the light sits at the projectile's own origin
+		RE::NiColor   color{ 1.0f, 1.0f, 1.0f };
+		float         fade{ 1.0f }, radius{ 133.0f }, size{ 2.5f }, cutoff{ 0.3f };
+		RE::NiPoint3  position{};
+		int           order{ 0 };
+		std::size_t   option{ kNone };
+	};
 
-	// how many of this option's lights are lit right now, and how many the probe is holding out, so the
-	// menu can say what it is doing instead of leaving it to be guessed
-	std::size_t RunesLit();
-	std::size_t RunesHeldOut();
+	void                  LoadData();
+	std::vector<Option>&  Options();
+	std::size_t           DataFiles();
+	std::size_t           OptionOf(RE::TESForm* a_base);  // kNone when this mod does not light it
+	const Stream*         StreamOf(RE::TESForm* a_base);  // nullptr when it is not one of our streams
+	std::string           MeshKey(std::string_view a_path);
+	bool                  IsHandLightRecord(RE::TESObjectLIGH* a_light);
 
-	// Called from the player update, every frame, after the sneaking pass.
-	void UpdateOptionLights();
+	// ------------------------------------------------------------------ Settings.cpp: the settings file
+	void  LoadSettings();
+	void  SaveSettings();
+	int   BrightnessPercent();
+	void  SetBrightnessPercent(int a_percent);
+	float Brightness();
+	bool  SneakOn();
+	void  SetSneakOn(bool a_on);
+	void  SetOptionOn(std::size_t a_index, bool a_on);
 
-	// Called from the Load3D hooks, on the 3D that has just loaded, before it can be drawn. This is the
-	// half that decides whether a switched-off light ever shows for a frame.
-	void CullOptionLightsUnder(RE::NiAVObject* a_root);
-
-	// true when this plugin put that light out for an option, so the sneaking pass does not turn it back on
+	// ------------------------------------------------------------------ Options.cpp: the switches
+	void UpdateOptionLights();                         // every frame, after the sneaking pass
+	void CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
 	bool HeldOutForOption(RE::NiLight* a_light);
 
+	// ------------------------------------------------------------------ Brightness.cpp: our own slider
+	void UpdateBrightness();                  // every frame, last
+	void RememberHandLight(RE::NiLight* a_light);
+
+	// ------------------------------------------------------------------ Streams.cpp: lights that travel
+	void        HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
+	void        UpdateStreamLights();
+	std::size_t LiveStreamLights();
+
+	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
 }

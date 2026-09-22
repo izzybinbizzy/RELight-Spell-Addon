@@ -1,0 +1,130 @@
+// RELight - Spell Addon - SKSE plugin
+// Copyright (C) 2026 izzydoingit
+// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+//
+// The settings, kept in Data\SKSE\Plugins\RelightSpellAddon.ini (under Mod Organizer that file lands in
+// Overwrite, like every setting a game writes). Read once at start, written whenever the menu changes one.
+//
+//   [Settings]
+//   Brightness=100              percent, 10 to 200 - this mod's lights only
+//   LightsOffWhileSneaking=0
+//   [Switches]
+//   Spells - Runes=1            one line per switch; a switch with no line is on
+
+#include "Plugin.h"
+
+namespace Plugin
+{
+	namespace
+	{
+		constexpr const char* kPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
+		constexpr int         kMin = 10, kMax = 200;
+
+		int  gBrightness = 100;
+		bool gSneak = false;
+
+		std::string Trim(std::string s)
+		{
+			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+				s.pop_back();
+			}
+			std::size_t i = 0;
+			while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
+				++i;
+			}
+			return s.substr(i);
+		}
+	}
+
+	void LoadSettings()
+	{
+		std::ifstream in(kPath);
+		std::string   line, section;
+		std::size_t   read = 0;
+		while (in && std::getline(in, line)) {
+			line = Trim(line);
+			if (line.empty() || line[0] == ';' || line[0] == '#') {
+				continue;
+			}
+			if (line.front() == '[' && line.back() == ']') {
+				section = line.substr(1, line.size() - 2);
+				continue;
+			}
+			const auto eq = line.find('=');
+			if (eq == std::string::npos) {
+				continue;
+			}
+			const auto key = Trim(line.substr(0, eq));
+			const auto val = Trim(line.substr(eq + 1));
+			int        v = 0;
+			std::from_chars(val.data(), val.data() + val.size(), v);
+			++read;
+			if (section == "Settings" && key == "Brightness") {
+				gBrightness = std::clamp(v, kMin, kMax);
+			} else if (section == "Settings" && key == "LightsOffWhileSneaking") {
+				gSneak = v != 0;
+			} else if (section == "Switches") {
+				for (auto& o : Options()) {
+					if (o.switchable && o.id == key) {
+						o.on = v != 0;
+					}
+				}
+			}
+		}
+		std::size_t off = 0;
+		for (auto& o : Options()) {
+			off += (o.switchable && !o.on) ? 1 : 0;
+		}
+		SKSE::log::info("settings: brightness {}%, lights off while sneaking {}, {} switch(es) off ({} line(s) read)",
+			gBrightness, gSneak ? "on" : "off", off, read);
+	}
+
+	void SaveSettings()
+	{
+		std::ofstream out(kPath, std::ios::trunc);
+		if (!out) {
+			SKSE::log::warn("settings: {} could not be written", kPath);
+			return;
+		}
+		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
+		out << "[Settings]\nBrightness=" << gBrightness << "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\n";
+		out << "[Switches]\n";
+		for (const auto& o : Options()) {
+			if (o.switchable) {
+				out << o.id << "=" << (o.on ? 1 : 0) << "\n";
+			}
+		}
+	}
+
+	int   BrightnessPercent() { return gBrightness; }
+	float Brightness() { return static_cast<float>(gBrightness) / 100.0f; }
+
+	void SetBrightnessPercent(int a_percent)
+	{
+		a_percent = std::clamp(a_percent, kMin, kMax);
+		if (a_percent != gBrightness) {
+			gBrightness = a_percent;
+			SKSE::log::info("brightness set to {}%", gBrightness);
+		}
+	}
+
+	bool SneakOn() { return gSneak; }
+
+	void SetSneakOn(bool a_on)
+	{
+		if (gSneak != a_on) {
+			gSneak = a_on;
+			SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
+		}
+	}
+
+	void SetOptionOn(std::size_t a_index, bool a_on)
+	{
+		auto& opts = Options();
+		if (a_index >= opts.size() || !opts[a_index].switchable || opts[a_index].on == a_on) {
+			return;
+		}
+		opts[a_index].on = a_on;
+		SKSE::log::info("switch: {} turned {}", opts[a_index].id, a_on ? "on" : "off");
+	}
+}
