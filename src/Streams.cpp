@@ -44,7 +44,8 @@ namespace Plugin
 			RE::NiPointer<RE::BSLight>      bs;
 			RE::NiPointer<RE::NiPointLight> light;
 			const Stream*                   stream{ nullptr };
-			float                           written{ -1.0f };
+			float                           written{ -1.0f };   // the fade we last wrote
+			float                           wroteReach{ -1.0f };  // the reach we last wrote
 		};
 
 		std::mutex                                      gLock;
@@ -107,19 +108,27 @@ namespace Plugin
 		light->name = kLightName;
 		auto&       data = light->GetLightRuntimeData();
 		const float fade = s->fade * Brightness();
+		const float reach = s->radius * Reach();
 		data.diffuse = s->color;
 		data.fade = fade;
 		// x and y are the reach; z carries the light's SIZE, not a third radius (ReLight and Light Placer both do this)
-		data.radius = { s->radius, s->radius, s->size };
+		data.radius = { reach, reach, s->size };
 		// without this a light has no attenuation of its own and never brightens anything (Light Placer does it too)
-		light->SetLightAttenuation(s->radius);
+		light->SetLightAttenuation(reach);
 		// ⚫ Community Shaders' inverse square lighting reads its flag and cutoff out of the light's own data, in
 		// the words before the color - RE::Light's `Overlay` (LightData.h) writes exactly these two, so ours
 		// render the way its config lights do. Set AFTER SetLightAttenuation, which writes those words too.
+		// ⛔ THE CUTOFF IS DERIVED, NOT COPIED, SINCE 2026-09-22. It used to be `s->cutoff` straight out of
+		// the data file, which is right only while both sliders sit at 100%: under inverse square the reach is
+		// sqrt(K * fade / cutoff - size²), so a brighter light carried further and the Brightness slider was
+		// quietly a reach slider - his report. Re-derived from the house formula, Brightness moves the peak
+		// with the reach held and Reach moves the reach with the peak held. At 100%/100% this is the number
+		// the file carries, to four figures.
 		{
 			auto* words = reinterpret_cast<std::uint32_t*>(&data);
-			words[0] |= 1u << 10;                              // kInverseSquare
-			*reinterpret_cast<float*>(&words[1]) = s->cutoff;  // cutoffOverride
+			words[0] |= 1u << 10;  // kInverseSquare
+			*reinterpret_cast<float*>(&words[1]) =
+				std::clamp(kK * fade / (reach * reach + s->size * s->size), 0.01f, 0.99f);
 		}
 		light->local.translate = s->position;
 		light->local.scale = 1.0f;
@@ -146,7 +155,7 @@ namespace Plugin
 			SKSE::log::warn("[STREAM] {}: the light could not be registered", s->key);
 			return;
 		}
-		gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade });
+		gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade, reach });
 		++gCount[s];
 		if (gTold < 12) {
 			++gTold;
@@ -159,6 +168,7 @@ namespace Plugin
 	{
 		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		const float scale = Brightness();
+		const float reachScale = Reach();
 		std::lock_guard l{ gLock };
 		std::erase_if(gLive, [&](Live& v) {
 			// the object's 3D has gone: RE::Light's own rule, a light whose parent is gone leaves the scene
@@ -179,9 +189,17 @@ namespace Plugin
 				v.light->SetAppCulled(false);
 			}
 			const float want = v.stream->fade * scale;
-			if (want != v.written) {
-				v.light->GetLightRuntimeData().fade = want;
+			const float wantReach = v.stream->radius * reachScale;
+			if (want != v.written || wantReach != v.wroteReach) {
+				auto& d = v.light->GetLightRuntimeData();
+				d.fade = want;
+				d.radius.x = wantReach;
+				d.radius.y = wantReach;
+				auto* words = reinterpret_cast<std::uint32_t*>(&d);
+				*reinterpret_cast<float*>(&words[1]) =
+					std::clamp(kK * want / (wantReach * wantReach + v.stream->size * v.stream->size), 0.01f, 0.99f);
 				v.written = want;
+				v.wroteReach = wantReach;
 			}
 			return false;
 		});

@@ -28,8 +28,19 @@ namespace Plugin
 				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"Every light this mod makes, and only those. 100% is the measured brightness; about 30% is what the "
-				"old Reduced download was. The reach does not change.");
+				"How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
+				"is what the old Reduced download was. How far they carry does not change - that is the slider below.");
+
+			int r = ReachPercent();
+			if (ImGuiMCP::SliderInt("Reach", &r, 50, 150, "%d%%")) {
+				SetReachPercent(r);
+			}
+			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+				SaveSettings();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				"How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
+				"that is the slider above.");
 
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox("Lights off while sneaking", &sneak)) {
@@ -40,9 +51,13 @@ namespace Plugin
 				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
 				"hazards - and the ones already lit go out. They come back when you stand up.");
 
+			// ⚫ HIS CALL, 2026-09-22: *"runes and wepaons need to show up before the patches in the skse menu."*
+			// The options used to be drawn in the order Data.cpp read their files, which is the folder listing -
+			// alphabetical by file name - so `Misc - ` and `Patch Collection - ` came before `Spells - ` and
+			// `Weapons - `. They are drawn in MENU order now, which the build writes.
 			auto&       opts = Options();
 			std::string shown;
-			for (std::size_t i = 0; i < opts.size(); ++i) {
+			for (const auto i : OptionsInMenuOrder()) {
 				auto& o = opts[i];
 				if (!o.switchable) {
 					continue;
