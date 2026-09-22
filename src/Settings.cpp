@@ -6,7 +6,8 @@
 // Overwrite, like every setting a game writes). Read once at start, written whenever the menu changes one.
 //
 //   [Settings]
-//   Brightness=100              percent, 10 to 200 - this mod's lights only
+//   Brightness=100              percent, 10 to 200 - this mod's lights only. PEAK ONLY: the reach is held.
+//   Reach=100                   percent, 50 to 150 - how far this mod's lights carry. BRIGHTNESS IS HELD.
 //   LightsOffWhileSneaking=0
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
@@ -19,8 +20,10 @@ namespace Plugin
 	{
 		constexpr const char* kPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
 		constexpr int         kMin = 10, kMax = 200;
+		constexpr int         kReachMin = 50, kReachMax = 150;
 
 		int  gBrightness = 100;
+		int  gReach = 100;
 		bool gSneak = false;
 
 		std::string Trim(std::string s)
@@ -61,6 +64,8 @@ namespace Plugin
 			++read;
 			if (section == "Settings" && key == "Brightness") {
 				gBrightness = std::clamp(v, kMin, kMax);
+			} else if (section == "Settings" && key == "Reach") {
+				gReach = std::clamp(v, kReachMin, kReachMax);
 			} else if (section == "Settings" && key == "LightsOffWhileSneaking") {
 				gSneak = v != 0;
 			} else if (section == "Switches") {
@@ -75,8 +80,8 @@ namespace Plugin
 		for (auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
-		SKSE::log::info("settings: brightness {}%, lights off while sneaking {}, {} switch(es) off ({} line(s) read)",
-			gBrightness, gSneak ? "on" : "off", off, read);
+		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, {} switch(es) off ({} line(s) read)",
+			gBrightness, gReach, gSneak ? "on" : "off", off, read);
 	}
 
 	void SaveSettings()
@@ -87,7 +92,8 @@ namespace Plugin
 			return;
 		}
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
-		out << "[Settings]\nBrightness=" << gBrightness << "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\n";
+		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
+			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\n";
 		out << "[Switches]\n";
 		for (const auto& o : Options()) {
 			if (o.switchable) {
@@ -105,6 +111,18 @@ namespace Plugin
 		if (a_percent != gBrightness) {
 			gBrightness = a_percent;
 			SKSE::log::info("brightness set to {}%", gBrightness);
+		}
+	}
+
+	int   ReachPercent() { return gReach; }
+	float Reach() { return static_cast<float>(gReach) / 100.0f; }
+
+	void SetReachPercent(int a_percent)
+	{
+		a_percent = std::clamp(a_percent, kReachMin, kReachMax);
+		if (a_percent != gReach) {
+			gReach = a_percent;
+			SKSE::log::info("reach set to {}%", gReach);
 		}
 	}
 

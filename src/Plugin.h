@@ -21,6 +21,7 @@ namespace Plugin
 	{
 		std::string              download, name, id;  // id: "Spells - Runes", the settings file's key
 		int                      order{ 0 };          // a later layer overrides an earlier one
+		int                      menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool                     switchable{ false };
 		bool                     on{ true };
 		std::size_t              meshes{ 0 }, bases{ 0 }, streams{ 0 };
@@ -37,8 +38,16 @@ namespace Plugin
 		std::size_t   option{ kNone };
 	};
 
+	// ⚫ THE HOUSE CONSTANT, and it is the same number in gen.py, relightgen.py and Luminous Arcana:
+	// 0.8 * 69.99². Every config's cutoff was written from it, so anything that re-derives a cutoff at
+	// run time has to use it or the light changes reach the moment it is touched.
+	inline constexpr float kK = 3918.88f;
+
 	void                  LoadData();
 	std::vector<Option>&  Options();
+	// the option indices in the order the MENU draws them - `menu` from the data file, `order` when a
+	// file is older than that field. Never the folder listing, which is alphabetical by file name.
+	const std::vector<std::size_t>& OptionsInMenuOrder();
 	std::size_t           DataFiles();
 	std::size_t           OptionOf(RE::TESForm* a_base);  // kNone when this mod does not light it
 	const Stream*         StreamOf(RE::TESForm* a_base);  // nullptr when it is not one of our streams
@@ -51,6 +60,9 @@ namespace Plugin
 	int   BrightnessPercent();
 	void  SetBrightnessPercent(int a_percent);
 	float Brightness();
+	int   ReachPercent();
+	void  SetReachPercent(int a_percent);
+	float Reach();
 	bool  SneakOn();
 	void  SetSneakOn(bool a_on);
 	void  SetOptionOn(std::size_t a_index, bool a_on);

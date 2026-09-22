@@ -95,7 +95,7 @@ namespace Plugin
 			std::vector<std::string>             meshes;
 			std::vector<RE::FormID>              bases;
 			std::vector<Stream>                  streams;
-			bool                                 sawVersion = false, sawFile = false;
+			bool                                 sawVersion = false, sawFile = false, sawMenu = false;
 			std::string                          line;
 			std::size_t                          n = 0;
 			while (std::getline(in, line)) {
@@ -123,6 +123,18 @@ namespace Plugin
 					if (!Int(p[1], opt.order)) {
 						return false;
 					}
+					if (!sawMenu) {
+						opt.menu = opt.order;  // a file written before `menu` existed sorts by its order
+					}
+				} else if (p[0] == "menu" && p.size() >= 2) {
+					// ⚫ WHERE IT SITS IN THE MENU, AND IT IS DELIBERATELY NOT `order`. `order` decides which
+					// option owns a mesh when two claim it, and the downloads are numbered for that. His call,
+					// 2026-09-22, is that Runes and Weapons come before the patches - a different sequence - so
+					// the build writes that one separately rather than bending the override order to suit a menu.
+					if (!Int(p[1], opt.menu)) {
+						return false;
+					}
+					sawMenu = true;
 				} else if (p[0] == "switch" && p.size() >= 2) {
 					opt.switchable = p[1] == "1";
 				} else if (p[0] == "mesh" && p.size() >= 2) {
@@ -272,6 +284,29 @@ namespace Plugin
 
 	std::vector<Option>& Options() { return gOptions; }
 	std::size_t          DataFiles() { return gFiles; }
+
+	// ⛔ THE MENU IS NOT DRAWN IN THE ORDER THE FILES WERE READ. Data files are read off a folder
+	// listing, which is alphabetical by file name - `Misc - `, `Patch Collection - `, `Spells - `,
+	// `Weapons - ` - so the patches came first and his runes and weapons came last, which is what he
+	// reported on 2026-09-22. This is the order the build asked for, worked out once and kept.
+	const std::vector<std::size_t>& OptionsInMenuOrder()
+	{
+		static std::vector<std::size_t> order;
+		static std::size_t              built = static_cast<std::size_t>(-1);
+		if (built != gOptions.size()) {
+			order.resize(gOptions.size());
+			for (std::size_t i = 0; i < order.size(); ++i) {
+				order[i] = i;
+			}
+			std::ranges::stable_sort(order, [](std::size_t a, std::size_t b) {
+				const auto& x = gOptions[a];
+				const auto& y = gOptions[b];
+				return x.menu != y.menu ? x.menu < y.menu : x.id < y.id;
+			});
+			built = gOptions.size();
+		}
+		return order;
+	}
 
 	std::size_t OptionOf(RE::TESForm* a_base)
 	{
