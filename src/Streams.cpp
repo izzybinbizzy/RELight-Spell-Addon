@@ -85,6 +85,7 @@ namespace Plugin
 		};
 		std::vector<OwnLight> gOwn;
 		std::unordered_map<RE::FormID, std::size_t> gExplTold;
+		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
 		std::size_t                                 gExplLines = 0;
 	}
 
@@ -119,6 +120,66 @@ namespace Plugin
 		if (a_log) {
 			SKSE::log::info("stream projectiles: {} carry only our travelling light, {} keep their own (option off)", off, back);
 		}
+	}
+
+	// 🔥 TRUMAN'S ROUTE FOR SPRAYS - HIS CALL, 2026-09-23: *"yes bro use his shit"*. A spray is lit by its OWN light
+	// record, which RE::Light makes at the spray and tunes through our `isPluginLight` config. ⚠ A config on a record
+	// keeps EVERY user of that record lit (relightgen's sprayscan found 59 of 120 spray records shared - a fireball, a
+	// casting light, an explosion, a hazard, a muzzle flash; his fireball went far too bright exactly that way). So the
+	// record is taken off every user that is NOT a spray, in memory: those end up as they were before (RE::Light
+	// switched their unconfigured light off anyway), lit only by our own configs. Nothing is saved.
+	void ClaimSprayLights()
+	{
+		gSpraySet.clear();
+		for (const auto id : SprayLightRecords()) {
+			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id)) {
+				gSpraySet.insert(l);
+			}
+		}
+		if (gSpraySet.empty()) {
+			return;
+		}
+		auto*       dh = RE::TESDataHandler::GetSingleton();
+		std::size_t proj = 0, muzzle = 0, effects = 0, expl = 0, hazards = 0;
+		for (auto* p : dh->GetFormArray<RE::BGSProjectile>()) {
+			if (!p) {
+				continue;
+			}
+			if (p->data.light && gSpraySet.contains(p->data.light) && !p->IsFlamethrower() && !p->IsCone()) {
+				p->data.light = nullptr;
+				++proj;
+			}
+			if (p->data.muzzleFlashLight && gSpraySet.contains(p->data.muzzleFlashLight)) {
+				p->data.muzzleFlashLight = nullptr;
+				++muzzle;
+			}
+		}
+		for (auto* e : dh->GetFormArray<RE::EffectSetting>()) {
+			if (e && e->data.light && gSpraySet.contains(e->data.light)) {
+				e->data.light = nullptr;
+				++effects;
+			}
+		}
+		for (auto* x : dh->GetFormArray<RE::BGSExplosion>()) {
+			if (x && x->data.light && gSpraySet.contains(x->data.light)) {
+				x->data.light = nullptr;
+				++expl;
+			}
+		}
+		for (auto* h : dh->GetFormArray<RE::BGSHazard>()) {
+			if (h && h->data.light && gSpraySet.contains(h->data.light)) {
+				h->data.light = nullptr;
+				++hazards;
+			}
+		}
+		SKSE::log::info("spray lights: {} record(s) are the sprays' alone now - taken off {} projectile(s), {} muzzle flash(es), "
+						"{} magic effect(s), {} explosion(s), {} hazard(s)",
+			gSpraySet.size(), proj, muzzle, effects, expl, hazards);
+	}
+
+	bool IsSprayLight(RE::TESObjectLIGH* a_light)
+	{
+		return a_light && gSpraySet.contains(a_light);
 	}
 
 	// 💥 HIS REPORT, 2026-09-22: *"explosions don't work theres no light"*. What every explosion that loads actually
