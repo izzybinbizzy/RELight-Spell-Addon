@@ -125,8 +125,8 @@ namespace
 				RE::BSSpinLockGuard lock(gLock);
 				Prune(gMagicLights);
 				gMagicLights.emplace_back(made);
-				// a hand light of ours is ours for the brightness slider
-				if (hand) {
+				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the brightness slider
+				if (hand || Plugin::IsSprayLight(a_light)) {
 					Plugin::RememberHandLight(made);
 				}
 			}
@@ -265,6 +265,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Plugin::LoadData();
 			Plugin::LoadSettings();
+			Plugin::ClaimSprayLights();  // before the hand lights remember each effect's own light
 			Plugin::MakeHandLights();
 			Plugin::TakeStreamProjectileLights();
 			InstallLate();

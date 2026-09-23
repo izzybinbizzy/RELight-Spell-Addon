@@ -70,6 +70,8 @@ namespace Plugin
 	std::string           MeshKey(std::string_view a_path);
 	// every hand key -> the layers that light it, highest `order` first
 	const std::unordered_map<std::string, std::vector<Hand>>& Hands();
+	// 🔥 the light records a spray makes, which RE::Light lights through our `isPluginLight` configs (Truman's route)
+	const std::unordered_set<RE::FormID>& SprayLightRecords();
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void        MakeHandLights();                       // once, after the data and the settings are read
@@ -108,6 +110,8 @@ namespace Plugin
 	void        UpdateStreamLights();
 	std::size_t LiveStreamLights();
 	void        TakeStreamProjectileLights();            // once, after the data is read
+	void        ClaimSprayLights();                      // once, after the data is read, BEFORE MakeHandLights
+	bool        IsSprayLight(RE::TESObjectLIGH* a_light);
 	void        ApplyStreamProjectileLights(bool a_log);  // after any switch
 	void        NoteExplosion(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
 

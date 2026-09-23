@@ -9,6 +9,7 @@
 //   version 1 | file <download> <option> | order <n> | menu <n> | switch <0|1> | mesh <key> | base <0xID~Plugin>
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
 //   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
+//   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
 //
 // How an object is matched, and why: RE::Light keys a config by the bare end of the object's mesh path,
 // lowercased, with no folder and no .nif - "Magic\RuneFireProjectile01.nif" is "runefireprojectile01" - and
@@ -32,6 +33,7 @@ namespace Plugin
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand back to the
 		// next layer down (Core), where a mesh has only one owner because RE::Light's config decides its light
 		std::unordered_map<std::string, std::vector<Hand>> gHands;
+		std::unordered_set<RE::FormID>                     gSprayLights;
 		std::vector<std::string>                     gKeysLongestFirst;
 		std::vector<std::string>                     gStreamKeysLongestFirst;
 		std::size_t                                  gFiles = 0;
@@ -165,6 +167,10 @@ namespace Plugin
 					s.cutoff = v[6];
 					s.position = { v[7], v[8], v[9] };
 					streams.push_back(std::move(s));
+				} else if (p[0] == "spraylight" && p.size() >= 2) {
+					if (const auto id = ResolveBase(p[1])) {
+						gSprayLights.insert(id);
+					}
 				} else if (p[0] == "hand" && p.size() == 11) {
 					Hand h;
 					h.key = std::string(p[1]);
@@ -284,6 +290,7 @@ namespace Plugin
 		gBaseOwner.clear();
 		gStreams.clear();
 		gHands.clear();
+		gSprayLights.clear();
 		gFiles = 0;
 		std::size_t bad = 0;
 		std::error_code ec;
@@ -398,4 +405,5 @@ namespace Plugin
 	}
 
 	const std::unordered_map<std::string, std::vector<Hand>>& Hands() { return gHands; }
+	const std::unordered_set<RE::FormID>&                     SprayLightRecords() { return gSprayLights; }
 }
