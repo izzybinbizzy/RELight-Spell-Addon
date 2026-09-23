@@ -2,13 +2,8 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// THE SWITCHES - every plain tick-box option the installer put down gets one, and a switched-off option's
-// lights are put out while the game runs.
-//
-// ✅ THE ROUTE IS PROVED: this was the Runes probe, and in his game on 2026-09-21 a rune went dark without
-// a flicker when its box was unticked and came straight back when it was ticked (*"fire rune is good"*).
-// What changed is only where the list comes from - the option's own data file instead of twelve names
-// typed into this file.
+// The switches: every tick-box option the installer put down gets one, and a switched-off option's lights are
+// put out while the game runs.
 //
 // How a light is matched to an option:
 //   - RE::Light names every light it makes from a config "RL" + the node it hung it on (LightManager.cpp),
@@ -41,16 +36,6 @@ namespace Plugin
 			return n && n[0] == 'R' && n[1] == 'L';
 		}
 
-		RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj)
-		{
-			for (auto* o = a_obj; o; o = o->parent) {
-				if (auto* ref = o->GetUserData()) {
-					return ref;
-				}
-			}
-			return nullptr;
-		}
-
 		std::size_t OptionOfLight(RE::NiLight* a_light)
 		{
 			if (!IsReLightLight(a_light)) {
@@ -65,6 +50,16 @@ namespace Plugin
 			auto& opts = Options();
 			return a_option < opts.size() && opts[a_option].switchable && !opts[a_option].on;
 		}
+	}
+
+	RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj)
+	{
+		for (auto* o = a_obj; o; o = o->parent) {
+			if (auto* ref = o->GetUserData()) {
+				return ref;
+			}
+		}
+		return nullptr;
 	}
 
 	bool HeldOutForOption(RE::NiLight* a_light)
@@ -124,9 +119,7 @@ namespace Plugin
 		if (!a_root) {
 			return;
 		}
-		// The reference is read once from the root: a light under this 3D belongs to this object. Doing it
-		// here is what stops a switched-off light showing for the frame between the object loading and the
-		// next player update - the half of the probe that decided whether it ever flashes.
+		// done at load so a switched-off light never shows for the frame before the next player update
 		auto* ref = ReferenceOf(a_root);
 		const auto opt = ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		if (!Off(opt)) {
