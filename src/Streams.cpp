@@ -75,6 +75,79 @@ namespace Plugin
 		}
 
 		std::size_t gTold = 0;
+
+		// 🔥 each projectile we hang a travelling light on, and the light its own record gives it
+		struct OwnLight
+		{
+			RE::BGSProjectile*  projectile;
+			RE::TESObjectLIGH*  own;
+			const Stream*       stream;
+		};
+		std::vector<OwnLight> gOwn;
+		std::unordered_map<RE::FormID, std::size_t> gExplTold;
+		std::size_t                                 gExplLines = 0;
+	}
+
+	// ⛔ ONE OBJECT, ONE LIGHT - HIS REPORT, 2026-09-22: *"sprays are vanilla"*. His own save of RE::Light's editor showed
+	// why: the spray's light in game was the PROJECTILE's own record light (`MagicLightFireball01`, reach ~695), which
+	// RE::Light keeps, beside our travelling light (reach 250). So while an option's travelling light is on, the
+	// projectile's own light is taken off, in memory; switch the option off and it is given back. Nothing is saved.
+	void TakeStreamProjectileLights()
+	{
+		gOwn.clear();
+		for (auto* p : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::BGSProjectile>()) {
+			if (!p || !p->data.light) {
+				continue;
+			}
+			if (const Stream* s = StreamOf(p)) {
+				gOwn.push_back({ p, p->data.light, s });
+			}
+		}
+		ApplyStreamProjectileLights(true);
+	}
+
+	void ApplyStreamProjectileLights(bool a_log)
+	{
+		std::size_t off = 0, back = 0;
+		for (auto& o : gOwn) {
+			auto* want = OptionOff(o.stream) ? o.own : nullptr;
+			if (o.projectile->data.light != want) {
+				o.projectile->data.light = want;
+			}
+			(want ? back : off) += 1;
+		}
+		if (a_log) {
+			SKSE::log::info("stream projectiles: {} carry only our travelling light, {} keep their own (option off)", off, back);
+		}
+	}
+
+	// 💥 HIS REPORT, 2026-09-22: *"explosions don't work theres no light"*. What every explosion that loads actually
+	// carries once RE::Light has had its turn - its record, whether our data names it, and the lights under its 3D.
+	// The first three of each record, 60 lines in all.
+	void NoteExplosion(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+	{
+		auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+		if (!base || !a_root || gExplLines >= 60) {
+			return;
+		}
+		auto& n = gExplTold[base->GetFormID()];
+		if (n >= 3) {
+			return;
+		}
+		++n;
+		++gExplLines;
+		std::size_t lights = 0, culled = 0;
+		RE::BSVisit::TraverseScenegraphLights(a_root, [&](RE::NiPointLight* a_light) {
+			++lights;
+			culled += (a_light && a_light->GetAppCulled()) ? 1 : 0;
+			return RE::BSVisit::BSVisitControl::kContinue;
+		});
+		auto*       model = base->As<RE::TESModel>();
+		const char* path = model ? model->GetModel() : nullptr;
+		auto*       file = base->GetFile(0);
+		SKSE::log::info("[EXPL] {:08X} {} | model {} | ours {} | lights under it {} ({} culled) | in a cell {}", base->GetFormID(),
+			file ? file->GetFilename() : "?", (path && *path) ? MeshKey(path) : "-", OptionOf(base) != kNone ? "yes" : "no", lights,
+			culled, a_ref->GetParentCell() ? "yes" : "NO");
 	}
 
 	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)

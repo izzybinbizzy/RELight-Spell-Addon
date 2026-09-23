@@ -104,6 +104,9 @@ namespace Plugin
 	void        HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
 	void        UpdateStreamLights();
 	std::size_t LiveStreamLights();
+	void        TakeStreamProjectileLights();            // once, after the data is read
+	void        ApplyStreamProjectileLights(bool a_log);  // after any switch
+	void        NoteExplosion(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
 
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();

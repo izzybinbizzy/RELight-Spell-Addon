@@ -158,6 +158,9 @@ namespace
 			if (root) {
 				// the travelling lights go on first, so that sneaking below puts them out with everything else
 				Plugin::HangStreamLights(a_this, root);
+				if constexpr (std::is_same_v<T, RE::Explosion>) {
+					Plugin::NoteExplosion(a_this, root);
+				}
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);
@@ -263,6 +266,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::LoadData();
 			Plugin::LoadSettings();
 			Plugin::MakeHandLights();
+			Plugin::TakeStreamProjectileLights();
 			InstallLate();
 			Plugin::RegisterMenu();
 		}
