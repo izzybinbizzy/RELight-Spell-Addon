@@ -100,7 +100,7 @@ namespace Plugin
 		// ⚫ how RE::Light itself decides Community Shaders' inverse square lighting is there (Utility.h). Without it the
 		// two words written below are the light's AMBIENT colour, so they are left alone.
 		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli");
-		std::size_t made = 0, failed = 0;
+		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };
 			gCopies.clear();
@@ -126,15 +126,21 @@ namespace Plugin
 				if (!model || !*model) {
 					continue;
 				}
-				auto key = MeshKey(model);
+				// the full path first (a mod's own art under a shared file name), then the bare name
+				auto key = PathKey(model);
+				if (gCopies.contains(key)) {
+					++byPath;
+				} else {
+					key = MeshKey(model);
+				}
 				if (gCopies.contains(key)) {
 					gTargets.push_back({ effect, effect->data.light, std::move(key) });
 				}
 			}
 		}
-		SKSE::log::info("hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes; "
-						"inverse square lighting {}",
-			made, failed, gTargets.size(), gIsl ? "found" : "not found");
+		SKSE::log::info("hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
+						"their full art path); inverse square lighting {}",
+			made, failed, gTargets.size(), byPath, gIsl ? "found" : "not found");
 		ApplyHandLights(true);
 	}
 

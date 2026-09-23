@@ -283,6 +283,26 @@ namespace Plugin
 		return out;
 	}
 
+	// ⚫ THE FULL KEY - his call 2026-09-23 (*"Auto first, switch rest"*): two mods can ship art under one file name
+	// (Coldfire's `Coldfire\Magic\Fireball01HandEffects.nif` and vanilla `Magic\Fireball01HandEffects.nif`). A `hand`
+	// line may name the whole path, and it is looked up BEFORE the bare name, so each keeps its own colour.
+	// `relightgen.path_key` is the same rule: lowercase, backslashes, no leading `meshes\`, no `.nif`.
+	std::string PathKey(std::string_view a_path)
+	{
+		std::string out{ a_path };
+		std::ranges::transform(out, out.begin(), [](unsigned char c) { return c == '/' ? '\\' : static_cast<char>(std::tolower(c)); });
+		while (!out.empty() && out.front() == '\\') {
+			out.erase(out.begin());
+		}
+		if (out.starts_with("meshes\\")) {
+			out.erase(0, 7);
+		}
+		if (out.size() > 4 && out.ends_with(".nif")) {
+			out.resize(out.size() - 4);
+		}
+		return out;
+	}
+
 	void LoadData()
 	{
 		gOptions.clear();

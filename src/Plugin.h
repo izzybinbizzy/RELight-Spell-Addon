@@ -68,6 +68,7 @@ namespace Plugin
 	std::size_t           OptionOf(RE::TESForm* a_base);  // kNone when this mod does not light it
 	const Stream*         StreamOf(RE::TESForm* a_base);  // nullptr when it is not one of our streams
 	std::string           MeshKey(std::string_view a_path);
+	std::string           PathKey(std::string_view a_path);
 	// every hand key -> the layers that light it, highest `order` first
 	const std::unordered_map<std::string, std::vector<Hand>>& Hands();
 	// 🔥 the light records a spray makes, which RE::Light lights through our `isPluginLight` configs (Truman's route)
