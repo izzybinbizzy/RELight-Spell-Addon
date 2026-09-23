@@ -32,8 +32,8 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr std::size_t kMaxLivePerStream = 4;   // a spray spawns a new object many times a second
-		constexpr std::size_t kMaxLiveTotal = 24;
+		constexpr std::size_t kMaxObjectsPerStream = 4;  // a spray spawns a new object many times a second
+		constexpr std::size_t kMaxLiveTotal = 48;          // lights, all streams together (a ladder is several per object)
 		constexpr float       kFieldOfView = 90.0f;   // what a light that casts no shadow is given (from ReLight)
 		constexpr const char* kLightName = "RSAStream";
 
@@ -165,7 +165,8 @@ namespace Plugin
 			return;
 		}
 		std::lock_guard l{ gLock };
-		if (gLive.size() >= kMaxLiveTotal || gCount[s] >= kMaxLivePerStream) {
+		const std::size_t each = (std::max)(s->positions.size(), std::size_t{ 1 });
+		if (gLive.size() + each > kMaxLiveTotal || gCount[s] + each > kMaxObjectsPerStream * each) {
 			return;
 		}
 		RE::NiNode* parent = root;
@@ -174,66 +175,70 @@ namespace Plugin
 				parent = n->AsNode();
 			}
 		}
-		auto* light = CloneMaster();
-		if (!light) {
-			return;
-		}
-		light->name = kLightName;
-		auto&       data = light->GetLightRuntimeData();
-		const float fade = s->fade * Brightness();
-		const float reach = s->radius * Reach();
-		data.diffuse = s->color;
-		data.fade = fade;
-		// x and y are the reach; z carries the light's SIZE, not a third radius (ReLight and Light Placer both do this)
-		data.radius = { reach, reach, s->size };
-		// without this a light has no attenuation of its own and never brightens anything (Light Placer does it too)
-		light->SetLightAttenuation(reach);
-		// ⚫ Community Shaders' inverse square lighting reads its flag and cutoff out of the light's own data, in
-		// the words before the color - RE::Light's `Overlay` (LightData.h) writes exactly these two, so ours
-		// render the way its config lights do. Set AFTER SetLightAttenuation, which writes those words too.
-		// ⛔ THE CUTOFF IS DERIVED, NOT COPIED, SINCE 2026-09-22. It used to be `s->cutoff` straight out of
-		// the data file, which is right only while both sliders sit at 100%: under inverse square the reach is
-		// sqrt(K * fade / cutoff - size²), so a brighter light carried further and the Brightness slider was
-		// quietly a reach slider - his report. Re-derived from the house formula, Brightness moves the peak
-		// with the reach held and Reach moves the reach with the peak held. At 100%/100% this is the number
-		// the file carries, to four figures.
-		{
-			auto* words = reinterpret_cast<std::uint32_t*>(&data);
-			words[0] |= 1u << 10;  // kInverseSquare
-			*reinterpret_cast<float*>(&words[1]) =
-				std::clamp(kK * fade / (reach * reach + s->size * s->size), 0.01f, 0.99f);
-		}
-		light->local.translate = s->position;
-		light->local.scale = 1.0f;
-		parent->AttachChild(light, true);
-		RE::NiUpdateData update{};
-		light->Update(update);
-		RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
-		params.dynamic = true;
-		params.shadowLight = false;
-		params.portalStrict = true;
-		params.affectLand = true;
-		params.affectWater = true;
-		params.neverFades = true;
-		params.fov = kFieldOfView;
-		params.falloff = 1.0f;
-		params.nearDistance = 5.0f;
-		params.depthBias = 1.0f;
-		params.sceneGraphIndex = 0;
-		params.restrictedNode = nullptr;
-		params.lensFlareData = nullptr;
-		auto* bs = scene->AddLight(light, params);
-		if (!bs) {
-			parent->DetachChild(light);
-			SKSE::log::warn("[STREAM] {}: the light could not be registered", s->key);
-			return;
-		}
-		gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade, reach });
-		++gCount[s];
-		if (gTold < 12) {
-			++gTold;
-			SKSE::log::info("[STREAM] {} | on {} | fade {:.2f} | radius {:.0f}", s->key,
-				parent == root ? "its root" : s->node.c_str(), fade, s->radius);
+		const std::vector<RE::NiPoint3> at = s->positions.empty() ? std::vector<RE::NiPoint3>{ s->position } : s->positions;
+		for (const auto& pos : at) {
+			auto* light = CloneMaster();
+			if (!light) {
+				return;
+			}
+			// one light per rung of the ladder; the block below is the one-light code, run for each
+			light->name = kLightName;
+			auto&       data = light->GetLightRuntimeData();
+			const float fade = s->fade * Brightness();
+			const float reach = s->radius * Reach();
+			data.diffuse = s->color;
+			data.fade = fade;
+			// x and y are the reach; z carries the light's SIZE, not a third radius (ReLight and Light Placer both do this)
+			data.radius = { reach, reach, s->size };
+			// without this a light has no attenuation of its own and never brightens anything (Light Placer does it too)
+			light->SetLightAttenuation(reach);
+			// ⚫ Community Shaders' inverse square lighting reads its flag and cutoff out of the light's own data, in
+			// the words before the color - RE::Light's `Overlay` (LightData.h) writes exactly these two, so ours
+			// render the way its config lights do. Set AFTER SetLightAttenuation, which writes those words too.
+			// ⛔ THE CUTOFF IS DERIVED, NOT COPIED, SINCE 2026-09-22. It used to be `s->cutoff` straight out of
+			// the data file, which is right only while both sliders sit at 100%: under inverse square the reach is
+			// sqrt(K * fade / cutoff - size²), so a brighter light carried further and the Brightness slider was
+			// quietly a reach slider - his report. Re-derived from the house formula, Brightness moves the peak
+			// with the reach held and Reach moves the reach with the peak held. At 100%/100% this is the number
+			// the file carries, to four figures.
+			{
+				auto* words = reinterpret_cast<std::uint32_t*>(&data);
+				words[0] |= 1u << 10;  // kInverseSquare
+				*reinterpret_cast<float*>(&words[1]) =
+					std::clamp(kK * fade / (reach * reach + s->size * s->size), 0.01f, 0.99f);
+			}
+			light->local.translate = pos;
+			light->local.scale = 1.0f;
+			parent->AttachChild(light, true);
+			RE::NiUpdateData update{};
+			light->Update(update);
+			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
+			params.dynamic = true;
+			params.shadowLight = false;
+			params.portalStrict = true;
+			params.affectLand = true;
+			params.affectWater = true;
+			params.neverFades = true;
+			params.fov = kFieldOfView;
+			params.falloff = 1.0f;
+			params.nearDistance = 5.0f;
+			params.depthBias = 1.0f;
+			params.sceneGraphIndex = 0;
+			params.restrictedNode = nullptr;
+			params.lensFlareData = nullptr;
+			auto* bs = scene->AddLight(light, params);
+			if (!bs) {
+				parent->DetachChild(light);
+				SKSE::log::warn("[STREAM] {}: the light could not be registered", s->key);
+				return;
+			}
+			gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade, reach });
+			++gCount[s];
+			if (gTold < 24) {
+				++gTold;
+				SKSE::log::info("[STREAM] {} | on {} at ({:.0f}, {:.0f}, {:.0f}) | fade {:.2f} | radius {:.0f}", s->key,
+					parent == root ? "its root" : s->node.c_str(), pos.x, pos.y, pos.z, fade, s->radius);
+			}
 		}
 	}
 

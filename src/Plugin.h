@@ -34,6 +34,9 @@ namespace Plugin
 		RE::NiColor   color{ 1.0f, 1.0f, 1.0f };
 		float         fade{ 1.0f }, radius{ 133.0f }, size{ 2.5f }, cutoff{ 0.3f };
 		RE::NiPoint3  position{};
+		// 🔴 EVERY position the winning layer gives this mesh - a beam's ladder, a spray's ladder. Until 2026-09-23 a
+		// second line for the same mesh REPLACED the first, so lightning's five-light ladder came out as one light.
+		std::vector<RE::NiPoint3> positions;
 		int           order{ 0 };
 		std::size_t   option{ kNone };
 	};
