@@ -270,6 +270,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::TakeStreamProjectileLights();
 			InstallLate();
 			Plugin::RegisterMenu();
+		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
+			Plugin::RefindHandLights();  // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
 		}
 	});
 	return true;
