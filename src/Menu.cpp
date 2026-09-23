@@ -22,7 +22,10 @@ namespace Plugin
 		void RehandSoon()
 		{
 			if (auto* tasks = SKSE::GetTaskInterface()) {
-				tasks->AddTask([]() { ApplyHandLights(true); });
+				tasks->AddTask([]() {
+					ApplyHandLights(true);
+					ApplyStreamProjectileLights(true);
+				});
 			}
 		}
 
