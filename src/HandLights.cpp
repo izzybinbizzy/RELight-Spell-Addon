@@ -2,23 +2,13 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// 🖐 THE LIGHT ON THE CASTER'S HANDS - no plugin, no script. HIS CALL, 2026-09-22: *"i never wanted it in a pex
-// script in the first place, i already don't want the esp"*.
+// The light on the caster's hands - no plugin, no script.
 //
-// ⚫ WHY THIS IS NEEDED AT ALL: casting art hangs off the ACTOR, so no RE::Light config on a mesh can reach it.
-// What the game does give a spell is its CASTING LIGHT - a light record on the magic effect, which the game makes
-// at the hand while the spell is readied and takes away when it ends. So each magic effect whose casting art is a
-// mesh this mod lights is pointed, in memory, at a light record made here, in the colour, strength and reach that
-// the installed layers give that mesh.
-//
-// ⚫ WHY RE::Light IS STEPPED AROUND FOR THESE LIGHTS (read off its source, commit 622bbbb, `magicLightThunk`):
-// with `disableGameLights=true` it switches off every casting light it has no config for, and a config can only
-// name a record from a real plugin - a light made in memory has none. So main.cpp's hook, which runs BEFORE
-// RE::Light's (it is installed after every plugin has loaded), makes our lights with the game's own function and
-// never hands them to RE::Light. Every other casting light still goes through RE::Light exactly as before.
-//
-// Nothing is saved: the effects are pointed at our lights when the game loads its data and again whenever a
-// switch changes who lights a hand. Take the mod out and every effect keeps the light its own plugin gave it.
+// Casting art hangs off the actor, so no RE::Light mesh config reaches it. Instead each magic effect whose casting
+// art is a mesh this mod lights is pointed, in memory, at its casting light: a light record made here in the colour,
+// strength and reach the installed layers give that mesh. RE::Light switches off casting lights it has no config for,
+// and an in-memory record can have none, so main.cpp's hook makes these lights itself and never hands them on.
+// Nothing is saved; take the mod out and every effect keeps its own light.
 
 #include "Plugin.h"
 
@@ -33,8 +23,7 @@ namespace Plugin
 			std::string         key;
 		};
 
-		// ⚫ the TES flag Community Shaders reads for inverse square lighting (RE::Light's TES_LIGHT_FLAGS_EXT), and the
-		// bit it keeps in the light's own words once the light is made - the same one Brightness.cpp reads
+		// Community Shaders' inverse square flag on the record, and the bit it keeps in the made light's runtime words
 		constexpr std::uint32_t kLighInverseSquare = 1u << 14;
 		constexpr std::uint32_t kInverseSquare = 1u << 10;
 
@@ -68,9 +57,7 @@ namespace Plugin
 			return nullptr;
 		}
 
-		// ⚫ the record the game builds the light from. The numbers the ESP's records carried: a byte copy of vanilla
-		// MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1, flicker period 1, no amplitudes),
-		// with the layer's colour, reach and strength
+		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's colour, reach and strength
 		void Fill(RE::TESObjectLIGH* a_light, const Hand& a_hand)
 		{
 			auto& d = a_light->data;
@@ -97,10 +84,9 @@ namespace Plugin
 
 	namespace
 	{
-		// ⚫ WHICH MAGIC EFFECTS WEAR A LIT MESH - found at data load, and AGAIN when a save loads (2026-09-23): another plugin
-		// can set an effect's casting art in memory at data load too (Dynamic Wards 2.0 gives every ward its ranked hand
-		// art), and which of the two ran first is not ours to decide. The light an effect loaded with is kept across a
-		// re-find - an effect already wearing one of our lights keeps the own light it had. -> how many matched by full path
+		// Which magic effects wear a lit mesh. Found at data load and again when a save loads, because another plugin
+		// (Dynamic Wards) can change casting art in memory too. An effect's own light is kept across a re-find.
+		// -> how many matched by full path
 		std::size_t FindTargets()
 		{
 			std::unordered_map<RE::EffectSetting*, RE::TESObjectLIGH*> own;
@@ -154,14 +140,13 @@ namespace Plugin
 			byPath = FindTargets();
 			n = gTargets.size();
 		}
-		SKSE::log::info("hand lights: re-found after a load - {} magic effect(s) wear one of their meshes ({} by full path)", n, byPath);
+		SKSE::log::info("hand lights: re-found - {} magic effect(s) wear one of their meshes ({} by full path)", n, byPath);
 		ApplyHandLights(true);
 	}
 
 	void MakeHandLights()
 	{
-		// ⚫ how RE::Light itself decides Community Shaders' inverse square lighting is there (Utility.h). Without it the
-		// two words written below are the light's AMBIENT colour, so they are left alone.
+		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour
 		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli");
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
@@ -231,9 +216,8 @@ namespace Plugin
 		return it == gInUse.end() ? nullptr : it->second;
 	}
 
-	// what RE::Light did to the light it made from a plugin-light config (LightData.cpp setNiPointLightDataFromCfg and
-	// setOverlayData): the strength, the reach with the SIZE in its z, the colour, and - under Community Shaders - the
-	// inverse square flag and the cutoff in the two words before the colour
+	// dressed as RE::Light dresses a plugin light: fade, reach with the size in z, colour, and under Community Shaders
+	// the inverse square flag and cutoff
 	void DressHandLight(RE::NiLight* a_light, const Hand& a_hand)
 	{
 		if (!a_light) {

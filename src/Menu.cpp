@@ -71,10 +71,7 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				"A light on your hands while you cast, in the color of the spell. It takes effect on the next cast.");
 
-			// ⚫ HIS CALL, 2026-09-22: *"runes and wepaons need to show up before the patches in the skse menu."*
-			// The options used to be drawn in the order Data.cpp read their files, which is the folder listing -
-			// alphabetical by file name - so `Misc - ` and `Patch Collection - ` came before `Spells - ` and
-			// `Weapons - `. They are drawn in MENU order now, which the build writes.
+			// drawn in the menu order the build writes, not the alphabetical file order
 			auto&       opts = Options();
 			std::string shown;
 			for (const auto i : OptionsInMenuOrder()) {

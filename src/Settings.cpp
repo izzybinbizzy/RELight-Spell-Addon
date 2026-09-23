@@ -2,12 +2,11 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// The settings, kept in Data\SKSE\Plugins\RelightSpellAddon.ini (under Mod Organizer that file lands in
-// Overwrite, like every setting a game writes). Read once at start, written whenever the menu changes one.
+// The settings file, Data\SKSE\Plugins\RelightSpellAddon.ini. Read once at start, written whenever the menu changes one.
 //
 //   [Settings]
-//   Brightness=100              percent, 10 to 200 - this mod's lights only. PEAK ONLY: the reach is held.
-//   Reach=100                   percent, 50 to 150 - how far this mod's lights carry. BRIGHTNESS IS HELD.
+//   Brightness=100              percent, 10 to 200 - this mod's lights only; the reach is held
+//   Reach=100                   percent, 50 to 150 - the peak is held
 //   LightsOffWhileSneaking=0
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   [Switches]
@@ -97,7 +96,7 @@ namespace Plugin
 		}
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
 		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
-			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\n";
+			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0) << "\n";
 		out << "[Switches]\n";
 		for (const auto& o : Options()) {
 			if (o.switchable) {

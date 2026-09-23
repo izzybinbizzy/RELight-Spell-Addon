@@ -27,23 +27,11 @@ namespace
 
 	bool PlayerSneaking()
 	{
-		// 🌙 the setting is what decides now, not the installer: with it off this whole feature is
-		// inert, which is exactly what an unticked option used to mean
 		if (!Plugin::SneakOn()) {
 			return false;
 		}
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		return player && player->IsSneaking();
-	}
-
-	RE::TESObjectREFR* OwnerOf(RE::NiAVObject* a_obj)
-	{
-		for (auto* o = a_obj; o; o = o->parent) {
-			if (auto* ref = o->GetUserData()) {
-				return ref;
-			}
-		}
-		return nullptr;
 	}
 
 	bool IsSpellObject(RE::TESObjectREFR* a_ref)
@@ -82,7 +70,7 @@ namespace
 			if (niLight->GetAppCulled()) {
 				continue;
 			}
-			if (IsMagicLight(niLight) || IsSpellObject(OwnerOf(niLight))) {
+			if (IsMagicLight(niLight) || IsSpellObject(Plugin::ReferenceOf(niLight))) {
 				niLight->SetAppCulled(true);
 				gCulled.emplace_back(niLight);
 			}
@@ -92,8 +80,7 @@ namespace
 	void UncullAll()
 	{
 		for (auto& l : gCulled) {
-			// a light the probe is holding out for a switched-off option stays out: standing up is not a
-			// reason to give it back, and the two passes must not be able to fight over the same light
+			// a light held out for a switched-off option stays out when the player stands up
 			if (l && !Plugin::HeldOutForOption(l.get())) {
 				l->SetAppCulled(false);
 			}
@@ -109,9 +96,8 @@ namespace
 			if (PlayerSneaking()) {
 				return nullptr;
 			}
-			// 🖐 one of our hand lights (HandLights.cpp): made with the game's own function, NOT passed on to
-			// RE::Light, which switches off a casting light it has no config for - and it can have none for a
-			// light that lives in memory. Then dressed the way RE::Light dressed the plugin's records.
+			// our hand lights are made with the game's own function and never reach RE::Light, which would switch off
+			// a casting light it has no config for (an in-memory record can have none)
 			const Plugin::Hand* hand = Plugin::HandOfLight(a_light);
 			RE::NiPointLight*   made = nullptr;
 			if (hand) {
@@ -127,7 +113,7 @@ namespace
 				gMagicLights.emplace_back(made);
 				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the brightness slider
 				if (hand || Plugin::IsSprayLight(a_light)) {
-					Plugin::RememberHandLight(made);
+					Plugin::RememberHandLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
 				}
 			}
 			return made;
@@ -158,16 +144,11 @@ namespace
 			if (root) {
 				// the travelling lights go on first, so that sneaking below puts them out with everything else
 				Plugin::HangStreamLights(a_this, root);
-				if constexpr (std::is_same_v<T, RE::Explosion>) {
-					Plugin::NoteExplosion(a_this, root);
-				}
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);
 				} else {
-					// RE::Light hangs its light on this 3D inside its own Load3D hook, so a light for a
-					// switched-off option exists the moment this returns. Putting it out here rather than
-					// on the next player update is what decides whether it ever shows for a frame.
+					// RE::Light has already hung its light here; put a switched-off option's out before its first frame
 					Plugin::CullOptionLightsUnder(root);
 				}
 			}
@@ -226,8 +207,7 @@ namespace
 				SKSE::log::warn("spell light call sites lead to different functions; using the first");
 			}
 		}
-		// ⚫ whether RE::Light's hook is the one we now call: if the call sites still lead straight to the game's own
-		// function, RE::Light hooked nothing here (it is not installed, or it loaded after this - which kPostLoad rules out)
+		// if the call sites still lead to the game's own function, RE::Light hooked nothing here
 		const auto game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
 		SKSE::log::info("spell lights: {} call sites hooked, after every plugin loaded; they led to {}", sites.size(),
 			first == game ? "the game's own function (RE::Light has no hook there)" : "another plugin's hook (RE::Light's)");
@@ -258,10 +238,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			return;
 		}
 		if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
-			// ⛔ AFTER EVERY PLUGIN HAS LOADED, and that is the point: RE::Light hooks these same call sites when IT
-			// loads, and the hook written last runs first. Ours has to run first, or RE::Light switches our hand
-			// lights off before we see them (HandLights.cpp).
+			// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
 			Install();
+			// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows
+			SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
+				if (a_m && a_m->type == 'DWAC') {
+					Plugin::RefindHandLights();
+				}
+			});
 		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Plugin::LoadData();
 			Plugin::LoadSettings();

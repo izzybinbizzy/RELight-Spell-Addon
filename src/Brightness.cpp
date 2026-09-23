@@ -2,33 +2,14 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// OUR OWN BRIGHTNESS SLIDER - it scales this mod's lights and nothing else.
-//
-// ⚫ WHY IT EXISTS (§0.13 of the ReLight handoff): RE::Light's own slider, lightBrightnessMultiplier, scales
-// EVERY RE::Light light in the game, so on a load order with another RE::Light addon it dims their lights
-// too. This one touches only the lights this mod makes: RE::Light's lights on objects our data files name,
-// the hand lights (records in our own light plugin) and the travelling lights (Streams.cpp does its own).
-// It is also what let the Reduced tier go: Reduced was the same color and reach at 0.2875 of the peak, and
-// the slider at about 30% is that.
-//
-// ⛔⛔ AND HERE IS THE THING THIS FILE HAD WRONG UNTIL 2026-09-22, IN HIS WORDS: *"the brightness slider
-// says reach doesn't change but when you make it brighter it goes further away...thats called reach."*
-// He is right. Scaling FADE alone keeps the reach only under the game's own attenuation. He runs
-// COMMUNITY SHADERS with inverse square lighting, and there the reach is
-//     reach = sqrt(K * fade / cutoff - size²)
-// so fade drags the reach with it unless the cutoff moves by the same ratio. It is the same lesson the
-// rune lift learned on the Light Placer side the night before, in a second place.
-// ✅ SO THERE ARE TWO SLIDERS NOW AND EACH ONE HOLDS THE OTHER STEADY:
-//     Brightness  scales fade, and scales cutoff by the SAME ratio  -> the peak moves, the reach does not
-//     Reach       scales the radius, and re-derives cutoff from it  -> the reach moves, the peak does not
-// Both come out of one formula, the house `cutoff = K * fade / (reach² + size²)` every config was
-// written from, so a light this touches lands exactly where a config with those numbers would have.
-//
-// ⚫ HOW, and why this way: like RE::Light's slider it scales FADE, so a light keeps its colour and shape.
-// RE::Light writes a light's fade once when it makes it - and again EVERY frame for a light that flickers,
-// pulses or has a fade curve (everyFrame.h, updateLights). So each light remembers the fade it was last
-// given here: if what it carries now is not that, RE::Light (or the game) has written it since, and that
-// new value is the base to scale. This runs last in the player update, after RE::Light's own.
+// Our own Brightness and Reach sliders. RE::Light's multiplier scales every RE::Light light in the game; these
+// touch only this mod's lights (RE::Light's lights on objects our data names, our hand lights and spray lights;
+// Streams.cpp scales its own). Under inverse square lighting reach = sqrt(K * fade / cutoff - size²), so:
+//     Brightness  scales fade and cutoff by one ratio  -> the peak moves, the reach is held
+//     Reach       scales the radius, cutoff re-derived -> the reach moves, the peak is held
+// RE::Light rewrites fade every frame on a light that flickers or pulses, so each light remembers the fade we last
+// wrote; anything else it carries is a new base. A hand light with Dynamic Lighting runs RE::Light's own oscillator
+// here. Runs last in the player update, after RE::Light's.
 
 #include "Plugin.h"
 
@@ -44,9 +25,31 @@ namespace Plugin
 			float                      written{ -1.0f };   // the fade we last wrote
 			float                      baseRadius{ 0.0f }; // the reach RE::Light last gave it
 			float                      wroteRadius{ -1.0f };
-			float                      baseCutoff{ -1.0f }; // the cutoff RE::Light (or his editor) last gave it
+			float                      baseCutoff{ -1.0f }; // the cutoff RE::Light (or its editor) last gave it
 			float                      wroteCutoff{ -2.0f };
+			const HandFx*              fx{ nullptr };
+			float                      phase[3]{};
 		};
+
+		// RE::Light's oscillators (everyFrame.h): Pulse advances one phase by perSecond * dt * 5; Flicker walks three
+		// phases by a random 1.1-13.1 * perSecond * dt. The fade is (osc * intensity + 1 - intensity) of its base.
+		float Oscillate(Seen& a_s, float a_dt)
+		{
+			static std::minstd_rand rng{ 20260923 };
+			static std::uniform_real_distribution<float> step{ 1.1f, 13.1f };
+			constexpr float tau = 6.2831853f;
+			float           osc = 0.0f;
+			if (a_s.fx->flicker) {
+				for (auto& ph : a_s.phase) {
+					ph = std::fmod(ph + step(rng) * a_s.fx->perSecond * a_dt, tau);
+					osc += (std::sin(ph) + 1.0f) / 6.0f;
+				}
+			} else {
+				a_s.phase[0] = std::fmod(a_s.phase[0] + a_s.fx->perSecond * a_dt * 5.0f, tau);
+				osc = (std::sin(a_s.phase[0]) + 1.0f) / 2.0f;
+			}
+			return osc * a_s.fx->intensity + 1.0f - a_s.fx->intensity;
+		}
 
 		float ReadCutoff(RE::NiLight* a_light)
 		{
@@ -54,9 +57,8 @@ namespace Plugin
 			return *reinterpret_cast<const float*>(&words[1]);
 		}
 
-		// ⚫ Community Shaders reads its inverse square flag and its cutoff out of the two words before the
-		// colour - RE::Light's own `Overlay` writes exactly those two. A light without the flag is not being
-		// rendered that way, so its cutoff is left alone.
+		// Community Shaders' inverse square flag and cutoff live in the two words before the colour; a light
+		// without the flag is not rendered that way, so its cutoff is left alone
 		constexpr std::uint32_t kInverseSquare = 1u << 10;
 
 		bool HasOverlay(RE::NiLight* a_light)
@@ -73,22 +75,10 @@ namespace Plugin
 
 		std::unordered_map<RE::NiLight*, Seen> gSeen;
 		std::mutex                             gHandLock;
-		std::vector<RE::NiPointer<RE::NiLight>> gHand;  // hand lights made since the last frame
+		std::vector<std::pair<RE::NiPointer<RE::NiLight>, const HandFx*>> gHand;  // hand lights made since the last frame
 		std::uint32_t                          gFrame = 0;
 
-		RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj)
-		{
-			for (auto* o = a_obj; o; o = o->parent) {
-				if (auto* ref = o->GetUserData()) {
-					return ref;
-				}
-			}
-			return nullptr;
-		}
-
-		// 🔥 a spray's light, however RE::Light made it: it hangs on a projectile whose own light record is one of the
-		// spray records (HandLights/Streams `IsSprayLight`). His report, 2026-09-23: *"reach does nothing for sprays"* -
-		// they were only caught when made through one of the magic-light call sites.
+		// a spray's light, however RE::Light made it: it hangs on a flame or cone projectile whose light is a spray record
 		bool IsSprayProjectileLight(RE::NiLight* a_light)
 		{
 			auto* ref = ReferenceOf(a_light);
@@ -111,11 +101,11 @@ namespace Plugin
 		}
 	}
 
-	void RememberHandLight(RE::NiLight* a_light)
+	void RememberHandLight(RE::NiLight* a_light, const HandFx* a_fx)
 	{
 		if (a_light) {
 			std::lock_guard l{ gHandLock };
-			gHand.emplace_back(a_light);
+			gHand.emplace_back(RE::NiPointer<RE::NiLight>(a_light), a_fx);
 		}
 	}
 
@@ -123,10 +113,11 @@ namespace Plugin
 	{
 		{
 			std::lock_guard l{ gHandLock };
-			for (auto& h : gHand) {
+			for (auto& [h, fx] : gHand) {
 				auto& s = gSeen[h.get()];
 				s.light = h;
 				s.ours = true;
+				s.fx = fx;
 			}
 			gHand.clear();
 		}
@@ -134,6 +125,10 @@ namespace Plugin
 		if (!ssn) {
 			return;
 		}
+		static auto last = std::chrono::steady_clock::now();
+		const auto  now = std::chrono::steady_clock::now();
+		const float dt = (std::min)(std::chrono::duration<float>(now - last).count(), 0.25f);
+		last = now;
 		const float scale = Brightness();
 		const float reach = Reach();
 		for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
@@ -160,7 +155,7 @@ namespace Plugin
 			if (data.radius.x != s.wroteRadius) {
 				s.baseRadius = data.radius.x;
 			}
-			const float want = s.base * scale;
+			const float want = s.base * scale * (s.fx ? Oscillate(s, dt) : 1.0f);
 			if (fade != want) {
 				fade = want;
 			}
@@ -171,11 +166,8 @@ namespace Plugin
 				data.radius.y = wantRadius;
 			}
 			s.wroteRadius = wantRadius;
-			// ⚫ AND THE CUTOFF, WHICH IS WHAT ACTUALLY DECIDES THE REACH UNDER INVERSE SQUARE. 🔴 2026-09-23, HIS REPORT:
-			// *"i can't change cutoff at all in the relight menu"* - this used to re-derive it from the house formula EVERY
-			// frame, so whatever RE::Light's editor set was overwritten at once. Now it follows the fade/reach rule:
-			// a cutoff this light carries that is not the one we last wrote is its new base, both sliders at 100% leave it
-			// exactly as it is, and otherwise the reach that base implies is scaled - Brightness holds it, Reach moves it.
+			// the cutoff follows the same rule, so an edit in RE::Light's editor sticks: a cutoff we did not write is the
+			// new base, both sliders at 100% leave it alone, otherwise the reach it implies is scaled by Reach only
 			if (HasOverlay(niLight)) {
 				const float now = ReadCutoff(niLight);
 				if (now != s.wroteCutoff) {

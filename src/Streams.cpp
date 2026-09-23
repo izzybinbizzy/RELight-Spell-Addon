@@ -2,17 +2,11 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// LIGHTS THAT TRAVEL - sprays, breath shouts and beams.
-//
-// ⚫ WHY THE PLUGIN AND NOT A CONFIG: RE::Light puts a config's light at a POSITION relative to the object's
-// root, and its `attachPath` is a list of child INDICES, not node names (LightManager.cpp) - so a config
-// cannot bind a light to a beam's BeamEnd node, and it lights a flame spray at its root, which is the
-// caster's hand. That is the "two identical lights at [0,0,0]" the configs shipped until now. The build
-// takes those claims OUT of the configs and writes them into the data files as `stream` lines; this hangs
-// the lights itself.
+// Lights that travel - sprays, breath shouts and beams. A RE::Light config cannot bind a light to a named node
+// (its `attachPath` is child indices), so the build writes these as `stream` lines and this hangs the lights.
 //
 // CREDIT: how a light is made and registered here follows ReLight by Truman (github.com/TrumanGIT/ReLight),
-// GPL-3.0-or-later, with his permission and kept under the same license - the same way Luminous Arcana's
+// GPL-3.0-or-later, with his permission and kept under the same license - the same way Illuminated's
 // StreamLights.cpp does it, which this is ported from. From ReLight: one master NiPointLight made once and
 // cloned for every use (a freshly made light attached straight away crashes), the light's size carried in
 // the radius' z, the create parameters a non-shadow light needs (field of view 90, portal-strict, never
@@ -76,23 +70,19 @@ namespace Plugin
 
 		std::size_t gTold = 0;
 
-		// 🔥 each projectile we hang a travelling light on, and the light its own record gives it
+		// each projectile we hang a travelling light on, and the light its own record gives it
 		struct OwnLight
 		{
 			RE::BGSProjectile*  projectile;
 			RE::TESObjectLIGH*  own;
 			const Stream*       stream;
 		};
-		std::vector<OwnLight> gOwn;
-		std::unordered_map<RE::FormID, std::size_t> gExplTold;
+		std::vector<OwnLight>                        gOwn;
 		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
-		std::size_t                                 gExplLines = 0;
 	}
 
-	// ⛔ ONE OBJECT, ONE LIGHT - HIS REPORT, 2026-09-22: *"sprays are vanilla"*. His own save of RE::Light's editor showed
-	// why: the spray's light in game was the PROJECTILE's own record light (`MagicLightFireball01`, reach ~695), which
-	// RE::Light keeps, beside our travelling light (reach 250). So while an option's travelling light is on, the
-	// projectile's own light is taken off, in memory; switch the option off and it is given back. Nothing is saved.
+	// One object, one light: while an option's travelling light is on, the projectile's own record light is taken off
+	// in memory, and given back when the option is switched off.
 	void TakeStreamProjectileLights()
 	{
 		gOwn.clear();
@@ -122,12 +112,9 @@ namespace Plugin
 		}
 	}
 
-	// 🔥 TRUMAN'S ROUTE FOR SPRAYS - HIS CALL, 2026-09-23: *"yes bro use his shit"*. A spray is lit by its OWN light
-	// record, which RE::Light makes at the spray and tunes through our `isPluginLight` config. ⚠ A config on a record
-	// keeps EVERY user of that record lit (relightgen's sprayscan found 59 of 120 spray records shared - a fireball, a
-	// casting light, an explosion, a hazard, a muzzle flash; his fireball went far too bright exactly that way). So the
-	// record is taken off every user that is NOT a spray, in memory: those end up as they were before (RE::Light
-	// switched their unconfigured light off anyway), lit only by our own configs. Nothing is saved.
+	// A spray is lit by its own light record, which RE::Light tunes through our `isPluginLight` config. Many of those
+	// records are shared (fireballs, casting lights, explosions, hazards, muzzle flashes), so the record is taken off
+	// every user that is not a spray, in memory - RE::Light would have switched those unconfigured lights off anyway.
 	void ClaimSprayLights()
 	{
 		gSpraySet.clear();
@@ -182,35 +169,6 @@ namespace Plugin
 		return a_light && gSpraySet.contains(a_light);
 	}
 
-	// 💥 HIS REPORT, 2026-09-22: *"explosions don't work theres no light"*. What every explosion that loads actually
-	// carries once RE::Light has had its turn - its record, whether our data names it, and the lights under its 3D.
-	// The first three of each record, 60 lines in all.
-	void NoteExplosion(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
-	{
-		auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
-		if (!base || !a_root || gExplLines >= 60) {
-			return;
-		}
-		auto& n = gExplTold[base->GetFormID()];
-		if (n >= 3) {
-			return;
-		}
-		++n;
-		++gExplLines;
-		std::size_t lights = 0, culled = 0;
-		RE::BSVisit::TraverseScenegraphLights(a_root, [&](RE::NiPointLight* a_light) {
-			++lights;
-			culled += (a_light && a_light->GetAppCulled()) ? 1 : 0;
-			return RE::BSVisit::BSVisitControl::kContinue;
-		});
-		auto*       model = base->As<RE::TESModel>();
-		const char* path = model ? model->GetModel() : nullptr;
-		auto*       file = base->GetFile(0);
-		SKSE::log::info("[EXPL] {:08X} {} | model {} | ours {} | lights under it {} ({} culled) | in a cell {}", base->GetFormID(),
-			file ? file->GetFilename() : "?", (path && *path) ? MeshKey(path) : "-", OptionOf(base) != kNone ? "yes" : "no", lights,
-			culled, a_ref->GetParentCell() ? "yes" : "NO");
-	}
-
 	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
 	{
 		if (!a_ref || !a_root) {
@@ -242,7 +200,6 @@ namespace Plugin
 			if (!light) {
 				return;
 			}
-			// one light per rung of the ladder; the block below is the one-light code, run for each
 			light->name = kLightName;
 			auto&       data = light->GetLightRuntimeData();
 			const float fade = s->fade * Brightness();
@@ -253,15 +210,9 @@ namespace Plugin
 			data.radius = { reach, reach, s->size };
 			// without this a light has no attenuation of its own and never brightens anything (Light Placer does it too)
 			light->SetLightAttenuation(reach);
-			// ⚫ Community Shaders' inverse square lighting reads its flag and cutoff out of the light's own data, in
-			// the words before the color - RE::Light's `Overlay` (LightData.h) writes exactly these two, so ours
-			// render the way its config lights do. Set AFTER SetLightAttenuation, which writes those words too.
-			// ⛔ THE CUTOFF IS DERIVED, NOT COPIED, SINCE 2026-09-22. It used to be `s->cutoff` straight out of
-			// the data file, which is right only while both sliders sit at 100%: under inverse square the reach is
-			// sqrt(K * fade / cutoff - size²), so a brighter light carried further and the Brightness slider was
-			// quietly a reach slider - his report. Re-derived from the house formula, Brightness moves the peak
-			// with the reach held and Reach moves the reach with the peak held. At 100%/100% this is the number
-			// the file carries, to four figures.
+			// Community Shaders' inverse square flag and cutoff, in the two words before the colour (as RE::Light's
+			// `Overlay` writes them). Set after SetLightAttenuation, which writes those words too. The cutoff is
+			// re-derived so Brightness moves the peak with the reach held; at 100%/100% it equals the file's.
 			{
 				auto* words = reinterpret_cast<std::uint32_t*>(&data);
 				words[0] |= 1u << 10;  // kInverseSquare

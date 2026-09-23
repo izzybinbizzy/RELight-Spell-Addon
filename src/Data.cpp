@@ -10,6 +10,7 @@
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
 //   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
 //   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
+//   handfx <key> <pulse|flicker> <per second> <intensity>   a hand light's Dynamic Lighting (installed with it)
 //
 // How an object is matched, and why: RE::Light keys a config by the bare end of the object's mesh path,
 // lowercased, with no folder and no .nif - "Magic\RuneFireProjectile01.nif" is "runefireprojectile01" - and
@@ -34,6 +35,7 @@ namespace Plugin
 		// next layer down (Core), where a mesh has only one owner because RE::Light's config decides its light
 		std::unordered_map<std::string, std::vector<Hand>> gHands;
 		std::unordered_set<RE::FormID>                     gSprayLights;
+		std::unordered_map<std::string, HandFx>            gHandFx;
 		std::vector<std::string>                     gKeysLongestFirst;
 		std::vector<std::string>                     gStreamKeysLongestFirst;
 		std::size_t                                  gFiles = 0;
@@ -101,6 +103,7 @@ namespace Plugin
 			std::vector<RE::FormID>              bases;
 			std::vector<Stream>                  streams;
 			std::vector<Hand>                    hands;
+			std::vector<std::pair<std::string, HandFx>> fx;
 			bool                                 sawVersion = false, sawFile = false, sawMenu = false;
 			std::string                          line;
 			std::size_t                          n = 0;
@@ -133,10 +136,7 @@ namespace Plugin
 						opt.menu = opt.order;  // a file written before `menu` existed sorts by its order
 					}
 				} else if (p[0] == "menu" && p.size() >= 2) {
-					// ⚫ WHERE IT SITS IN THE MENU, AND IT IS DELIBERATELY NOT `order`. `order` decides which
-					// option owns a mesh when two claim it, and the downloads are numbered for that. His call,
-					// 2026-09-22, is that Runes and Weapons come before the patches - a different sequence - so
-					// the build writes that one separately rather than bending the override order to suit a menu.
+					// menu position, separate from `order` (which decides who owns a mesh two options claim)
 					if (!Int(p[1], opt.menu)) {
 						return false;
 					}
@@ -171,6 +171,14 @@ namespace Plugin
 					if (const auto id = ResolveBase(p[1])) {
 						gSprayLights.insert(id);
 					}
+				} else if (p[0] == "handfx" && p.size() == 5 && (p[2] == "pulse" || p[2] == "flicker")) {
+					HandFx f;
+					f.flicker = p[2] == "flicker";
+					if (!Float(p[3], f.perSecond) || !Float(p[4], f.intensity)) {
+						SKSE::log::warn("{} line {}: a handfx number does not read", a_path.filename().string(), n);
+						return false;
+					}
+					fx.emplace_back(std::string(p[1]), f);
 				} else if (p[0] == "hand" && p.size() == 11) {
 					Hand h;
 					h.key = std::string(p[1]);
@@ -218,8 +226,7 @@ namespace Plugin
 					gBaseOwner[id] = idx;
 				}
 			}
-			// ⚫ lines for one mesh in ONE file are one ladder: their positions add up. A later layer's lines replace an
-			// earlier layer's whole ladder, which is what `order` has always meant.
+			// lines for one mesh in one file are one ladder; a later layer replaces an earlier layer's whole ladder
 			std::unordered_set<std::string> fresh;
 			for (auto& s : streams) {
 				s.order = opt.order;
@@ -236,6 +243,12 @@ namespace Plugin
 				auto mo = gMeshOwner.find(s.key);
 				if (mo == gMeshOwner.end() || wins(mo->second)) {
 					gMeshOwner[s.key] = idx;
+				}
+			}
+			for (auto& [key, f] : fx) {
+				f.order = opt.order;
+				if (auto it = gHandFx.find(key); it == gHandFx.end() || it->second.order <= f.order) {
+					gHandFx[key] = f;
 				}
 			}
 			for (auto& h : hands) {
@@ -283,10 +296,8 @@ namespace Plugin
 		return out;
 	}
 
-	// ⚫ THE FULL KEY - his call 2026-09-23 (*"Auto first, switch rest"*): two mods can ship art under one file name
-	// (Coldfire's `Coldfire\Magic\Fireball01HandEffects.nif` and vanilla `Magic\Fireball01HandEffects.nif`). A `hand`
-	// line may name the whole path, and it is looked up BEFORE the bare name, so each keeps its own colour.
-	// `relightgen.path_key` is the same rule: lowercase, backslashes, no leading `meshes\`, no `.nif`.
+	// The full key, for two mods' art under one file name: a `hand` line may name the whole path, looked up before the
+	// bare name. Same rule as relightgen.path_key: lowercase, backslashes, no leading `meshes\`, no `.nif`.
 	std::string PathKey(std::string_view a_path)
 	{
 		std::string out{ a_path };
@@ -311,6 +322,12 @@ namespace Plugin
 		gStreams.clear();
 		gHands.clear();
 		gSprayLights.clear();
+		gHandFx.clear();
+		{
+			std::lock_guard l{ gCacheLock };
+			gOwnerCache.clear();
+			gStreamCache.clear();
+		}
 		gFiles = 0;
 		std::size_t bad = 0;
 		std::error_code ec;
@@ -353,10 +370,7 @@ namespace Plugin
 	std::vector<Option>& Options() { return gOptions; }
 	std::size_t          DataFiles() { return gFiles; }
 
-	// ⛔ THE MENU IS NOT DRAWN IN THE ORDER THE FILES WERE READ. Data files are read off a folder
-	// listing, which is alphabetical by file name - `Misc - `, `Patch Collection - `, `Spells - `,
-	// `Weapons - ` - so the patches came first and his runes and weapons came last, which is what he
-	// reported on 2026-09-22. This is the order the build asked for, worked out once and kept.
+	// the order the build asked for (`menu`), not the alphabetical order the files were read in
 	const std::vector<std::size_t>& OptionsInMenuOrder()
 	{
 		static std::vector<std::size_t> order;
@@ -426,4 +440,9 @@ namespace Plugin
 
 	const std::unordered_map<std::string, std::vector<Hand>>& Hands() { return gHands; }
 	const std::unordered_set<RE::FormID>&                     SprayLightRecords() { return gSprayLights; }
+	const HandFx* HandFxOf(const std::string& a_key)
+	{
+		const auto it = gHandFx.find(a_key);
+		return it == gHandFx.end() ? nullptr : &it->second;
+	}
 }

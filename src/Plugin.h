@@ -34,14 +34,12 @@ namespace Plugin
 		RE::NiColor   color{ 1.0f, 1.0f, 1.0f };
 		float         fade{ 1.0f }, radius{ 133.0f }, size{ 2.5f }, cutoff{ 0.3f };
 		RE::NiPoint3  position{};
-		// 🔴 EVERY position the winning layer gives this mesh - a beam's ladder, a spray's ladder. Until 2026-09-23 a
-		// second line for the same mesh REPLACED the first, so lightning's five-light ladder came out as one light.
-		std::vector<RE::NiPoint3> positions;
+		std::vector<RE::NiPoint3> positions;  // every position the winning layer gives this mesh (a ladder)
 		int           order{ 0 };
 		std::size_t   option{ kNone };
 	};
 
-	// 🖐 one hand light, as one layer lights it. The colour, strength and reach are the layer's own light for the
+	// one hand light, as one layer lights it. The colour, strength and reach are the layer's own light for the
 	// casting-art mesh `key`, so an option or art replacer that recolours the spell recolours the hand too.
 	struct Hand
 	{
@@ -54,9 +52,15 @@ namespace Plugin
 		std::size_t   option{ kNone };
 	};
 
-	// ⚫ THE HOUSE CONSTANT, and it is the same number in gen.py, relightgen.py and Luminous Arcana:
-	// 0.8 * 69.99². Every config's cutoff was written from it, so anything that re-derives a cutoff at
-	// run time has to use it or the light changes reach the moment it is touched.
+	// a hand light's Dynamic Lighting: RE::Light's own Pulse or Flicker oscillator, run on our hand light
+	struct HandFx
+	{
+		bool  flicker{ false };
+		float perSecond{ 0.0f }, intensity{ 0.0f };
+		int   order{ 0 };
+	};
+
+	// the build's cutoff constant (0.8 * 69.99², as in gen.py and relightgen.py): cutoff = kK * fade / (reach² + size²)
 	inline constexpr float kK = 3918.88f;
 
 	void                  LoadData();
@@ -71,8 +75,9 @@ namespace Plugin
 	std::string           PathKey(std::string_view a_path);
 	// every hand key -> the layers that light it, highest `order` first
 	const std::unordered_map<std::string, std::vector<Hand>>& Hands();
-	// 🔥 the light records a spray makes, which RE::Light lights through our `isPluginLight` configs (Truman's route)
+	// the light records a spray makes, which RE::Light lights through our `isPluginLight` configs
 	const std::unordered_set<RE::FormID>& SprayLightRecords();
+	const HandFx*         HandFxOf(const std::string& a_key);  // nullptr: this hand does not breathe (or Dynamic Lighting is off)
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void        MakeHandLights();                       // once, after the data and the settings are read
@@ -99,13 +104,14 @@ namespace Plugin
 	void  SetOptionOn(std::size_t a_index, bool a_on);
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
-	void UpdateOptionLights();                         // every frame, after the sneaking pass
-	void CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
-	bool HeldOutForOption(RE::NiLight* a_light);
+	void               UpdateOptionLights();                         // every frame, after the sneaking pass
+	void               CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
+	bool               HeldOutForOption(RE::NiLight* a_light);
+	RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);          // the reference a scene-graph object belongs to
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own slider
 	void UpdateBrightness();                  // every frame, last
-	void RememberHandLight(RE::NiLight* a_light);
+	void RememberHandLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
 
 	// ------------------------------------------------------------------ Streams.cpp: lights that travel
 	void        HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
@@ -115,7 +121,6 @@ namespace Plugin
 	void        ClaimSprayLights();                      // once, after the data is read, BEFORE MakeHandLights
 	bool        IsSprayLight(RE::TESObjectLIGH* a_light);
 	void        ApplyStreamProjectileLights(bool a_log);  // after any switch
-	void        NoteExplosion(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
 
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
