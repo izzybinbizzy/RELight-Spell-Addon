@@ -12,6 +12,7 @@
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     lights that travel with sprays, breath shouts and beams
+//   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
 //   Plugin.h        what they share      PCH.h  what they all include
 
@@ -108,13 +109,24 @@ namespace
 			if (PlayerSneaking()) {
 				return nullptr;
 			}
-			auto* made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
+			// 🖐 one of our hand lights (HandLights.cpp): made with the game's own function, NOT passed on to
+			// RE::Light, which switches off a casting light it has no config for - and it can have none for a
+			// light that lives in memory. Then dressed the way RE::Light dressed the plugin's records.
+			const Plugin::Hand* hand = Plugin::HandOfLight(a_light);
+			RE::NiPointLight*   made = nullptr;
+			if (hand) {
+				made = netimmerse_cast<RE::NiPointLight*>(
+					a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
+				Plugin::DressHandLight(made, *hand);
+			} else {
+				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
+			}
 			if (made) {
 				RE::BSSpinLockGuard lock(gLock);
 				Prune(gMagicLights);
 				gMagicLights.emplace_back(made);
-				// a light made from one of our hand-light records is ours for the brightness slider
-				if (Plugin::IsHandLightRecord(a_light)) {
+				// a hand light of ours is ours for the brightness slider
+				if (hand) {
 					Plugin::RememberHandLight(made);
 				}
 			}
@@ -211,7 +223,11 @@ namespace
 				SKSE::log::warn("spell light call sites lead to different functions; using the first");
 			}
 		}
-		SKSE::log::info("spell lights go out while sneaking: {} call sites hooked", sites.size());
+		// ⚫ whether RE::Light's hook is the one we now call: if the call sites still lead straight to the game's own
+		// function, RE::Light hooked nothing here (it is not installed, or it loaded after this - which kPostLoad rules out)
+		const auto game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
+		SKSE::log::info("spell lights: {} call sites hooked, after every plugin loaded; they led to {}", sites.size(),
+			first == game ? "the game's own function (RE::Light has no hook there)" : "another plugin's hook (RE::Light's)");
 	}
 
 	void InstallLate()
@@ -234,11 +250,19 @@ namespace
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 64 });
-	Install();
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
-		if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+		if (!a_msg) {
+			return;
+		}
+		if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+			// ⛔ AFTER EVERY PLUGIN HAS LOADED, and that is the point: RE::Light hooks these same call sites when IT
+			// loads, and the hook written last runs first. Ours has to run first, or RE::Light switches our hand
+			// lights off before we see them (HandLights.cpp).
+			Install();
+		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Plugin::LoadData();
 			Plugin::LoadSettings();
+			Plugin::MakeHandLights();
 			InstallLate();
 			Plugin::RegisterMenu();
 		}

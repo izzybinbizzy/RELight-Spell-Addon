@@ -9,6 +9,7 @@
 //   Brightness=100              percent, 10 to 200 - this mod's lights only. PEAK ONLY: the reach is held.
 //   Reach=100                   percent, 50 to 150 - how far this mod's lights carry. BRIGHTNESS IS HELD.
 //   LightsOffWhileSneaking=0
+//   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
 
@@ -25,6 +26,7 @@ namespace Plugin
 		int  gBrightness = 100;
 		int  gReach = 100;
 		bool gSneak = false;
+		bool gHands = true;
 
 		std::string Trim(std::string s)
 		{
@@ -68,6 +70,8 @@ namespace Plugin
 				gReach = std::clamp(v, kReachMin, kReachMax);
 			} else if (section == "Settings" && key == "LightsOffWhileSneaking") {
 				gSneak = v != 0;
+			} else if (section == "Settings" && key == "HandLights") {
+				gHands = v != 0;
 			} else if (section == "Switches") {
 				for (auto& o : Options()) {
 					if (o.switchable && o.id == key) {
@@ -80,8 +84,8 @@ namespace Plugin
 		for (auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
-		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, {} switch(es) off ({} line(s) read)",
-			gBrightness, gReach, gSneak ? "on" : "off", off, read);
+		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, {} switch(es) off ({} line(s) read)",
+			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", off, read);
 	}
 
 	void SaveSettings()
@@ -133,6 +137,16 @@ namespace Plugin
 		if (gSneak != a_on) {
 			gSneak = a_on;
 			SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
+		}
+	}
+
+	bool HandLightsOn() { return gHands; }
+
+	void SetHandLightsOn(bool a_on)
+	{
+		if (gHands != a_on) {
+			gHands = a_on;
+			SKSE::log::info("hand lights turned {}", a_on ? "on" : "off");
 		}
 	}
 

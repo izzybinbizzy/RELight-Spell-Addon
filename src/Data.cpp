@@ -4,10 +4,11 @@
 //
 // Reads the data files the installer put down, once, when the game has loaded its data.
 //
-// A line is TAB-separated, and there are seven kinds (the build writes them; `relightgen.py read_data_text`
+// A line is TAB-separated, and there are nine kinds (the build writes them; `relightgen.py read_data_text`
 // is the same reader in Python and the build refuses a file it cannot read):
-//   version 1 | file <download> <option> | order <n> | switch <0|1> | mesh <key> | base <0xID~Plugin>
+//   version 1 | file <download> <option> | order <n> | menu <n> | switch <0|1> | mesh <key> | base <0xID~Plugin>
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
+//   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
 //
 // How an object is matched, and why: RE::Light keys a config by the bare end of the object's mesh path,
 // lowercased, with no folder and no .nif - "Magic\RuneFireProjectile01.nif" is "runefireprojectile01" - and
@@ -23,12 +24,14 @@ namespace Plugin
 	{
 		namespace fs = std::filesystem;
 		constexpr std::string_view kFolder = "Data/SKSE/Plugins/RelightSpellAddon";
-		constexpr std::string_view kHandLights = "RELight - Spell Addon - Hand Lights.esp";
 
 		std::vector<Option>                          gOptions;
 		std::unordered_map<std::string, std::size_t> gMeshOwner;    // key -> option (highest order wins)
 		std::unordered_map<RE::FormID, std::size_t>  gBaseOwner;    // form -> option
 		std::unordered_map<std::string, Stream>      gStreams;      // key -> recipe (highest order wins)
+		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand back to the
+		// next layer down (Core), where a mesh has only one owner because RE::Light's config decides its light
+		std::unordered_map<std::string, std::vector<Hand>> gHands;
 		std::vector<std::string>                     gKeysLongestFirst;
 		std::vector<std::string>                     gStreamKeysLongestFirst;
 		std::size_t                                  gFiles = 0;
@@ -95,6 +98,7 @@ namespace Plugin
 			std::vector<std::string>             meshes;
 			std::vector<RE::FormID>              bases;
 			std::vector<Stream>                  streams;
+			std::vector<Hand>                    hands;
 			bool                                 sawVersion = false, sawFile = false, sawMenu = false;
 			std::string                          line;
 			std::size_t                          n = 0;
@@ -161,6 +165,27 @@ namespace Plugin
 					s.cutoff = v[6];
 					s.position = { v[7], v[8], v[9] };
 					streams.push_back(std::move(s));
+				} else if (p[0] == "hand" && p.size() == 11) {
+					Hand h;
+					h.key = std::string(p[1]);
+					float v[9]{};
+					for (std::size_t i = 0; i < 9; ++i) {
+						if (!Float(p[2 + i], v[i])) {
+							SKSE::log::warn("{} line {}: a hand number does not read", a_path.filename().string(), n);
+							return false;
+						}
+					}
+					for (std::size_t i = 0; i < 3; ++i) {
+						h.rgb[i] = static_cast<std::uint8_t>(std::clamp(v[i], 0.0f, 255.0f));
+					}
+					h.color = { v[0] / 255.0f, v[1] / 255.0f, v[2] / 255.0f };
+					h.fade = v[3];
+					h.radius = v[4];
+					h.size = v[5];
+					h.cutoff = v[6];
+					h.inverseSquare = v[7] != 0.0f;
+					h.portalStrict = v[8] != 0.0f;
+					hands.push_back(std::move(h));
 				} else {
 					SKSE::log::warn("{} line {}: not a line this plugin reads", a_path.filename().string(), n);
 					return false;
@@ -199,6 +224,11 @@ namespace Plugin
 				if (mo == gMeshOwner.end() || wins(mo->second)) {
 					gMeshOwner[s.key] = idx;
 				}
+			}
+			for (auto& h : hands) {
+				h.order = opt.order;
+				h.option = idx;
+				gHands[h.key].push_back(std::move(h));
 			}
 			return true;
 		}
@@ -246,6 +276,7 @@ namespace Plugin
 		gMeshOwner.clear();
 		gBaseOwner.clear();
 		gStreams.clear();
+		gHands.clear();
 		gFiles = 0;
 		std::size_t bad = 0;
 		std::error_code ec;
@@ -274,12 +305,15 @@ namespace Plugin
 			gStreamKeysLongestFirst.push_back(k);
 		}
 		std::ranges::sort(gStreamKeysLongestFirst, [](const auto& a, const auto& b) { return a.size() > b.size() || (a.size() == b.size() && a < b); });
+		for (auto& [_k, list] : gHands) {
+			std::ranges::stable_sort(list, [](const Hand& a, const Hand& b) { return a.order > b.order; });
+		}
 		std::size_t sw = 0;
 		for (auto& o : gOptions) {
 			sw += o.switchable ? 1 : 0;
 		}
-		SKSE::log::info("data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s)",
-			gFiles, bad, sw, gMeshOwner.size(), gBaseOwner.size(), gStreams.size());
+		SKSE::log::info("data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s)",
+			gFiles, bad, sw, gMeshOwner.size(), gBaseOwner.size(), gStreams.size(), gHands.size());
 	}
 
 	std::vector<Option>& Options() { return gOptions; }
@@ -356,9 +390,5 @@ namespace Plugin
 		return s;
 	}
 
-	bool IsHandLightRecord(RE::TESObjectLIGH* a_light)
-	{
-		auto* file = a_light ? a_light->GetFile(0) : nullptr;
-		return file && file->GetFilename() == kHandLights;
-	}
+	const std::unordered_map<std::string, std::vector<Hand>>& Hands() { return gHands; }
 }
