@@ -3,7 +3,7 @@
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
 // The settings page, in SKSE Menu Framework's Mod Control Panel, under its own section so nothing of
-// RE::Light's own menu is touched: Brightness, lights off while sneaking, and one switch per option the
+// RE::Light's own menu is touched: Brightness, Reach, lights off while sneaking, hand lights, and one switch per option the
 // installer put down. Every change is saved at once (Settings.cpp).
 
 #define WIN32_LEAN_AND_MEAN
@@ -17,6 +17,14 @@ namespace Plugin
 	namespace
 	{
 		const ImGuiMCP::ImVec4 kNote{ 1.0f, 0.85f, 0.4f, 1.0f };
+
+		// the menu draws off the game's main thread; which light a magic effect wears is changed on it
+		void RehandSoon()
+		{
+			if (auto* tasks = SKSE::GetTaskInterface()) {
+				tasks->AddTask([]() { ApplyHandLights(true); });
+			}
+		}
 
 		void __stdcall RenderSettings()
 		{
@@ -51,6 +59,15 @@ namespace Plugin
 				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
 				"hazards - and the ones already lit go out. They come back when you stand up.");
 
+			bool hands = HandLightsOn();
+			if (ImGuiMCP::Checkbox("Hand lights", &hands)) {
+				SetHandLightsOn(hands);
+				SaveSettings();
+				RehandSoon();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				"A light on your hands while you cast, in the color of the spell. It takes effect on the next cast.");
+
 			// ⚫ HIS CALL, 2026-09-22: *"runes and wepaons need to show up before the patches in the skse menu."*
 			// The options used to be drawn in the order Data.cpp read their files, which is the folder listing -
 			// alphabetical by file name - so `Misc - ` and `Patch Collection - ` came before `Spells - ` and
@@ -72,6 +89,7 @@ namespace Plugin
 				if (ImGuiMCP::Checkbox(o.name.c_str(), &on)) {
 					SetOptionOn(i, on);
 					SaveSettings();
+					RehandSoon();
 				}
 				ImGuiMCP::SameLine();
 				if (o.on) {
@@ -82,7 +100,8 @@ namespace Plugin
 				ImGuiMCP::PopID();
 			}
 			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) right now", DataFiles(), LiveStreamLights());
+			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) right now, %zu spell(s) with a hand light",
+				DataFiles(), LiveStreamLights(), HandEffects());
 		}
 	}
 
