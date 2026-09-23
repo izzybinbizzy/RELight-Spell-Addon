@@ -76,6 +76,7 @@ namespace Plugin
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void        MakeHandLights();                       // once, after the data and the settings are read
+	void        RefindHandLights();                     // when a save loads: another plugin may have set casting art since
 	void        ApplyHandLights(bool a_log);            // after any switch that decides who lights a hand
 	const Hand* HandOfLight(RE::TESObjectLIGH* a_light);  // nullptr unless it is one of ours, in use
 	void        DressHandLight(RE::NiLight* a_light, const Hand& a_hand);

@@ -95,6 +95,69 @@ namespace Plugin
 		}
 	}
 
+	namespace
+	{
+		// ⚫ WHICH MAGIC EFFECTS WEAR A LIT MESH - found at data load, and AGAIN when a save loads (2026-09-23): another plugin
+		// can set an effect's casting art in memory at data load too (Dynamic Wards 2.0 gives every ward its ranked hand
+		// art), and which of the two ran first is not ours to decide. The light an effect loaded with is kept across a
+		// re-find - an effect already wearing one of our lights keeps the own light it had. -> how many matched by full path
+		std::size_t FindTargets()
+		{
+			std::unordered_map<RE::EffectSetting*, RE::TESObjectLIGH*> own;
+			for (auto& t : gTargets) {
+				own.emplace(t.effect, t.own);
+			}
+			std::unordered_set<const RE::TESObjectLIGH*> ours;
+			for (auto& [_k, c] : gCopies) {
+				ours.insert(c);
+			}
+			gTargets.clear();
+			std::size_t byPath = 0;
+			for (auto* effect : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::EffectSetting>()) {
+				if (!effect || !effect->data.castingArt) {
+					continue;
+				}
+				const char* model = effect->data.castingArt->GetModel();
+				if (!model || !*model) {
+					continue;
+				}
+				// the full path first (a mod's own art under a shared file name), then the bare name
+				auto key = PathKey(model);
+				if (gCopies.contains(key)) {
+					++byPath;
+				} else {
+					key = MeshKey(model);
+				}
+				if (!gCopies.contains(key)) {
+					continue;
+				}
+				RE::TESObjectLIGH* mine = effect->data.light;
+				if (auto it = own.find(effect); it != own.end()) {
+					mine = it->second;
+				} else if (ours.contains(mine)) {
+					mine = nullptr;
+				}
+				gTargets.push_back({ effect, mine, std::move(key) });
+			}
+			return byPath;
+		}
+	}
+
+	void RefindHandLights()
+	{
+		std::size_t n = 0, byPath = 0;
+		{
+			std::lock_guard l{ gLock };
+			if (gCopies.empty()) {
+				return;
+			}
+			byPath = FindTargets();
+			n = gTargets.size();
+		}
+		SKSE::log::info("hand lights: re-found after a load - {} magic effect(s) wear one of their meshes ({} by full path)", n, byPath);
+		ApplyHandLights(true);
+	}
+
 	void MakeHandLights()
 	{
 		// ⚫ how RE::Light itself decides Community Shaders' inverse square lighting is there (Utility.h). Without it the
@@ -118,25 +181,7 @@ namespace Plugin
 				gCopies.emplace(key, copy);
 				++made;
 			}
-			for (auto* effect : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::EffectSetting>()) {
-				if (!effect || !effect->data.castingArt) {
-					continue;
-				}
-				const char* model = effect->data.castingArt->GetModel();
-				if (!model || !*model) {
-					continue;
-				}
-				// the full path first (a mod's own art under a shared file name), then the bare name
-				auto key = PathKey(model);
-				if (gCopies.contains(key)) {
-					++byPath;
-				} else {
-					key = MeshKey(model);
-				}
-				if (gCopies.contains(key)) {
-					gTargets.push_back({ effect, effect->data.light, std::move(key) });
-				}
-			}
+			byPath = FindTargets();
 		}
 		SKSE::log::info("hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
 						"their full art path); inverse square lighting {}",
