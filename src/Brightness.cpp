@@ -44,7 +44,15 @@ namespace Plugin
 			float                      written{ -1.0f };   // the fade we last wrote
 			float                      baseRadius{ 0.0f }; // the reach RE::Light last gave it
 			float                      wroteRadius{ -1.0f };
+			float                      baseCutoff{ -1.0f }; // the cutoff RE::Light (or his editor) last gave it
+			float                      wroteCutoff{ -2.0f };
 		};
+
+		float ReadCutoff(RE::NiLight* a_light)
+		{
+			const auto* words = reinterpret_cast<const std::uint32_t*>(&a_light->GetLightRuntimeData());
+			return *reinterpret_cast<const float*>(&words[1]);
+		}
 
 		// ⚫ Community Shaders reads its inverse square flag and its cutoff out of the two words before the
 		// colour - RE::Light's own `Overlay` writes exactly those two. A light without the flag is not being
@@ -78,8 +86,22 @@ namespace Plugin
 			return nullptr;
 		}
 
+		// 🔥 a spray's light, however RE::Light made it: it hangs on a projectile whose own light record is one of the
+		// spray records (HandLights/Streams `IsSprayLight`). His report, 2026-09-23: *"reach does nothing for sprays"* -
+		// they were only caught when made through one of the magic-light call sites.
+		bool IsSprayProjectileLight(RE::NiLight* a_light)
+		{
+			auto* ref = ReferenceOf(a_light);
+			auto* base = ref ? ref->GetBaseObject() : nullptr;
+			auto* proj = base ? base->As<RE::BGSProjectile>() : nullptr;
+			return proj && (proj->IsFlamethrower() || proj->IsCone()) && IsSprayLight(proj->data.light);
+		}
+
 		bool OursByObject(RE::NiLight* a_light)
 		{
+			if (IsSprayProjectileLight(a_light)) {
+				return true;
+			}
 			const char* n = a_light->name.c_str();
 			if (!n || n[0] != 'R' || n[1] != 'L') {
 				return false;
@@ -149,12 +171,27 @@ namespace Plugin
 				data.radius.y = wantRadius;
 			}
 			s.wroteRadius = wantRadius;
-			// ⚫ AND THE CUTOFF, WHICH IS WHAT ACTUALLY DECIDES THE REACH UNDER INVERSE SQUARE. Re-derived
-			// from the house formula with the fade and reach this light now carries, so Brightness moves the
-			// peak without the reach following it and Reach moves the reach without the peak following it.
+			// ⚫ AND THE CUTOFF, WHICH IS WHAT ACTUALLY DECIDES THE REACH UNDER INVERSE SQUARE. 🔴 2026-09-23, HIS REPORT:
+			// *"i can't change cutoff at all in the relight menu"* - this used to re-derive it from the house formula EVERY
+			// frame, so whatever RE::Light's editor set was overwritten at once. Now it follows the fade/reach rule:
+			// a cutoff this light carries that is not the one we last wrote is its new base, both sliders at 100% leave it
+			// exactly as it is, and otherwise the reach that base implies is scaled - Brightness holds it, Reach moves it.
 			if (HasOverlay(niLight)) {
-				const float size = data.radius.z;
-				WriteCutoff(niLight, kK * want / (wantRadius * wantRadius + size * size));
+				const float now = ReadCutoff(niLight);
+				if (now != s.wroteCutoff) {
+					s.baseCutoff = now;
+				}
+				float cutoff = s.baseCutoff;
+				if ((scale != 1.0f || reach != 1.0f) && s.baseCutoff > 0.0f && s.base > 0.0f) {
+					const float size = data.radius.z;
+					const float r0sq = (std::max)(kK * s.base / s.baseCutoff - size * size, 1.0f);
+					const float r = std::sqrt(r0sq) * reach;
+					cutoff = std::clamp(kK * want / (r * r + size * size), 0.01f, 0.99f);
+				}
+				if (cutoff != now) {
+					WriteCutoff(niLight, cutoff);
+				}
+				s.wroteCutoff = ReadCutoff(niLight);
 			}
 		}
 		// a light only this list still holds has left the game
