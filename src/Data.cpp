@@ -212,12 +212,19 @@ namespace Plugin
 					gBaseOwner[id] = idx;
 				}
 			}
+			// ⚫ lines for one mesh in ONE file are one ladder: their positions add up. A later layer's lines replace an
+			// earlier layer's whole ladder, which is what `order` has always meant.
+			std::unordered_set<std::string> fresh;
 			for (auto& s : streams) {
 				s.order = opt.order;
 				s.option = idx;
 				auto it = gStreams.find(s.key);
-				if (it == gStreams.end() || it->second.order <= s.order) {
+				if (it == gStreams.end() || it->second.order < s.order || (it->second.order == s.order && !fresh.contains(s.key))) {
+					s.positions = { s.position };
 					gStreams[s.key] = s;
+					fresh.insert(s.key);
+				} else if (it->second.order == s.order && fresh.contains(s.key)) {
+					it->second.positions.push_back(s.position);
 				}
 				// a stream's object is ours too, for the slider and the switch
 				auto mo = gMeshOwner.find(s.key);
