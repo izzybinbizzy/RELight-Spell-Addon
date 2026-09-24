@@ -86,16 +86,16 @@ namespace Plugin
 			}
 		}
 
-		// the reference's 3D is gone or no longer the one the light hangs in. A finished bolt can leave its node tree
-		// alive with our light still parented to it (measured 2026-09-24: Thunderbolt's light stayed lit after the bolt),
-		// so the light's parent alone does not say the object left.
+		// the object the light hangs on has left the game. A finished bolt can leave its node tree alive with our light
+		// still parented to it (measured 2026-09-24: Thunderbolt's light stayed lit after the bolt), so the light's parent
+		// alone does not say the object left. The release hook in main.cpp is the main route; this catches what it misses.
 		[[nodiscard]] bool OwnerGone(const Live& a_v)
 		{
 			if (!a_v.light || !a_v.light->parent) {
 				return true;
 			}
 			const auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_v.owner);
-			return !ref || ref->IsDeleted() || ref->IsDisabled() || !ref->Get3D();
+			return !ref || ref->IsDeleted() || ref->IsDisabled();
 		}
 
 		// each projectile we hang a travelling light on, and the light its own record gives it
