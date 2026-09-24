@@ -154,6 +154,9 @@ namespace Plugin
 	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	void                      ApplyStreamProjectileLights(bool a_log);  // after any switch
 
+	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome
+	void SilenceSecondDome(const char* a_why);  // 360 Ward without Dynamic Wards: ShieldConcSelf wears no dome
+
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
 }

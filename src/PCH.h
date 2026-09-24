@@ -7,6 +7,7 @@
 #pragma once
 
 #include <RE/Skyrim.h>
+#include <REX/W32/KERNEL32.h>
 #include <SKSE/SKSE.h>
 
 #include <algorithm>
