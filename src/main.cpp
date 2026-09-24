@@ -154,6 +154,23 @@ namespace
 		}
 	};
 
+	// a projectile's 3D is taken apart: its travelling lights leave with it (Illuminated's route; the per-frame check in
+	// Streams.cpp alone missed a finished Thunderbolt, whose light stayed lit - measured 2026-09-24)
+	template <class T>
+	struct Release3D
+	{
+		static void thunk(T* a_this)
+		{
+			Plugin::DropStreamLights(a_this);
+			func(a_this);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+		static void Install()
+		{
+			func = REL::Relocation<std::uintptr_t>(T::VTABLE[0]).write_vfunc(0x6B, thunk);
+		}
+	};
+
 	struct PlayerUpdate
 	{
 		static void thunk(RE::PlayerCharacter* a_this, float a_delta)
@@ -217,9 +234,17 @@ namespace
 		Load3D<RE::BarrierProjectile>::Install();
 		Load3D<RE::Explosion>::Install();
 		Load3D<RE::Hazard>::Install();
+		// only the classes a stream can hang on
+		Release3D<RE::MissileProjectile>::Install();
+		Release3D<RE::ArrowProjectile>::Install();
+		Release3D<RE::GrenadeProjectile>::Install();
+		Release3D<RE::BeamProjectile>::Install();
+		Release3D<RE::FlameProjectile>::Install();
+		Release3D<RE::ConeProjectile>::Install();
+		Release3D<RE::BarrierProjectile>::Install();
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
 		PlayerUpdate::func = vtbl.write_vfunc(0xAD, PlayerUpdate::thunk);
-		SKSE::log::info("projectile, explosion and hazard loads and the player update hooked after every plugin loaded");
+		SKSE::log::info("projectile, explosion and hazard loads, projectile unloads and the player update hooked after every plugin loaded");
 	}
 }
 

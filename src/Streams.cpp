@@ -38,6 +38,7 @@ namespace Plugin
 			RE::NiPointer<RE::BSLight>      bs;
 			RE::NiPointer<RE::NiPointLight> light;
 			const Stream*                   stream{ nullptr };
+			RE::FormID                      owner{ 0 };         // the reference whose 3D carries it
 			float                           written{ -1.0f };   // the fade we last wrote
 			float                           wroteReach{ -1.0f };  // the reach we last wrote
 		};
@@ -69,6 +70,33 @@ namespace Plugin
 		}
 
 		std::size_t gTold = 0;
+
+		// takes one light out of the scene and the per-stream count (the caller erases it from gLive). `a_detach` only while
+		// the owner's 3D is known to be alive (the release hook): after that its parent may already be freed.
+		void Retire(Live& a_v, RE::ShadowSceneNode* a_scene, bool a_detach)
+		{
+			if (a_scene && a_v.bs) {
+				a_scene->RemoveLight(a_v.bs);
+			}
+			if (a_detach && a_v.light && a_v.light->parent) {
+				a_v.light->parent->DetachChild(a_v.light.get());
+			}
+			if (auto it = gCount.find(a_v.stream); it != gCount.end() && it->second) {
+				--it->second;
+			}
+		}
+
+		// the reference's 3D is gone or no longer the one the light hangs in. A finished bolt can leave its node tree
+		// alive with our light still parented to it (measured 2026-09-24: Thunderbolt's light stayed lit after the bolt),
+		// so the light's parent alone does not say the object left.
+		[[nodiscard]] bool OwnerGone(const Live& a_v)
+		{
+			if (!a_v.light || !a_v.light->parent) {
+				return true;
+			}
+			const auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_v.owner);
+			return !ref || ref->IsDeleted() || ref->IsDisabled() || !ref->Get3D();
+		}
 
 		// each projectile we hang a travelling light on, and the light its own record gives it
 		struct OwnLight
@@ -261,7 +289,7 @@ namespace Plugin
 				SKSE::log::warn("[STREAM] {}: the light could not be made or registered", s->key);
 				return;
 			}
-			gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade, reach });
+			gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, a_ref->GetFormID(), fade, reach });
 			++gCount[s];
 			if (gTold < 24) {
 				++gTold;
@@ -279,14 +307,8 @@ namespace Plugin
 		const bool  hidden = PlayerHidesLights();
 		std::lock_guard l{ gLock };
 		std::erase_if(gLive, [&](Live& v) {
-			// the object's 3D has gone: RE::Light's own rule, a light whose parent is gone leaves the scene
-			if (!v.light || !v.light->parent) {
-				if (scene && v.bs) {
-					scene->RemoveLight(v.bs);
-				}
-				if (auto it = gCount.find(v.stream); it != gCount.end() && it->second) {
-					--it->second;
-				}
+			if (OwnerGone(v)) {
+				Retire(v, scene, false);
 				return true;
 			}
 			const bool off = OptionOff(v.stream);
@@ -307,6 +329,23 @@ namespace Plugin
 				v.wroteReach = reach;
 			}
 			return false;
+		});
+	}
+
+	void DropStreamLights(const RE::TESObjectREFR* a_ref)
+	{
+		if (!a_ref) {
+			return;
+		}
+		auto*           scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		const auto      id = a_ref->GetFormID();
+		std::lock_guard l{ gLock };
+		std::erase_if(gLive, [&](Live& v) {
+			if (v.owner != id) {
+				return false;
+			}
+			Retire(v, scene, true);
+			return true;
 		});
 	}
 

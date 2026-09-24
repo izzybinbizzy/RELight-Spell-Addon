@@ -147,6 +147,7 @@ namespace Plugin
 	// ------------------------------------------------------------------ Streams.cpp: lights that travel
 	void                      HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
 	void                      UpdateStreamLights();
+	void                      DropStreamLights(const RE::TESObjectREFR* a_ref);  // its 3D is being taken apart
 	[[nodiscard]] std::size_t LiveStreamLights();
 	void                      TakeStreamProjectileLights();  // once, after the data is read
 	void                      ClaimSprayLights();            // once, after the data is read, BEFORE MakeHandLights
