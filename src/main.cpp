@@ -20,10 +20,12 @@
 
 namespace
 {
-	RE::BSSpinLock                          gLock;
-	std::vector<RE::NiPointer<RE::NiLight>> gMagicLights;
-	std::vector<RE::NiPointer<RE::NiLight>> gCulled;
-	bool                                    gWasSneaking = false;
+	RE::BSSpinLock gLock;
+	// every spell light the game made through the hooked call sites, held so sneaking can find it again
+	std::unordered_map<RE::NiLight*, RE::NiPointer<RE::NiLight>> gMagicLights;
+	std::vector<RE::NiPointer<RE::NiLight>>                      gCulled;
+	bool                                                         gWasSneaking = false;
+	std::uint32_t                                                gMade = 0;
 
 	bool PlayerSneaking()
 	{
@@ -34,27 +36,15 @@ namespace
 		return player && player->IsSneaking();
 	}
 
-	bool IsSpellObject(RE::TESObjectREFR* a_ref)
+	[[nodiscard]] bool IsSpellObject(const RE::TESObjectREFR* a_ref)
 	{
 		using FT = RE::FormType;
 		return a_ref && a_ref->Is(FT::ProjectileMissile, FT::ProjectileArrow, FT::ProjectileGrenade, FT::ProjectileBeam,
 							FT::ProjectileFlame, FT::ProjectileCone, FT::ProjectileBarrier, FT::Explosion, FT::PlacedHazard);
 	}
 
-	bool IsMagicLight(RE::NiLight* a_light)
-	{
-		for (auto& l : gMagicLights) {
-			if (l.get() == a_light) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	void Prune(std::vector<RE::NiPointer<RE::NiLight>>& a_list)
-	{
-		std::erase_if(a_list, [](const RE::NiPointer<RE::NiLight>& l) { return !l || l->GetRefCount() <= 1; });
-	}
+	// a light only these lists still hold has left the game
+	[[nodiscard]] bool Gone(const RE::NiPointer<RE::NiLight>& a_light) { return !a_light || a_light->GetRefCount() <= 1; }
 
 	void CullSpellLights()
 	{
@@ -70,7 +60,7 @@ namespace
 			if (niLight->GetAppCulled()) {
 				continue;
 			}
-			if (IsMagicLight(niLight) || IsSpellObject(Plugin::ReferenceOf(niLight))) {
+			if (gMagicLights.contains(niLight) || IsSpellObject(Plugin::ReferenceOf(niLight))) {
 				niLight->SetAppCulled(true);
 				gCulled.emplace_back(niLight);
 			}
@@ -80,8 +70,8 @@ namespace
 	void UncullAll()
 	{
 		for (auto& l : gCulled) {
-			// a light held out for a switched-off option stays out when the player stands up
-			if (l && !Plugin::HeldOutForOption(l.get())) {
+			// a light held out for a switched-off option (or a hand light a switch put out) stays out when the player stands up
+			if (l && !Plugin::HeldOutForOption(l.get()) && !Plugin::HandLightHeldOut(l.get())) {
 				l->SetAppCulled(false);
 			}
 		}
@@ -104,16 +94,19 @@ namespace
 				made = netimmerse_cast<RE::NiPointLight*>(
 					a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
 				Plugin::DressHandLight(made, *hand);
+				Plugin::NoteHandLight(made, *hand);
 			} else {
 				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 			}
 			if (made) {
 				RE::BSSpinLockGuard lock(gLock);
-				Prune(gMagicLights);
-				gMagicLights.emplace_back(made);
-				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the brightness slider
+				if ((++gMade & 63) == 0) {
+					std::erase_if(gMagicLights, [](const auto& a_kv) { return Gone(a_kv.second); });
+				}
+				gMagicLights.try_emplace(made, made);
+				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the sliders
 				if (hand || Plugin::IsSprayLight(a_light)) {
-					Plugin::RememberHandLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
+					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
 				}
 			}
 			return made;
@@ -166,21 +159,21 @@ namespace
 		static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 		{
 			func(a_this, a_delta);
-			bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
+			const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
 			RE::BSSpinLockGuard lock(gLock);
 			if (sneaking) {
 				CullSpellLights();
 			} else if (gWasSneaking) {
 				UncullAll();
 			}
-			Prune(gCulled);
+			std::erase_if(gCulled, Gone);
 			gWasSneaking = sneaking;
 			// after the sneaking pass, in the same frame, so a light given back above and then held out
 			// here never reaches the screen in between
 			Plugin::UpdateOptionLights();
 			Plugin::UpdateStreamLights();
 			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
-			Plugin::UpdateBrightness();
+			Plugin::UpdateBrightness(a_delta);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};

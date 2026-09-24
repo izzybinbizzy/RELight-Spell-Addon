@@ -23,12 +23,20 @@ namespace Plugin
 			std::string         key;
 		};
 
-		// Community Shaders' inverse square flag on the record, and the bit it keeps in the made light's runtime words
-		constexpr std::uint32_t kLighInverseSquare = 1u << 14;
-		constexpr std::uint32_t kInverseSquare = 1u << 10;
+		constexpr std::uint32_t kLighInverseSquare = 1u << 14;  // Community Shaders' inverse square flag on a LIGH record
+
+		// a hand light already lit: a menu change reaches it at once instead of on the next cast (his report, 2026-09-23:
+		// "i have to dispel the spell then re-cast")
+		struct Live
+		{
+			RE::NiPointer<RE::NiLight> light;
+			std::string                key;
+			bool                       heldOut{ false };  // put out because nothing lights its key any more
+		};
 
 		std::mutex                                                   gLock;
 		std::vector<Target>                                          gTargets;
+		std::vector<Live>                                            gLive;
 		std::unordered_map<std::string, RE::TESObjectLIGH*>          gCopies;
 		std::unordered_map<const RE::TESObjectLIGH*, const Hand*>    gInUse;
 		std::size_t                                                  gLit = 0;
@@ -200,13 +208,29 @@ namespace Plugin
 				}
 			}
 			gLit = lit;
+			// the lights already in a caster's hands take the change now; one whose key nothing lights any more goes out
+			// until the next cast gives the effect its own light back
+			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
+			for (auto& live : gLive) {
+				if (const Hand* h = on ? Winner(live.key) : nullptr) {
+					if (live.heldOut) {
+						live.light->SetAppCulled(false);
+						live.heldOut = false;
+					}
+					DressHandLight(live.light.get(), *h);
+					RememberLight(live.light.get(), HandFxOf(h->key));
+				} else if (!live.heldOut) {
+					live.light->SetAppCulled(true);
+					live.heldOut = true;
+				}
+			}
 		}
 		if (a_log) {
 			SKSE::log::info("hand lights: {} magic effect(s) lit by this mod, {} left with their own light", lit, given);
 		}
 	}
 
-	const Hand* HandOfLight(RE::TESObjectLIGH* a_light)
+	const Hand* HandOfLight(const RE::TESObjectLIGH* a_light)
 	{
 		if (!a_light) {
 			return nullptr;
@@ -228,12 +252,29 @@ namespace Plugin
 		data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
 		data.diffuse = a_hand.color;
 		if (gIsl) {
-			auto* words = reinterpret_cast<std::uint32_t*>(&data);
 			if (a_hand.inverseSquare) {
-				words[0] |= kInverseSquare;
+				Isl::SetOn(a_light);
 			}
-			*reinterpret_cast<float*>(&words[1]) = std::clamp(a_hand.cutoff, 0.01f, 0.99f);
+			Isl::SetCutoff(a_light, a_hand.cutoff);
 		}
+	}
+
+	void NoteHandLight(RE::NiLight* a_light, const Hand& a_hand)
+	{
+		if (!a_light) {
+			return;
+		}
+		std::lock_guard l{ gLock };
+		if (gLive.size() >= 64) {
+			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
+		}
+		gLive.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_hand.key });
+	}
+
+	bool HandLightHeldOut(const RE::NiLight* a_light)
+	{
+		std::lock_guard l{ gLock };
+		return std::ranges::any_of(gLive, [a_light](const Live& a_l) { return a_l.heldOut && a_l.light.get() == a_light; });
 	}
 
 	std::size_t HandLightsMade()
