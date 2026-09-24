@@ -164,64 +164,34 @@ namespace Plugin
 			gSpraySet.size(), proj, muzzle, effects, expl, hazards);
 	}
 
-	bool IsSprayLight(RE::TESObjectLIGH* a_light)
+	bool IsSprayLight(const RE::TESObjectLIGH* a_light)
 	{
 		return a_light && gSpraySet.contains(a_light);
 	}
 
-	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+	namespace
 	{
-		if (!a_ref || !a_root) {
-			return;
-		}
-		const Stream* s = StreamOf(a_ref->GetBaseObject());
-		if (!s || OptionOff(s)) {
-			return;
-		}
-		auto* root = a_root->AsNode();
-		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
-		if (!root || !scene) {
-			return;
-		}
-		std::lock_guard l{ gLock };
-		const std::size_t each = (std::max)(s->positions.size(), std::size_t{ 1 });
-		if (gLive.size() + each > kMaxLiveTotal || gCount[s] + each > kMaxObjectsPerStream * each) {
-			return;
-		}
-		RE::NiNode* parent = root;
-		if (s->node != "-") {
-			if (auto* n = root->GetObjectByName(RE::BSFixedString(s->node.c_str())); n && n->AsNode()) {
-				parent = n->AsNode();
-			}
-		}
-		const std::vector<RE::NiPoint3> at = s->positions.empty() ? std::vector<RE::NiPoint3>{ s->position } : s->positions;
-		for (const auto& pos : at) {
+		// one travelling light, made the way ReLight makes its lights, registered with the shadow scene node
+		[[nodiscard]] RE::BSLight* MakeLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
+			float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
+		{
 			auto* light = CloneMaster();
 			if (!light) {
-				return;
+				return nullptr;
 			}
 			light->name = kLightName;
-			auto&       data = light->GetLightRuntimeData();
-			const float fade = s->fade * Brightness();
-			const float reach = s->radius * Reach();
-			data.diffuse = s->color;
-			data.fade = fade;
-			// x and y are the reach; z carries the light's SIZE, not a third radius (ReLight and Light Placer both do this)
-			data.radius = { reach, reach, s->size };
-			// without this a light has no attenuation of its own and never brightens anything (Light Placer does it too)
-			light->SetLightAttenuation(reach);
-			// Community Shaders' inverse square flag and cutoff, in the two words before the colour (as RE::Light's
-			// `Overlay` writes them). Set after SetLightAttenuation, which writes those words too. The cutoff is
-			// re-derived so Brightness moves the peak with the reach held; at 100%/100% it equals the file's.
-			{
-				auto* words = reinterpret_cast<std::uint32_t*>(&data);
-				words[0] |= 1u << 10;  // kInverseSquare
-				*reinterpret_cast<float*>(&words[1]) =
-					std::clamp(kK * fade / (reach * reach + s->size * s->size), 0.01f, 0.99f);
-			}
-			light->local.translate = pos;
+			auto& data = light->GetLightRuntimeData();
+			data.diffuse = a_colour;
+			data.fade = a_fade;
+			data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
+			light->SetLightAttenuation(a_reach);            // without it the light has no attenuation and lights nothing
+			// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
+			// the peak with the reach held (at 100%/100% it equals the file's)
+			Isl::SetOn(light);
+			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
+			light->local.translate = a_at;
 			light->local.scale = 1.0f;
-			parent->AttachChild(light, true);
+			a_parent->AttachChild(light, true);
 			RE::NiUpdateData update{};
 			light->Update(update);
 			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
@@ -238,10 +208,57 @@ namespace Plugin
 			params.sceneGraphIndex = 0;
 			params.restrictedNode = nullptr;
 			params.lensFlareData = nullptr;
-			auto* bs = scene->AddLight(light, params);
+			auto* bs = a_scene->AddLight(light, params);
 			if (!bs) {
-				parent->DetachChild(light);
-				SKSE::log::warn("[STREAM] {}: the light could not be registered", s->key);
+				a_parent->DetachChild(light);
+				return nullptr;
+			}
+			a_made = light;
+			return bs;
+		}
+
+		[[nodiscard]] bool PlayerHidesLights()
+		{
+			const auto* player = RE::PlayerCharacter::GetSingleton();
+			return SneakOn() && player && player->IsSneaking();
+		}
+	}
+
+	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+	{
+		if (!a_ref || !a_root) {
+			return;
+		}
+		const auto*   base = a_ref->GetBaseObject();
+		const Stream* s = StreamOf(base);
+		if (!s || OptionOff(s)) {
+			return;
+		}
+		auto* root = a_root->AsNode();
+		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		if (!root || !scene) {
+			return;
+		}
+		std::lock_guard l{ gLock };
+		const std::size_t each = s->positions.size();
+		if (gLive.size() + each > kMaxLiveTotal || gCount[s] + each > kMaxObjectsPerStream * each) {
+			return;
+		}
+		RE::NiNode* parent = root;
+		if (s->node != "-") {
+			if (auto* n = root->GetObjectByName(RE::BSFixedString(s->node.c_str())); n && n->AsNode()) {
+				parent = n->AsNode();
+			}
+		}
+		const auto* tint = TintOf(base);
+		const auto& colour = tint ? *tint : s->color;
+		const float fade = s->fade * Brightness();
+		const float reach = s->radius * Reach();
+		for (const auto& at : s->positions) {
+			RE::NiPointLight* light = nullptr;
+			auto*             bs = MakeLight(*s, colour, at, fade, reach, parent, scene, light);
+			if (!bs) {
+				SKSE::log::warn("[STREAM] {}: the light could not be made or registered", s->key);
 				return;
 			}
 			gLive.push_back({ RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), s, fade, reach });
@@ -249,16 +266,17 @@ namespace Plugin
 			if (gTold < 24) {
 				++gTold;
 				SKSE::log::info("[STREAM] {} | on {} at ({:.0f}, {:.0f}, {:.0f}) | fade {:.2f} | radius {:.0f}", s->key,
-					parent == root ? "its root" : s->node.c_str(), pos.x, pos.y, pos.z, fade, s->radius);
+					parent == root ? "its root" : s->node.c_str(), at.x, at.y, at.z, fade, s->radius);
 			}
 		}
 	}
 
 	void UpdateStreamLights()
 	{
-		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		auto*       scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		const float scale = Brightness();
 		const float reachScale = Reach();
+		const bool  hidden = PlayerHidesLights();
 		std::lock_guard l{ gLock };
 		std::erase_if(gLive, [&](Live& v) {
 			// the object's 3D has gone: RE::Light's own rule, a light whose parent is gone leaves the scene
@@ -274,22 +292,19 @@ namespace Plugin
 			const bool off = OptionOff(v.stream);
 			if (off && !v.light->GetAppCulled()) {
 				v.light->SetAppCulled(true);
-			} else if (!off && v.light->GetAppCulled() && !(SneakOn() && RE::PlayerCharacter::GetSingleton() &&
-															   RE::PlayerCharacter::GetSingleton()->IsSneaking())) {
+			} else if (!off && !hidden && v.light->GetAppCulled()) {
 				v.light->SetAppCulled(false);
 			}
-			const float want = v.stream->fade * scale;
-			const float wantReach = v.stream->radius * reachScale;
-			if (want != v.written || wantReach != v.wroteReach) {
+			const float fade = v.stream->fade * scale;
+			const float reach = v.stream->radius * reachScale;
+			if (fade != v.written || reach != v.wroteReach) {
 				auto& d = v.light->GetLightRuntimeData();
-				d.fade = want;
-				d.radius.x = wantReach;
-				d.radius.y = wantReach;
-				auto* words = reinterpret_cast<std::uint32_t*>(&d);
-				*reinterpret_cast<float*>(&words[1]) =
-					std::clamp(kK * want / (wantReach * wantReach + v.stream->size * v.stream->size), 0.01f, 0.99f);
-				v.written = want;
-				v.wroteReach = wantReach;
+				d.fade = fade;
+				d.radius.x = reach;
+				d.radius.y = reach;
+				Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.stream->size));
+				v.written = fade;
+				v.wroteReach = reach;
 			}
 			return false;
 		});

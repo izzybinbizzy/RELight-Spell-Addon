@@ -62,7 +62,7 @@ namespace Plugin
 		return nullptr;
 	}
 
-	bool HeldOutForOption(RE::NiLight* a_light)
+	bool HeldOutForOption(const RE::NiLight* a_light)
 	{
 		return std::ranges::any_of(gHeldOut, [a_light](const Held& h) { return h.light.get() == a_light; });
 	}
