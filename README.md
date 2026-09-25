@@ -1,6 +1,6 @@
 # RELight - Spell Addon - SKSE plugin
 
-Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `../LICENSE`.
+Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `LICENSE`.
 
 Ships with RELight - Spell Addon and is required by it.
 
