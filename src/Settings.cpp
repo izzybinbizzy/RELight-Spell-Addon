@@ -9,6 +9,7 @@
 //   Reach=100                   percent, 50 to 150 - the peak is held
 //   LightsOffWhileSneaking=0
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
+//   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
 
@@ -26,6 +27,7 @@ namespace Plugin
 		int  gReach = 100;
 		bool gSneak = false;
 		bool gHands = true;
+		int  gWard = 0;
 
 		std::string Trim(std::string s)
 		{
@@ -71,6 +73,8 @@ namespace Plugin
 				gSneak = v != 0;
 			} else if (section == "Settings" && key == "HandLights") {
 				gHands = v != 0;
+			} else if (section == "Settings" && key == "WardColour") {
+				gWard = std::clamp(v, 0, 1);
 			} else if (section == "Switches") {
 				for (auto& o : Options()) {
 					if (o.switchable && o.id == key) {
@@ -96,7 +100,7 @@ namespace Plugin
 		}
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
 		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
-			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0) << "\n";
+			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0) << "\nWardColour=" << gWard << "\n";
 		out << "[Switches]\n";
 		for (const auto& o : Options()) {
 			if (o.switchable) {
@@ -146,6 +150,17 @@ namespace Plugin
 		if (gHands != a_on) {
 			gHands = a_on;
 			SKSE::log::info("hand lights turned {}", a_on ? "on" : "off");
+		}
+	}
+
+	int WardColour() { return gWard; }
+
+	void SetWardColour(int a_colour)
+	{
+		a_colour = std::clamp(a_colour, 0, 1);
+		if (a_colour != gWard) {
+			gWard = a_colour;
+			SKSE::log::info("ward colour set to {}", gWard == 1 ? "white" : "vanilla blue");
 		}
 	}
 
