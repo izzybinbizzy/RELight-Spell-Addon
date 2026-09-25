@@ -65,6 +65,21 @@ namespace Plugin
 			return nullptr;
 		}
 
+		// the ward colour pick (Wards.cpp): White gives the ward's hand light white, in the layer's own strength and reach
+		const Hand* Picked(const Hand* a_hand)
+		{
+			if (!a_hand || WardColour() != 1 || MeshKey(a_hand->key) != "wardinhandfx") {
+				return a_hand;
+			}
+			static std::unordered_map<const Hand*, Hand> white;  // under gLock, like every caller
+			auto [it, fresh] = white.try_emplace(a_hand, *a_hand);
+			if (fresh) {
+				it->second.color = { 1.0f, 1.0f, 1.0f };
+				it->second.rgb[0] = it->second.rgb[1] = it->second.rgb[2] = 255;
+			}
+			return &it->second;
+		}
+
 		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's colour, reach and strength
 		void Fill(RE::TESObjectLIGH* a_light, const Hand& a_hand)
 		{
@@ -190,7 +205,7 @@ namespace Plugin
 			gInUse.clear();
 			const bool on = HandLightsOn();
 			for (auto& [key, copy] : gCopies) {
-				if (const Hand* h = on ? Winner(key) : nullptr) {
+				if (const Hand* h = on ? Picked(Winner(key)) : nullptr) {
 					Fill(copy, *h);
 					gInUse[copy] = h;
 				}
@@ -212,7 +227,7 @@ namespace Plugin
 			// until the next cast gives the effect its own light back
 			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
 			for (auto& live : gLive) {
-				if (const Hand* h = on ? Winner(live.key) : nullptr) {
+				if (const Hand* h = on ? Picked(Winner(live.key)) : nullptr) {
 					if (live.heldOut) {
 						live.light->SetAppCulled(false);
 						live.heldOut = false;

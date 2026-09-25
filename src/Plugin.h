@@ -132,6 +132,8 @@ namespace Plugin
 	void                SetSneakOn(bool a_on);
 	[[nodiscard]] bool  HandLightsOn();
 	void                SetHandLightsOn(bool a_on);
+	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
+	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
@@ -154,8 +156,9 @@ namespace Plugin
 	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	void                      ApplyStreamProjectileLights(bool a_log);  // after any switch
 
-	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome
-	void SilenceSecondDome(const char* a_why);  // 360 Ward without Dynamic Wards: ShieldConcSelf wears no dome
+	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its colour
+	void ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded
+	[[nodiscard]] bool WardsSteppedDown();  // Dynamic Wards is loaded: the wards are its
 
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();

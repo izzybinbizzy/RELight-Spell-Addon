@@ -12,7 +12,7 @@
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     lights that travel with sprays, breath shouts and beams
-//   Wards.cpp       one ward, one dome, with 360 Ward and no Dynamic Wards
+//   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
 //   Plugin.h        what they share      PCH.h  what they all include
@@ -269,13 +269,13 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::LoadData();
 			Plugin::LoadSettings();
 			Plugin::ClaimSprayLights();  // before the hand lights remember each effect's own light
-			Plugin::SilenceSecondDome("data loaded");  // before the hand lights: a silenced half must not get one
+			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
 			Plugin::TakeStreamProjectileLights();
 			InstallLate();
 			Plugin::RegisterMenu();
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
-			Plugin::SilenceSecondDome("a save loaded");  // a ward mod that resets art at load may have put it back
+			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back
 			Plugin::RefindHandLights();  // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
 		}
 	});

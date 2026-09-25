@@ -178,6 +178,28 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				"A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding.");
 
+			GlowHeading("Wards");
+			if (WardsSteppedDown()) {
+				ImGuiMCP::TextDisabled("%s", "Dynamic Wards is installed - it colours the wards, so this setting stands aside.");
+			} else {
+				static const char* const kColours[] = { "Vanilla blue", "White" };
+				int                      c = WardColour();
+				if (ImGuiMCP::Combo("Ward colour", &c, kColours, 2)) {
+					SetWardColour(c);
+					SaveSettings();
+					// the art forms and lights are changed on the game's main thread; the next cast shows it
+					if (auto* tasks = SKSE::GetTaskInterface()) {
+						tasks->AddTask([]() {
+							ApplyWards("the menu");
+							RefindHandLights();
+						});
+					}
+				}
+				ImGuiMCP::SetItemTooltip("%s",
+					"The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one colour. "
+					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast.");
+			}
+
 			DrawSwitches(false);
 			ImGuiMCP::Separator();
 			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) right now, %zu spell(s) with a hand light",
