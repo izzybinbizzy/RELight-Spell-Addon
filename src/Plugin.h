@@ -30,6 +30,8 @@ namespace Plugin
 	{
 		std::string download, name, id;  // id: "Spells - Runes", the settings file's key
 		std::string category, author;    // a patch's place on the Patches page (`menugroup`); author empty: listed on its own
+		std::string desc;                // what it lights, broadly (`desc`), shown when the mouse is over its switch
+		bool        weapons{ false };    // it came in the Weapons download (`download`): the Weapon lights setting puts it out
 		int         order{ 0 };          // a later layer overrides an earlier one
 		int         menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool        switchable{ false };
@@ -100,6 +102,8 @@ namespace Plugin
 	[[nodiscard]] const std::vector<std::size_t>& OptionsInMenuOrder();  // by `menu`, never the alphabetical file order
 	[[nodiscard]] std::size_t                     DataFiles();
 	[[nodiscard]] std::size_t                     OptionOf(const RE::TESForm* a_base);  // kNone when this mod does not light it
+	[[nodiscard]] std::size_t                     OptionOfShader(const RE::TESEffectShader* a_shader);  // an enchantment's, by editor ID
+	[[nodiscard]] bool                            OptionLit(std::size_t a_option);  // its switch is on, and Weapon lights if it is a weapon's
 	[[nodiscard]] const Stream*                   StreamOf(const RE::TESForm* a_base);  // nullptr unless it is one of our streams
 	[[nodiscard]] const RE::NiColor*              TintOf(const RE::TESForm* a_base);    // an art pick's colour, or nullptr
 	[[nodiscard]] std::string                     MeshKey(std::string_view a_path);
@@ -107,6 +111,7 @@ namespace Plugin
 	[[nodiscard]] const StringMap<std::vector<Hand>>& Hands();  // hand key -> the layers that light it, highest order first
 	[[nodiscard]] const std::unordered_set<RE::FormID>& SprayLightRecords();  // spray light records, lit through our configs
 	[[nodiscard]] const HandFx* HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
+	[[nodiscard]] const Stream* HeldOf(const RE::TESForm* a_weapon);  // nullptr unless it is a staff we light in the hand
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void                      MakeHandLights();                        // once, after the data and the settings are read
@@ -132,6 +137,8 @@ namespace Plugin
 	void                SetSneakOn(bool a_on);
 	[[nodiscard]] bool  HandLightsOn();
 	void                SetHandLightsOn(bool a_on);
+	[[nodiscard]] bool  WeaponLightsOn();
+	void                SetWeaponLightsOn(bool a_on);
 	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
@@ -141,6 +148,7 @@ namespace Plugin
 	void                             CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
 	[[nodiscard]] bool               HeldOutForOption(const RE::NiLight* a_light);
 	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);  // the reference a scene-graph object belongs to
+	[[nodiscard]] std::size_t        EnchantOptionOf(const RE::NiLight* a_light);  // kNone unless it is an enchantment light of ours
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
@@ -155,6 +163,13 @@ namespace Plugin
 	void                      ClaimSprayLights();            // once, after the data is read, BEFORE MakeHandLights
 	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	void                      ApplyStreamProjectileLights(bool a_log);  // after any switch
+	// one light made and registered the travelling-light way (ReLight's method); nullptr when it could not be
+	[[nodiscard]] RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
+		float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made);
+
+	// ------------------------------------------------------------------ Held.cpp: a staff's own light while it is drawn
+	void                      UpdateHeldLights();  // every frame, after the travelling lights
+	[[nodiscard]] std::size_t LiveHeldLights();
 
 	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its colour
 	void ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded

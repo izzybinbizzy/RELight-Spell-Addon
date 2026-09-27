@@ -2,9 +2,10 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// Two pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
-// touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, and a switch per option the installer put
-// down. Patches: a switch per mod patch. Every change is saved at once (Settings.cpp) and reaches lights already lit.
+// Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
+// touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
+// installer put down. Patches: a switch per mod patch. Weapons: a switch per option of the Weapons download, laid out as
+// the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit.
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -29,6 +30,19 @@ namespace Plugin
 		}
 
 		constexpr std::string_view kPatches = "Patch Collection";
+		constexpr std::string_view kWeapons = "Weapons";
+
+		enum class Page
+		{
+			kSettings,
+			kPatches,
+			kWeapons
+		};
+
+		[[nodiscard]] Page PageOf(const Option& a_option)
+		{
+			return a_option.download == kPatches ? Page::kPatches : a_option.download == kWeapons ? Page::kWeapons : Page::kSettings;
+		}
 
 		// The look (his ask, 2026-09-23: "a cool ui design ... not too crazy, just a subtle glowy vibe"): warm spell-light
 		// amber on the menu's own dark - headings on a soft glow that fades to the right with a thin lit underline, gold
@@ -75,42 +89,68 @@ namespace Plugin
 			Dummy(ImVec2{ 0.0f, 4.0f });
 		}
 
-		// the switches. Settings: everything but the patches, under each download's heading, in the build's menu order.
+		// the switches. Settings: the Spells download's own options, under its heading, in the build's menu order.
 		// Patches (his call, 2026-09-23): a heading per category in the build's order, and under it each author's mods
 		// the mods with no author group first, then each author's mods together under the author's name - by name within each.
-		void DrawSwitches(bool a_patches)
+		// Weapons (his call, 2026-09-26: "handled just like the spells mod menu"): the same layout as Patches.
+		// A pack split across the downloads (his call, 2026-09-26) is several options with one id: one row, one switch.
+		void DrawSwitches(Page a_page)
 		{
-			auto&                    opts = Options();
-			std::vector<std::size_t> order;
+			auto&                           opts = Options();
+			const bool                      grouped = a_page != Page::kSettings;
+			std::vector<std::size_t>        order;
+			std::unordered_set<std::string> drawn;
 			for (const auto i : OptionsInMenuOrder()) {
-				if (opts[i].switchable && (opts[i].download == kPatches) == a_patches) {
+				if (opts[i].switchable && PageOf(opts[i]) == a_page && drawn.insert(opts[i].id).second) {
 					order.push_back(i);
 				}
 			}
-			if (a_patches) {
+			if (grouped) {
 				// his call: a category's own mods first, the authors' groups at the bottom
 				std::ranges::stable_sort(order, {}, [&opts](std::size_t a_i) {
 					const auto& o = opts[a_i];
 					return std::make_tuple(o.menu, !o.author.empty(), o.author, o.name);
 				});
 			}
+			// his call, 2026-09-26 (night-run answers): a pack's ONE switch shows on the Weapons page as well as Patches - the
+			// same option, so flipping either flips both. At the bottom of the Weapons page, under its own heading.
+			std::size_t packsFrom = order.size();
+			if (a_page == Page::kWeapons) {
+				std::vector<std::size_t> packs;
+				for (const auto i : OptionsInMenuOrder()) {
+					const auto& o = opts[i];
+					if (!o.switchable || PageOf(o) != Page::kPatches || drawn.contains(o.id)) {
+						continue;
+					}
+					const bool weaponHalf = std::ranges::any_of(opts, [&o](const Option& m) { return m.id == o.id && m.weapons; });
+					if (weaponHalf && drawn.insert(o.id).second) {
+						packs.push_back(i);
+					}
+				}
+				std::ranges::stable_sort(packs, {}, [&opts](std::size_t a_i) { return std::make_tuple(opts[a_i].author, opts[a_i].name); });
+				order.insert(order.end(), packs.begin(), packs.end());
+			}
 			std::string shown, author;
-			for (const auto i : order) {
+			for (std::size_t n = 0; n < order.size(); ++n) {
+				const auto i = order[n];
 				auto& o = opts[i];
-				const auto& heading = a_patches ? (o.category.empty() ? o.download : o.category) : o.download;
+				static const std::string kPackHeading = "Mod Patches (also on the Patches page)";
+				const auto& heading = n >= packsFrom ? kPackHeading :
+				                      grouped        ? (o.category.empty() ? o.download : o.category) :
+				                                       o.download;
 				if (heading != shown) {
 					shown = heading;
 					author.clear();
 					GlowHeading(shown.c_str());
 				}
-				if (a_patches && o.author != author) {
+				if (grouped && o.author != author) {
 					author = o.author;
 					if (!author.empty()) {
 						ImGuiMCP::Spacing();
 						ImGuiMCP::TextColored(kEmber, "%s", author.c_str());
 					}
 				}
-				const bool indented = a_patches && !o.author.empty();  // an author's mods sit under the author's name
+				const bool indented = grouped && !o.author.empty();  // an author's mods sit under the author's name
 				if (indented) {
 					ImGuiMCP::Indent();
 				}
@@ -121,11 +161,23 @@ namespace Plugin
 					SaveSettings();
 					RehandSoon();
 				}
+				if (!o.desc.empty()) {  // his call, 2026-09-26: a broad word on what each switch lights
+					ImGuiMCP::SetItemTooltip("%s", o.desc.c_str());
+				}
+				std::size_t lit = 0, heldOut = 0;  // every file of a pack
+				for (const auto& m : opts) {
+					if (m.switchable && m.id == o.id) {
+						lit += m.lit;
+						heldOut += m.heldOut;
+					}
+				}
 				ImGuiMCP::SameLine();
-				if (o.on) {
-					ImGuiMCP::TextDisabled("%zu lit", o.lit);
+				if (!o.on) {
+					ImGuiMCP::TextDisabled("off - %zu held out", heldOut);
+				} else if (o.weapons && !WeaponLightsOn()) {
+					ImGuiMCP::TextDisabled("Weapon lights off - %zu held out", heldOut);
 				} else {
-					ImGuiMCP::TextDisabled("off - %zu held out", o.heldOut);
+					ImGuiMCP::TextDisabled("%zu lit", lit);
 				}
 				ImGuiMCP::PopID();
 				if (indented) {
@@ -178,13 +230,24 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				"A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding.");
 
+			// his call, 2026-09-26: "a toggle for weapon lights just like hand lights and right under it"
+			bool weapons = WeaponLightsOn();
+			if (ImGuiMCP::Checkbox("Weapon lights", &weapons)) {
+				SetWeaponLightsOn(weapons);
+				SaveSettings();
+				RehandSoon();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				"Every light of the Weapons download: enchanted weapons, bound weapons and artifacts. Off puts them all out at "
+				"once; the switches on the Weapons page choose among them.");
+
 			GlowHeading("Wards");
 			if (WardsSteppedDown()) {
-				ImGuiMCP::TextDisabled("%s", "Dynamic Wards is installed - it colours the wards, so this setting stands aside.");
+				ImGuiMCP::TextDisabled("%s", "Dynamic Wards is installed - it colors the wards, so this setting stands aside.");
 			} else {
 				static const char* const kColours[] = { "Vanilla blue", "White" };
 				int                      c = WardColour();
-				if (ImGuiMCP::Combo("Ward colour", &c, kColours, 2)) {
+				if (ImGuiMCP::Combo("Ward color", &c, kColours, 2)) {
 					SetWardColour(c);
 					SaveSettings();
 					// the art forms and lights are changed on the game's main thread; the next cast shows it
@@ -200,18 +263,27 @@ namespace Plugin
 					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast.");
 			}
 
-			DrawSwitches(false);
+			DrawSwitches(Page::kSettings);
 			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) right now, %zu spell(s) with a hand light",
-				DataFiles(), LiveStreamLights(), HandEffects());
+			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) and %zu held staff light(s) right now, %zu spell(s) with a hand light",
+				DataFiles(), LiveStreamLights(), LiveHeldLights(), HandEffects());
 		}
 
 		// his ask, 2026-09-23: the mod patches on a page of their own
 		void __stdcall RenderPatches()
 		{
 			const GlowStyle style;
-			ImGuiMCP::TextDisabled("%s", "Lights for other mods' spells. Each switch only matters if you have that mod.");
-			DrawSwitches(true);
+			ImGuiMCP::TextDisabled("%s", "Lights for other mods' spells and weapons. Each switch only matters if you have that mod.");
+			DrawSwitches(Page::kPatches);
+		}
+
+		// his ask, 2026-09-26: the Weapons download's options on a page of their own, laid out as the Patches page
+		void __stdcall RenderWeapons()
+		{
+			const GlowStyle style;
+			ImGuiMCP::TextDisabled("%s", WeaponLightsOn() ? "Lights for weapons: enchantments, bound weapons and artifacts."
+			                                              : "Weapon lights is off on the Settings page, so every light here is out.");
+			DrawSwitches(Page::kWeapons);
 		}
 	}
 
@@ -224,6 +296,7 @@ namespace Plugin
 		SKSEMenuFramework::SetSection("RELight - Spell Addon");
 		SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
 		SKSEMenuFramework::AddSectionItem("Patches", RenderPatches);
+		SKSEMenuFramework::AddSectionItem("Weapons", RenderWeapons);
 		SKSE::log::info("settings page added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 }

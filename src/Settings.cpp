@@ -9,6 +9,7 @@
 //   Reach=100                   percent, 50 to 150 - the peak is held
 //   LightsOffWhileSneaking=0
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
+//   WeaponLights=1              every light of the Weapons download, the enchantment lights included (Options.cpp)
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
@@ -27,6 +28,7 @@ namespace Plugin
 		int  gReach = 100;
 		bool gSneak = false;
 		bool gHands = true;
+		bool gWeapons = true;
 		int  gWard = 0;
 
 		std::string Trim(std::string s)
@@ -73,6 +75,8 @@ namespace Plugin
 				gSneak = v != 0;
 			} else if (section == "Settings" && key == "HandLights") {
 				gHands = v != 0;
+			} else if (section == "Settings" && key == "WeaponLights") {
+				gWeapons = v != 0;
 			} else if (section == "Settings" && key == "WardColour") {
 				gWard = std::clamp(v, 0, 1);
 			} else if (section == "Switches") {
@@ -87,8 +91,9 @@ namespace Plugin
 		for (auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
-		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, {} switch(es) off ({} line(s) read)",
-			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", off, read);
+		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
+						"({} line(s) read)",
+			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read);
 	}
 
 	void SaveSettings()
@@ -100,10 +105,12 @@ namespace Plugin
 		}
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
 		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
-			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0) << "\nWardColour=" << gWard << "\n";
+			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0)
+			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard << "\n";
 		out << "[Switches]\n";
+		std::unordered_set<std::string> written;  // a pack's files share one switch, so one line
 		for (const auto& o : Options()) {
-			if (o.switchable) {
+			if (o.switchable && written.insert(o.id).second) {
 				out << o.id << "=" << (o.on ? 1 : 0) << "\n";
 			}
 		}
@@ -153,6 +160,16 @@ namespace Plugin
 		}
 	}
 
+	bool WeaponLightsOn() { return gWeapons; }
+
+	void SetWeaponLightsOn(bool a_on)
+	{
+		if (gWeapons != a_on) {
+			gWeapons = a_on;
+			SKSE::log::info("weapon lights turned {}", a_on ? "on" : "off");
+		}
+	}
+
 	int WardColour() { return gWard; }
 
 	void SetWardColour(int a_colour)
@@ -164,13 +181,24 @@ namespace Plugin
 		}
 	}
 
+	// his call, 2026-09-26: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
+	// every option with that id turns together
 	void SetOptionOn(std::size_t a_index, bool a_on)
 	{
 		auto& opts = Options();
-		if (a_index >= opts.size() || !opts[a_index].switchable || opts[a_index].on == a_on) {
+		if (a_index >= opts.size() || !opts[a_index].switchable) {
 			return;
 		}
-		opts[a_index].on = a_on;
-		SKSE::log::info("switch: {} turned {}", opts[a_index].id, a_on ? "on" : "off");
+		const auto  id = opts[a_index].id;
+		std::size_t n = 0;
+		for (auto& o : opts) {
+			if (o.switchable && o.id == id && o.on != a_on) {
+				o.on = a_on;
+				++n;
+			}
+		}
+		if (n) {
+			SKSE::log::info("switch: {} turned {} ({} file(s))", id, a_on ? "on" : "off", n);
+		}
 	}
 }

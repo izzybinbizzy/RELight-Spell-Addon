@@ -56,9 +56,8 @@ namespace Plugin
 			if (it == hands.end()) {
 				return nullptr;
 			}
-			const auto& opts = Options();
 			for (const auto& h : it->second) {
-				if (h.option >= opts.size() || !opts[h.option].switchable || opts[h.option].on) {
+				if (OptionLit(h.option)) {
 					return &h;
 				}
 			}
