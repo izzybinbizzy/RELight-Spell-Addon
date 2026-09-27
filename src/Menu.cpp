@@ -50,6 +50,19 @@ namespace Plugin
 		constexpr ImGuiMCP::ImVec4 kGold{ 1.0f, 0.86f, 0.55f, 1.0f };
 		constexpr ImGuiMCP::ImVec4 kEmber{ 0.93f, 0.72f, 0.45f, 0.85f };
 
+		// his call, 2026-09-27: as Illuminated does - when CS Light is loaded, say which of its options light the same
+		// things a second time (the option names are CS Light's own installer's, spelling included)
+		[[nodiscard]] const char* CSLightLoaded()
+		{
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			for (const auto* name : { "CS Light.esp", "CS Light.esl" }) {
+				if (dh && (dh->LookupLoadedModByName(name) || dh->LookupLoadedLightModByName(name))) {
+					return name;
+				}
+			}
+			return nullptr;
+		}
+
 		class GlowStyle
 		{
 		public:
@@ -189,6 +202,11 @@ namespace Plugin
 		void __stdcall RenderSettings()
 		{
 			const GlowStyle style;
+			if (const auto* cs = CSLightLoaded()) {
+				ImGuiMCP::TextColored(kGold, "%s is loaded.", cs);
+				ImGuiMCP::TextWrapped("%s", "RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice.");
+				ImGuiMCP::Separator();
+			}
 			GlowHeading("Lights");
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt("Brightness", &b, 10, 200, "%d%%")) {
