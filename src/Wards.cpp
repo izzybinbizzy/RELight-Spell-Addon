@@ -146,7 +146,8 @@ namespace Plugin
 		void Paint()
 		{
 			auto*      dh = RE::TESDataHandler::GetSingleton();
-			const bool has360 = dh->LookupModByName(k360Plugin) != nullptr;
+			// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
+			const bool has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
 			const bool white = WardColour() == 1;
 			auto*      dome = dh->LookupForm<RE::BGSArtObject>(kDomeArt, "Skyrim.esm");
 			auto*      hand = dh->LookupForm<RE::BGSArtObject>(kHandArt, "Skyrim.esm");
@@ -155,9 +156,11 @@ namespace Plugin
 				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx360.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx360.nif");
 				Point(flash, white ? "Magic\\Glow Wards\\White\\wardshieldhitfx.nif" : "Magic\\Glow Wards\\Blue\\wardshieldhitfx.nif");
 			} else {
-				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx.nif" : nullptr);
+				// his call 2026-09-27: Vanilla blue wears OUR dome too - the vanilla look, reading our own copies of its
+				// textures, so no other mod's loose textures reach it
+				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx.nif");
 			}
-			Point(hand, white ? "Magic\\Glow Wards\\White\\wardinhandfx.nif" : nullptr);
+			Point(hand, white ? "Magic\\Glow Wards\\White\\wardinhandfx.nif" : "Magic\\Glow Wards\\Blue\\wardinhandfx.nif");
 			// the game's own ward hand light, where no installed layer lights the ward hand (HandLights.cpp does where one does)
 			if (auto* light = dh->LookupForm<RE::TESObjectLIGH>(kWardLight, "Skyrim.esm")) {
 				if (!gWardLightColour) {
