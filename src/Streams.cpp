@@ -63,11 +63,7 @@ namespace Plugin
 			return netimmerse_cast<RE::NiPointLight*>(gMaster->Clone());
 		}
 
-		bool OptionOff(const Stream* a_s)
-		{
-			auto& opts = Options();
-			return a_s && a_s->option < opts.size() && opts[a_s->option].switchable && !opts[a_s->option].on;
-		}
+		bool OptionOff(const Stream* a_s) { return a_s && !OptionLit(a_s->option); }
 
 		std::size_t gTold = 0;
 
@@ -250,6 +246,12 @@ namespace Plugin
 			const auto* player = RE::PlayerCharacter::GetSingleton();
 			return SneakOn() && player && player->IsSneaking();
 		}
+	}
+
+	RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade, float a_reach,
+		RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
+	{
+		return MakeLight(a_s, a_colour, a_at, a_fade, a_reach, a_parent, a_scene, a_made);
 	}
 
 	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)

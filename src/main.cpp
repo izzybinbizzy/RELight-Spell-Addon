@@ -12,6 +12,7 @@
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     lights that travel with sprays, breath shouts and beams
+//   Held.cpp        a staff's own light while it is drawn (staves RE::Light cannot reach in the hand)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
@@ -190,6 +191,7 @@ namespace
 			// here never reaches the screen in between
 			Plugin::UpdateOptionLights();
 			Plugin::UpdateStreamLights();
+			Plugin::UpdateHeldLights();
 			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
 			Plugin::UpdateBrightness(a_delta);
 		}

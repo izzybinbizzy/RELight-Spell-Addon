@@ -9,7 +9,12 @@
 //   - RE::Light names every light it makes from a config "RL" + the node it hung it on (LightManager.cpp),
 //     so the two letters leave every other light in the game alone;
 //   - the light hangs under the object's own 3D, so walking up its parents to the reference gives the object;
-//   - the reference's base form is what the data files name, by form or by mesh key (Data.cpp).
+//   - the reference's base form is what the data files name, by form or by mesh key (Data.cpp);
+//   - an ENCHANTMENT light is the exception: RE::Light hangs it on the weapon node of the ACTOR holding the weapon
+//     (ShaderReferenceEffect::Init, LightAttachmentHooks.cpp) and marks it `fadeAmount = 5`, so the walk up finds the
+//     actor, whose base no data file names - his report, 2026-09-26: "vibrant weapons and vaer are saying 0 lit". Each
+//     frame every live effect shader of ours is walked the way RE::Light attached to it, and the marked lights under
+//     its root belong to the option whose data names that shader's editor ID.
 //
 // It never edits a config, a record or a file. A light it puts out is held in a list and given back the
 // moment the switch is turned on again.
@@ -24,8 +29,10 @@ namespace Plugin
 		{
 			RE::NiPointer<RE::NiLight> light;
 			std::size_t                option;
+			bool                       enchant{ false };
 		};
-		std::vector<Held> gHeldOut;
+		std::vector<Held>                                      gHeldOut;
+		std::unordered_map<const RE::NiLight*, std::size_t>    gEnchant;  // this frame's enchantment lights -> option
 
 		bool IsReLightLight(RE::NiLight* a_light)
 		{
@@ -36,20 +43,84 @@ namespace Plugin
 			return n && n[0] == 'R' && n[1] == 'L';
 		}
 
+		// RE::Light's own mark on an enchantment light: "RL" and a fadeAmount of 5 (its sheathe handler reads the same two)
+		bool IsEnchantLight(const RE::NiLight* a_light)
+		{
+			const char* n = a_light ? a_light->name.c_str() : nullptr;
+			return n && n[0] == 'R' && n[1] == 'L' && a_light->fadeAmount == 5.0f;
+		}
+
+		// where RE::Light attached for this effect (GetReferenceAttachRoot, then the third-person node of the same name)
+		RE::NiAVObject* EnchantRootOf(RE::ShaderReferenceEffect* a_effect)
+		{
+			if (const auto* weap = skyrim_cast<RE::WeaponEnchantmentController*>(a_effect->controller); weap && !weap->shader) {
+				return nullptr;
+			}
+			auto* root = a_effect->GetAttachRoot();
+			const auto ref = a_effect->target.get();
+			if (!root || !ref) {
+				return nullptr;
+			}
+			if (auto* third = ref->Get3D(false)) {
+				if (auto* same = third->GetObjectByName(root->name)) {
+					root = same;
+				}
+			}
+			return root;
+		}
+
+		void FindEnchantLights()
+		{
+			gEnchant.clear();
+			auto* lists = RE::ProcessLists::GetSingleton();
+			if (!lists) {
+				return;
+			}
+			lists->ForEachShaderEffect([](RE::ShaderReferenceEffect* a_effect) {
+				const auto opt = a_effect ? OptionOfShader(a_effect->effectData) : kNone;
+				auto*      root = opt != kNone ? EnchantRootOf(a_effect) : nullptr;
+				if (root) {
+					RE::BSVisit::TraverseScenegraphLights(root, [opt](RE::NiPointLight* a_light) {
+						if (IsEnchantLight(a_light)) {
+							gEnchant.insert_or_assign(a_light, opt);
+						}
+						return RE::BSVisit::BSVisitControl::kContinue;
+					});
+				}
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+		}
+
 		std::size_t OptionOfLight(RE::NiLight* a_light)
 		{
 			if (!IsReLightLight(a_light)) {
 				return kNone;
 			}
+			if (IsEnchantLight(a_light)) {
+				return EnchantOptionOf(a_light);
+			}
 			auto* ref = ReferenceOf(a_light);
 			return ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		}
 
-		bool Off(std::size_t a_option)
+		bool Off(std::size_t a_option) { return a_option != kNone && !OptionLit(a_option); }
+
+		// RE::Light culls an enchantment light on sheathe: a switch turned back on must not light a sheathed weapon
+		bool MayGiveBack(const Held& a_held)
 		{
-			auto& opts = Options();
-			return a_option < opts.size() && opts[a_option].switchable && !opts[a_option].on;
+			if (!a_held.enchant) {
+				return true;
+			}
+			auto* ref = ReferenceOf(a_held.light.get());
+			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
+			return actor && actor->AsActorState()->IsWeaponDrawn();
 		}
+	}
+
+	std::size_t EnchantOptionOf(const RE::NiLight* a_light)
+	{
+		const auto it = gEnchant.find(a_light);
+		return it != gEnchant.end() ? it->second : kNone;
 	}
 
 	RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj)
@@ -74,13 +145,16 @@ namespace Plugin
 			o.lit = 0;
 			o.heldOut = 0;
 		}
+		FindEnchantLights();
 		// give back whatever belongs to a switch that is on again, and forget what has unloaded
 		std::erase_if(gHeldOut, [](Held& h) {
 			if (!h.light || h.light->GetRefCount() <= 1) {
 				return true;
 			}
 			if (!Off(h.option)) {
-				h.light->SetAppCulled(false);
+				if (MayGiveBack(h)) {
+					h.light->SetAppCulled(false);
+				}
 				return true;
 			}
 			return false;
@@ -99,9 +173,12 @@ namespace Plugin
 				continue;
 			}
 			if (Off(opt)) {
+				// RE::Light unculls its enchantment light on each new equip, so one already held can come round again
 				if (!niLight->GetAppCulled()) {
 					niLight->SetAppCulled(true);
-					gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(niLight), opt });
+					if (!HeldOutForOption(niLight)) {
+						gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(niLight), opt, IsEnchantLight(niLight) });
+					}
 				}
 			} else if (!niLight->GetAppCulled()) {
 				++opts[opt].lit;

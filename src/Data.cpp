@@ -12,7 +12,10 @@
 //   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
 //   handfx <key> <pulse|flicker> <per second> <intensity>   a hand light's Dynamic Lighting (installed with it)
 //   menugroup <category> <author or ->   where a patch sits on the Patches page
+//   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
+//   download <Spells|Weapons>   the download the file came in (a file with no line: its `file` download)
 //   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's colour for the lights on an object (highest order wins)
+//   held <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a staff's own light while it is drawn (Held.cpp)
 //
 // Objects are matched as RE::Light matches them: a form first, then the bare mesh key ("Magic\RuneFire01.nif" is
 // "runefire01"), exactly, then the longest of our keys the object's key contains.
@@ -36,11 +39,13 @@ namespace Plugin
 		StringMap<std::size_t>                      gMeshOwner;  // key -> option (highest order wins)
 		std::unordered_map<RE::FormID, std::size_t> gBaseOwner;  // form -> option
 		StringMap<Stream>                           gStreams;    // key -> recipe (highest order wins)
+		StringMap<Stream>                           gHeld;       // staff mesh key -> its held light (highest order wins)
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>                gHands;
 		std::unordered_set<RE::FormID>              gSprayLights;
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
+		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
 		std::unordered_map<RE::FormID, Tint>        gBaseTints;
 		std::vector<std::string>                    gKeysLongestFirst, gStreamKeysLongestFirst, gTintKeysLongestFirst;
 		std::size_t                                 gFiles = 0;
@@ -110,10 +115,11 @@ namespace Plugin
 			std::vector<std::string>                    meshes;
 			std::vector<RE::FormID>                     bases;
 			std::vector<Stream>                         streams;
+			std::vector<Stream>                         helds;
 			std::vector<Hand>                           hands;
 			std::vector<std::pair<std::string, HandFx>> fx;
 			std::vector<std::pair<std::string, Tint>>   tints;
-			bool                                        sawVersion{ false }, sawFile{ false }, sawMenu{ false };
+			bool                                        sawVersion{ false }, sawFile{ false }, sawMenu{ false }, sawDownload{ false };
 		};
 
 		// one line into `a_file`; false when it does not read
@@ -155,6 +161,15 @@ namespace Plugin
 				opt.author = p[2] == "-" ? std::string() : std::string(p[2]);
 				return true;
 			}
+			if (kind == "desc" && p.size() == 2 && !p[1].empty()) {
+				opt.desc = std::string(p[1]);
+				return true;
+			}
+			if (kind == "download" && p.size() == 2 && (p[1] == "Spells" || p[1] == "Weapons")) {
+				opt.weapons = p[1] == "Weapons";
+				a_file.sawDownload = true;
+				return true;
+			}
 			if (kind == "mesh" && p.size() >= 2) {
 				a_file.meshes.emplace_back(p[1]);
 				return true;
@@ -186,6 +201,23 @@ namespace Plugin
 				s.cutoff = v[6];
 				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
 				a_file.streams.push_back(std::move(s));
+				return true;
+			}
+			if (kind == "held" && p.size() == 12) {
+				std::array<float, 10> v{};
+				if (!Numbers(p, 2, v)) {
+					return false;
+				}
+				Stream s;
+				s.key = std::string(p[1]);
+				s.node = "-";
+				s.color = Colour(v[0], v[1], v[2]);
+				s.fade = v[3];
+				s.radius = v[4];
+				s.size = v[5];
+				s.cutoff = v[6];
+				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
+				a_file.helds.push_back(std::move(s));
 				return true;
 			}
 			if (kind == "hand" && p.size() == 11) {
@@ -261,6 +293,9 @@ namespace Plugin
 				return false;
 			}
 			auto&      opt = file.option;
+			if (!file.sawDownload) {
+				opt.weapons = opt.download == "Weapons";  // written before `download`: the menu heading was the download
+			}
 			const auto idx = gOptions.size();
 			opt.meshes = file.meshes.size();
 			opt.bases = file.bases.size();
@@ -291,6 +326,12 @@ namespace Plugin
 					fresh.insert(s.key);
 					gStreams.insert_or_assign(s.key, std::move(s));
 				}
+			}
+			for (auto& s : file.helds) {
+				s.order = opt.order;
+				s.option = idx;
+				const auto key = s.key;
+				KeepHighest(gHeld, key, std::move(s), opt.order);
 			}
 			for (auto& [key, f] : file.fx) {
 				f.order = opt.order;
@@ -346,6 +387,48 @@ namespace Plugin
 			return keys;
 		}
 
+		// RE::Light reads an effect shader's editor ID through powerofthree's Tweaks (clib_util::editorID) - the game keeps
+		// none for this form type - and so does this
+		[[nodiscard]] std::string EditorIdOf(const RE::TESForm* a_form)
+		{
+			using GetFormEditorID = const char* (*)(std::uint32_t);
+			static const auto fn = [] {
+				const auto tweaks = REX::W32::GetModuleHandleW(L"po3_Tweaks");
+				return tweaks ? reinterpret_cast<GetFormEditorID>(REX::W32::GetProcAddress(tweaks, "GetFormEditorID")) : nullptr;
+			}();
+			const char* id = fn ? fn(a_form->GetFormID()) : a_form->GetFormEditorID();
+			return id ? std::string(id) : std::string{};
+		}
+
+		// RE::Light's enchantment light (ShaderReferenceEffect::Init): a config by the shader's form, else by its
+		// lower-cased editor ID as an EXACT `meshPath` key (findConfigsForMeshPath is a plain lookup, no substring)
+		void FindShaderOwners()
+		{
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			if (!dh) {
+				return;
+			}
+			std::size_t named = 0;
+			for (const auto* shader : dh->GetFormArray<RE::TESEffectShader>()) {
+				if (!shader) {
+					continue;
+				}
+				if (auto it = gBaseOwner.find(shader->GetFormID()); it != gBaseOwner.end()) {
+					gShaderOwner.emplace(shader->GetFormID(), it->second);
+					continue;
+				}
+				auto id = EditorIdOf(shader);
+				named += id.empty() ? 0 : 1;
+				std::ranges::transform(id, id.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				if (auto it = id.empty() ? gMeshOwner.end() : gMeshOwner.find(id); it != gMeshOwner.end()) {
+					gShaderOwner.emplace(shader->GetFormID(), it->second);
+				}
+			}
+			SKSE::log::info("enchantment lights: {} effect shader(s) are ours, {} of {} had an editor ID (powerofthree's Tweaks {})",
+				gShaderOwner.size(), named, dh->GetFormArray<RE::TESEffectShader>().size(),
+				REX::W32::GetModuleHandleW(L"po3_Tweaks") ? "loaded" : "NOT loaded");
+		}
+
 		// a per-form answer, worked out once and cached
 		template <class V, class F>
 		[[nodiscard]] V Cached(std::unordered_map<RE::FormID, V>& a_cache, const RE::TESForm* a_base, F&& a_work)
@@ -399,11 +482,13 @@ namespace Plugin
 		gMeshOwner.clear();
 		gBaseOwner.clear();
 		gStreams.clear();
+		gHeld.clear();
 		gHands.clear();
 		gSprayLights.clear();
 		gHandFx.clear();
 		gMeshTints.clear();
 		gBaseTints.clear();
+		gShaderOwner.clear();
 		{
 			std::lock_guard l{ gCacheLock };
 			gOwnerCache.clear();
@@ -429,6 +514,7 @@ namespace Plugin
 			}
 		}
 		gKeysLongestFirst = LongestFirst(gMeshOwner);
+		FindShaderOwners();
 		gStreamKeysLongestFirst = LongestFirst(gStreams);
 		gTintKeysLongestFirst = LongestFirst(gMeshTints);
 		for (auto& [_k, list] : gHands) {
@@ -436,9 +522,9 @@ namespace Plugin
 		}
 		const auto switches = std::ranges::count_if(gOptions, &Option::switchable);
 		SKSE::log::info("data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
-						"{} tint(s)",
+						"{} tint(s), {} held staff light(s)",
 			gFiles, bad, switches, gMeshOwner.size(), gBaseOwner.size(), gStreams.size(), gHands.size(),
-			gMeshTints.size() + gBaseTints.size());
+			gMeshTints.size() + gBaseTints.size(), gHeld.size());
 	}
 
 	std::vector<Option>& Options() { return gOptions; }
@@ -474,6 +560,21 @@ namespace Plugin
 		});
 	}
 
+	std::size_t OptionOfShader(const RE::TESEffectShader* a_shader)
+	{
+		const auto it = a_shader ? gShaderOwner.find(a_shader->GetFormID()) : gShaderOwner.end();
+		return it != gShaderOwner.end() ? it->second : kNone;
+	}
+
+	bool OptionLit(std::size_t a_option)
+	{
+		if (a_option >= gOptions.size()) {
+			return true;
+		}
+		const auto& o = gOptions[a_option];
+		return (!o.switchable || o.on) && (!o.weapons || WeaponLightsOn());
+	}
+
 	const Stream* StreamOf(const RE::TESForm* a_base)
 	{
 		if (!a_base || gStreams.empty()) {
@@ -499,6 +600,16 @@ namespace Plugin
 			const auto it = key.empty() ? gMeshTints.cend() : Find(gMeshTints, gTintKeysLongestFirst, key);
 			return it != gMeshTints.cend() ? &it->second.color : nullptr;
 		});
+	}
+
+	const Stream* HeldOf(const RE::TESForm* a_weapon)
+	{
+		if (!a_weapon || gHeld.empty()) {
+			return nullptr;
+		}
+		const auto key = KeyOf(a_weapon);
+		const auto it = key.empty() ? gHeld.cend() : gHeld.find(key);  // exact: a staff's own mesh, never a key inside another
+		return it != gHeld.cend() ? &it->second : nullptr;
 	}
 
 	const StringMap<std::vector<Hand>>&   Hands() { return gHands; }

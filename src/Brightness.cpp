@@ -77,14 +77,16 @@ namespace Plugin
 			return proj && (proj->IsFlamethrower() || proj->IsCone()) && IsSprayLight(proj->data.light);
 		}
 
-		// RE::Light names every light it makes from a config "RL" + the node it hung it on
+		// RE::Light names every light it makes from a config "RL" + the node it hung it on. An enchantment light hangs on
+		// the actor holding the weapon, so it is found by its shader instead (Options.cpp) - his report, 2026-09-26: "the
+		// sliders don't work for enchantments"
 		[[nodiscard]] bool OursByObject(RE::NiLight* a_light, const RE::TESBoundObject* a_base)
 		{
 			if (IsSprayProjectileLight(a_base)) {
 				return true;
 			}
 			const char* n = a_light->name.c_str();
-			return n && n[0] == 'R' && n[1] == 'L' && OptionOf(a_base) != kNone;
+			return n && n[0] == 'R' && n[1] == 'L' && (OptionOf(a_base) != kNone || EnchantOptionOf(a_light) != kNone);
 		}
 
 		void Apply(RE::NiLight* a_light, Seen& a_s, float a_scale, float a_reach, float a_dt)
