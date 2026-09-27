@@ -127,7 +127,8 @@ namespace Plugin
 			}
 			// his call, 2026-09-26 (night-run answers): a pack's ONE switch shows on the Weapons page as well as Patches - the
 			// same option, so flipping either flips both. At the bottom of the Weapons page, under its own heading.
-			std::size_t packsFrom = order.size();
+			std::size_t                     packsFrom = order.size();
+			std::unordered_set<std::size_t> withVanilla;  // packs shown under the first category's heading
 			if (a_page == Page::kWeapons) {
 				std::vector<std::size_t> packs;
 				for (const auto i : OptionsInMenuOrder()) {
@@ -141,16 +142,28 @@ namespace Plugin
 					}
 				}
 				std::ranges::stable_sort(packs, {}, [&opts](std::size_t a_i) { return std::make_tuple(opts[a_i].author, opts[a_i].name); });
-				order.insert(order.end(), packs.begin(), packs.end());
+				// his call, 2026-09-27: "Creation Club always stays with vanilla stuff" - its switch sits in the page's first
+				// category (Artifacts, Bound Weapons), not with the mod patches at the bottom
+				const auto rest = std::ranges::stable_partition(packs, [&opts](std::size_t a_i) { return opts[a_i].name == "Creation Club"; });
+				std::size_t at = 0;
+				while (at < order.size() && opts[order[at]].category == opts[order.front()].category) {
+					++at;
+				}
+				const auto ccCount = static_cast<std::size_t>(std::ranges::distance(packs.begin(), rest.begin()));
+				order.insert(order.begin() + static_cast<std::ptrdiff_t>(at), packs.begin(), rest.begin());
+				withVanilla.insert(packs.begin(), rest.begin());
+				order.insert(order.end(), rest.begin(), rest.end());
+				packsFrom = order.size() - (packs.size() - ccCount);
 			}
 			std::string shown, author;
 			for (std::size_t n = 0; n < order.size(); ++n) {
 				const auto i = order[n];
 				auto& o = opts[i];
 				static const std::string kPackHeading = "Mod Patches (also on the Patches page)";
-				const auto& heading = n >= packsFrom ? kPackHeading :
-				                      grouped        ? (o.category.empty() ? o.download : o.category) :
-				                                       o.download;
+				const auto& heading = n >= packsFrom             ? kPackHeading :
+				                      withVanilla.contains(i)    ? shown :
+				                      grouped                    ? (o.category.empty() ? o.download : o.category) :
+				                                                   o.download;
 				if (heading != shown) {
 					shown = heading;
 					author.clear();
