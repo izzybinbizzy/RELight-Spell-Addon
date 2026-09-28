@@ -180,6 +180,9 @@ namespace Plugin
 	void ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded
 	[[nodiscard]] bool WardsSteppedDown();  // Dynamic Wards is loaded: the wards are its
 
+	// ------------------------------------------------------------------ VaerSwirls.cpp: VAER Reborn's swirl on Thaumaturgy's effects
+	void VaerSwirls();  // once, after the data is read: Thaumaturgy's nine effect copies wear VAER's swirl art and shader
+
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
 }
