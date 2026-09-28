@@ -15,7 +15,9 @@
 //   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
 //   download <Spells|Weapons>   the download the file came in (a file with no line: its `file` download)
 //   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's colour for the lights on an object (highest order wins)
-//   held <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a staff's own light while it is drawn (Held.cpp)
+//   held <key or 0xID~Plugin> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a weapon's own light while it is
+//        drawn (Held.cpp); a key is matched exactly against the weapon's model (its full path key, then its bare name), or
+//        its first-person model in first person
 //
 // Objects are matched as RE::Light matches them: a form first, then the bare mesh key ("Magic\RuneFire01.nif" is
 // "runefire01"), exactly, then the longest of our keys the object's key contains.
@@ -39,10 +41,12 @@ namespace Plugin
 		StringMap<std::size_t>                      gMeshOwner;  // key -> option (highest order wins)
 		std::unordered_map<RE::FormID, std::size_t> gBaseOwner;  // form -> option
 		StringMap<Stream>                           gStreams;    // key -> recipe (highest order wins)
-		StringMap<Stream>                           gHeld;       // staff mesh key -> its held light (highest order wins)
+		StringMap<Stream>                           gHeld;       // weapon mesh key -> its held light (highest order wins)
+		std::unordered_map<RE::FormID, Stream>      gHeldBase;   // weapon form -> its held light (highest order wins)
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>                gHands;
 		std::unordered_set<RE::FormID>              gSprayLights;
+		std::unordered_map<RE::FormID, std::size_t> gSprayOwner;  // spray light record -> the option that lights it
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
 		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
@@ -55,6 +59,7 @@ namespace Plugin
 		std::unordered_map<RE::FormID, std::size_t>           gOwnerCache;
 		std::unordered_map<RE::FormID, const Stream*>         gStreamCache;
 		std::unordered_map<RE::FormID, const RE::NiColor*>    gTintCache;
+		std::unordered_map<RE::FormID, const Stream*>         gHeldCache[2];  // [first person]: asked every frame per drawn weapon
 
 		[[nodiscard]] std::vector<std::string_view> Split(std::string_view a_line)
 		{
@@ -116,6 +121,7 @@ namespace Plugin
 			std::vector<RE::FormID>                     bases;
 			std::vector<Stream>                         streams;
 			std::vector<Stream>                         helds;
+			std::vector<RE::FormID>                     sprays;
 			std::vector<Hand>                           hands;
 			std::vector<std::pair<std::string, HandFx>> fx;
 			std::vector<std::pair<std::string, Tint>>   tints;
@@ -182,7 +188,7 @@ namespace Plugin
 			}
 			if (kind == "spraylight" && p.size() >= 2) {
 				if (const auto id = ResolveBase(p[1])) {
-					gSprayLights.insert(id);
+					a_file.sprays.push_back(id);
 				}
 				return true;
 			}
@@ -327,11 +333,19 @@ namespace Plugin
 					gStreams.insert_or_assign(s.key, std::move(s));
 				}
 			}
+			for (const auto id : file.sprays) {
+				gSprayLights.insert(id);
+				own(gSprayOwner, id);
+			}
 			for (auto& s : file.helds) {
 				s.order = opt.order;
 				s.option = idx;
 				const auto key = s.key;
-				KeepHighest(gHeld, key, std::move(s), opt.order);
+				if (key.find('~') == std::string::npos) {
+					KeepHighest(gHeld, key, std::move(s), opt.order);
+				} else if (const auto id = ResolveBase(key)) {
+					KeepHighest(gHeldBase, id, std::move(s), opt.order);
+				}
 			}
 			for (auto& [key, f] : file.fx) {
 				f.order = opt.order;
@@ -483,8 +497,10 @@ namespace Plugin
 		gBaseOwner.clear();
 		gStreams.clear();
 		gHeld.clear();
+		gHeldBase.clear();
 		gHands.clear();
 		gSprayLights.clear();
+		gSprayOwner.clear();
 		gHandFx.clear();
 		gMeshTints.clear();
 		gBaseTints.clear();
@@ -494,6 +510,8 @@ namespace Plugin
 			gOwnerCache.clear();
 			gStreamCache.clear();
 			gTintCache.clear();
+			gHeldCache[0].clear();
+			gHeldCache[1].clear();
 		}
 		gFiles = 0;
 		std::vector<fs::path> files;
@@ -522,9 +540,9 @@ namespace Plugin
 		}
 		const auto switches = std::ranges::count_if(gOptions, &Option::switchable);
 		SKSE::log::info("data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
-						"{} tint(s), {} held staff light(s)",
+						"{} tint(s), {} held weapon light(s)",
 			gFiles, bad, switches, gMeshOwner.size(), gBaseOwner.size(), gStreams.size(), gHands.size(),
-			gMeshTints.size() + gBaseTints.size(), gHeld.size());
+			gMeshTints.size() + gBaseTints.size(), gHeld.size() + gHeldBase.size());
 	}
 
 	std::vector<Option>& Options() { return gOptions; }
@@ -602,14 +620,38 @@ namespace Plugin
 		});
 	}
 
-	const Stream* HeldOf(const RE::TESForm* a_weapon)
+	const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson)
 	{
-		if (!a_weapon || gHeld.empty()) {
+		if (!a_weapon || (gHeld.empty() && gHeldBase.empty())) {
 			return nullptr;
 		}
-		const auto key = KeyOf(a_weapon);
-		const auto it = key.empty() ? gHeld.cend() : gHeld.find(key);  // exact: a staff's own mesh, never a key inside another
-		return it != gHeld.cend() ? &it->second : nullptr;
+		return Cached(gHeldCache[a_firstPerson ? 1 : 0], a_weapon, [&]() -> const Stream* {
+			if (auto it = gHeldBase.find(a_weapon->GetFormID()); it != gHeldBase.end()) {
+				return &it->second;
+			}
+			// exact: a weapon's own mesh by its full path first (two mods' staves can share a file name), then its bare name -
+			// never a key inside another. In first person the game draws the first-person model, which a config may light
+			const auto find = [](const RE::TESForm* a_form) -> const Stream* {
+				const auto* model = a_form ? a_form->As<RE::TESModel>() : nullptr;
+				const char* path = model ? model->GetModel() : nullptr;
+				if (!path || !*path) {
+					return nullptr;
+				}
+				auto it = gHeld.find(PathKey(path));
+				if (it == gHeld.end()) {
+					it = gHeld.find(MeshKey(path));
+				}
+				return it != gHeld.end() ? &it->second : nullptr;
+			};
+			const Stream* first = a_firstPerson ? find(a_weapon->firstPersonModelObject) : nullptr;
+			return first ? first : find(a_weapon);
+		});
+	}
+
+	std::size_t OptionOfSprayLight(const RE::TESObjectLIGH* a_light)
+	{
+		const auto it = a_light ? gSprayOwner.find(a_light->GetFormID()) : gSprayOwner.end();
+		return it != gSprayOwner.end() ? it->second : kNone;
 	}
 
 	const StringMap<std::vector<Hand>>&   Hands() { return gHands; }
