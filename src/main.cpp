@@ -15,7 +15,8 @@
 //   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
-//   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
+//   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
+//   Menu.cpp       the settings page, in SKSE Menu Framework's Mod Control Panel
 //   Plugin.h        what they share      PCH.h  what they all include
 
 #include "Plugin.h"
@@ -275,6 +276,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
 			Plugin::TakeStreamProjectileLights();
+			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
 			InstallLate();
 			Plugin::RegisterMenu();
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {

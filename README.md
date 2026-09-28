@@ -5,9 +5,13 @@ Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `LICENSE`.
 Ships with RELight - Spell Addon and is required by it.
 
 - **Brightness** and **Reach** - sliders for this mod's lights only.
-- **A switch for each option you installed** - untick one and its lights go out; mod patches have their own page, by
-  category and author.
+- **A switch and a brightness slider for each option you installed** - untick one and its lights go out; mod patches have
+  their own page, by category and author.
 - **Travelling lights** for sprays, breath shouts and beams, which RE::Light cannot do from a config.
+- **Held weapon lights** - a staff or weapon this mod lights on the ground carries its light in your hand while it is drawn,
+  which RE::Light only does for an enchantment.
+- **VAER Reborn's swirl on Thaumaturgy's own enchantments** - with VAER Reborn, Thaumaturgy and the VAER Reborn option
+  installed, Thaumaturgy's Fear, Paralyze, Turn Undead, Banish, Silent Moons and second Absorb effects wear VAER's swirl.
 - **Hand lights** - a light on your hands while you cast, made in memory, with Dynamic Lighting. No plugin, no script.
   On by default.
 - **Lights off while sneaking**, off by default.
