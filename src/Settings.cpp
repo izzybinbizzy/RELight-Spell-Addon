@@ -13,6 +13,8 @@
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
+//   [Brightness]
+//   Spells - Runes=80           percent, 10 to 200 - one option's own slider, on top of Brightness; no line is 100
 
 #include "Plugin.h"
 
@@ -85,15 +87,22 @@ namespace Plugin
 						o.on = v != 0;
 					}
 				}
+			} else if (section == "Brightness") {
+				for (auto& o : Options()) {
+					if (o.switchable && o.id == key) {
+						o.brightness = std::clamp(v, kMin, kMax);
+					}
+				}
 			}
 		}
-		std::size_t off = 0;
+		std::size_t off = 0, tuned = 0;
 		for (auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
+			tuned += (o.switchable && o.brightness != 100) ? 1 : 0;
 		}
-		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
-						"({} line(s) read)",
-			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read);
+		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off, "
+						"{} option brightness(es) not 100% ({} line(s) read)",
+			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, tuned, read);
 	}
 
 	void SaveSettings()
@@ -112,6 +121,13 @@ namespace Plugin
 		for (const auto& o : Options()) {
 			if (o.switchable && written.insert(o.id).second) {
 				out << o.id << "=" << (o.on ? 1 : 0) << "\n";
+			}
+		}
+		out << "[Brightness]\n";
+		written.clear();
+		for (const auto& o : Options()) {
+			if (o.switchable && o.brightness != 100 && written.insert(o.id).second) {
+				out << o.id << "=" << o.brightness << "\n";
 			}
 		}
 	}
@@ -200,5 +216,32 @@ namespace Plugin
 		if (n) {
 			SKSE::log::info("switch: {} turned {} ({} file(s))", id, a_on ? "on" : "off", n);
 		}
+	}
+
+	// a pack's files share one slider, as they share one switch
+	void SetOptionBrightness(std::size_t a_index, int a_percent)
+	{
+		auto& opts = Options();
+		if (a_index >= opts.size() || !opts[a_index].switchable) {
+			return;
+		}
+		a_percent = std::clamp(a_percent, kMin, kMax);
+		const auto  id = opts[a_index].id;
+		std::size_t n = 0;
+		for (auto& o : opts) {
+			if (o.switchable && o.id == id && o.brightness != a_percent) {
+				o.brightness = a_percent;
+				++n;
+			}
+		}
+		if (n) {
+			SKSE::log::info("brightness: {} set to {}% ({} file(s))", id, a_percent, n);
+		}
+	}
+
+	float OptionBrightness(std::size_t a_option)
+	{
+		const auto& opts = Options();
+		return a_option < opts.size() && opts[a_option].switchable ? static_cast<float>(opts[a_option].brightness) / 100.0f : 1.0f;
 	}
 }

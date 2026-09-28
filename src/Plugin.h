@@ -36,6 +36,7 @@ namespace Plugin
 		int         menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool        switchable{ false };
 		bool        on{ true };
+		int         brightness{ 100 };  // percent, this option's own slider on top of the global one (Settings.cpp)
 		std::size_t meshes{ 0 }, bases{ 0 }, streams{ 0 };
 		std::size_t lit{ 0 }, heldOut{ 0 };  // counted every frame, shown in the menu
 	};
@@ -111,7 +112,9 @@ namespace Plugin
 	[[nodiscard]] const StringMap<std::vector<Hand>>& Hands();  // hand key -> the layers that light it, highest order first
 	[[nodiscard]] const std::unordered_set<RE::FormID>& SprayLightRecords();  // spray light records, lit through our configs
 	[[nodiscard]] const HandFx* HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
-	[[nodiscard]] const Stream* HeldOf(const RE::TESForm* a_weapon);  // nullptr unless it is a staff we light in the hand
+	// nullptr unless we light this weapon in the hand: its form first, then (first person) its first-person model, then its model
+	[[nodiscard]] const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson);
+	[[nodiscard]] std::size_t   OptionOfSprayLight(const RE::TESObjectLIGH* a_light);  // the option whose `spraylight` line names it
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void                      MakeHandLights();                        // once, after the data and the settings are read
@@ -142,6 +145,8 @@ namespace Plugin
 	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
+	void                SetOptionBrightness(std::size_t a_index, int a_percent);  // every file of a pack together
+	[[nodiscard]] float OptionBrightness(std::size_t a_option);                    // 1.0 for kNone and for Core
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
 	void                             UpdateOptionLights();                           // every frame, after the sneaking pass
@@ -152,7 +157,7 @@ namespace Plugin
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, std::size_t a_option = kNone);
 
 	// ------------------------------------------------------------------ Streams.cpp: lights that travel
 	void                      HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
@@ -167,7 +172,7 @@ namespace Plugin
 	[[nodiscard]] RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
 		float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made);
 
-	// ------------------------------------------------------------------ Held.cpp: a staff's own light while it is drawn
+	// ------------------------------------------------------------------ Held.cpp: a weapon's own light while it is drawn
 	void                      UpdateHeldLights();  // every frame, after the travelling lights
 	[[nodiscard]] std::size_t LiveHeldLights();
 

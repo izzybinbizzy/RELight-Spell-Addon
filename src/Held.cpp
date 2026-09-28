@@ -2,11 +2,13 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// A staff's own light while it is drawn. RE::Light reaches a weapon in the hand only through its enchantment shader, and
-// some staves (the Sanguine Rose, the Wabbajack) carry none, so in the hand they had only the casting-hand light. The build
-// writes each such staff's own light as a `held` line; this hangs it on the weapon node of whoever has that staff drawn
+// A weapon's own light while it is drawn. RE::Light lights a weapon's mesh only where the weapon is a reference (on the
+// ground, on a rack) and reaches a weapon in the hand only through its enchantment shader. The build writes the light each
+// staff and weapon config of ours gives that mesh as a `held` line; this hangs it on the drawn weapon of whoever holds it
 // (the player, in both views, and the actors near them) and takes it off when it is sheathed, unequipped or switched off.
-// The light is made the travelling-light way (Streams.cpp, ReLight's method). Nothing on any record is edited.
+// One object, one light: a weapon whose enchantment shader is one of ours already wears RE::Light's enchantment light in
+// the hand, so it gets none here. The light is made the travelling-light way (Streams.cpp, ReLight's method). Nothing on
+// any record is edited.
 
 #include "Plugin.h"
 
@@ -48,7 +50,64 @@ namespace Plugin
 			}
 		}
 
-		// the staves one actor has drawn, and the node each hangs on, in each view the actor has
+		[[nodiscard]] bool BothHands(const RE::TESObjectWEAP* a_weapon)
+		{
+			using T = RE::WEAPON_TYPE;
+			const auto type = a_weapon->GetWeaponType();
+			return type == T::kTwoHandSword || type == T::kTwoHandAxe || type == T::kBow || type == T::kCrossbow;
+		}
+
+		// RE::Light hangs its enchantment light on this weapon in the hand when an effect of its enchantment (the instance's
+		// own, else the weapon's) carries an enchantment shader a config of ours names
+		[[nodiscard]] bool EnchantmentLit(RE::Actor* a_actor, bool a_left, const RE::TESObjectWEAP* a_weapon)
+		{
+			const auto* entry = a_actor->GetEquippedEntryData(a_left);
+			const auto* ench = entry ? entry->GetEnchantment() : nullptr;
+			if (!ench) {
+				ench = a_weapon->formEnchanting;
+			}
+			if (!ench) {
+				return false;
+			}
+			return std::ranges::any_of(ench->effects, [](const RE::Effect* a_e) {
+				return a_e && a_e->baseEffect && OptionOfShader(a_e->baseEffect->data.enchantShader) != kNone;
+			});
+		}
+
+		// the drawn weapon's own 3D in this view, parented to the hand node - the config's position is relative to the mesh.
+		// A bow is held in the left hand, so its 3D may sit under SHIELD though it is equipped in the right. Falls back to the
+		// hand node itself when the biped has no clone of it.
+		[[nodiscard]] RE::NiNode* NodeFor(RE::Actor* a_actor, bool a_left, bool a_firstPerson, const RE::TESObjectWEAP* a_weapon)
+		{
+			auto* root = a_actor->Get3D(a_firstPerson);
+			if (!root) {
+				return nullptr;
+			}
+			const std::string_view hand = a_left ? "SHIELD" : "WEAPON";
+			if (const auto& biped = a_actor->GetBiped(a_firstPerson)) {
+				RE::NiNode* other = nullptr;
+				for (auto& obj : biped->objects) {
+					auto* clone = obj.item == a_weapon && obj.partClone ? obj.partClone->AsNode() : nullptr;
+					const char* parent = clone && clone->parent ? clone->parent->name.c_str() : nullptr;
+					if (!parent) {
+						continue;
+					}
+					if (hand == parent) {
+						return clone;
+					}
+					if (!a_left && a_weapon->IsBow() && std::string_view(parent) == "SHIELD") {
+						other = clone;
+					}
+				}
+				if (other) {
+					return other;
+				}
+			}
+			auto* node = root->GetObjectByName(RE::BSFixedString(hand.data()));
+			return node ? node->AsNode() : nullptr;
+		}
+
+		// the weapons one actor has drawn, and the node each light hangs on, in each view the actor has
 		void WantsOf(RE::Actor* a_actor, bool a_hidden, std::vector<Want>& a_out)
 		{
 			if (!a_actor || !a_actor->Is3DLoaded() || !a_actor->AsActorState()->IsWeaponDrawn()) {
@@ -59,20 +118,23 @@ namespace Plugin
 				return;
 			}
 			for (const bool left : { false, true }) {
-				auto*         weapon = a_actor->GetEquippedObject(left);
-				const Stream* held = weapon && weapon->Is(RE::FormType::Weapon) ? HeldOf(weapon) : nullptr;
-				if (!held || !OptionLit(held->option)) {
+				auto* form = a_actor->GetEquippedObject(left);
+				auto* weapon = form ? form->As<RE::TESObjectWEAP>() : nullptr;
+				// a weapon held in both hands is one weapon: it is lit once, from the right hand
+				if (!weapon || (left && weapon == a_actor->GetEquippedObject(false) && BothHands(weapon)) ||
+					EnchantmentLit(a_actor, left, weapon)) {
 					continue;
 				}
-				const RE::BSFixedString name(left ? "SHIELD" : "WEAPON");
 				for (const bool fp : { false, true }) {
 					if (fp && !isPlayer) {
 						break;
 					}
-					auto* root = a_actor->Get3D(fp);
-					auto* node = root ? root->GetObjectByName(name) : nullptr;
-					if (node && node->AsNode()) {
-						a_out.push_back({ a_actor, left, fp, held, node->AsNode() });
+					const Stream* held = HeldOf(weapon, fp);
+					if (!held || !OptionLit(held->option)) {
+						continue;
+					}
+					if (auto* node = NodeFor(a_actor, left, fp, weapon)) {
+						a_out.push_back({ a_actor, left, fp, held, node });
 					}
 				}
 			}
@@ -116,7 +178,7 @@ namespace Plugin
 			if (have || gLive.size() >= kMaxLive) {
 				continue;
 			}
-			const float       fade = w.held->fade * scale;
+			const float       fade = w.held->fade * scale * OptionBrightness(w.held->option);
 			const float       reach = w.held->radius * reachScale;
 			RE::NiPointLight* light = nullptr;
 			auto* bs = MakeOurLight(*w.held, w.held->color, w.held->positions.front(), fade, reach, w.node, scene, light);
@@ -134,7 +196,7 @@ namespace Plugin
 		}
 		// the sliders reach a light already hung
 		for (auto& v : gLive) {
-			const float fade = v.held->fade * scale;
+			const float fade = v.held->fade * scale * OptionBrightness(v.held->option);
 			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
 				auto& d = v.light->GetLightRuntimeData();

@@ -12,7 +12,7 @@
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     lights that travel with sprays, breath shouts and beams
-//   Held.cpp        a staff's own light while it is drawn (staves RE::Light cannot reach in the hand)
+//   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
@@ -108,7 +108,8 @@ namespace
 				gMagicLights.try_emplace(made, made);
 				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the sliders
 				if (hand || Plugin::IsSprayLight(a_light)) {
-					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
+					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr,
+						hand ? hand->option : Plugin::OptionOfSprayLight(a_light));
 				}
 			}
 			return made;
