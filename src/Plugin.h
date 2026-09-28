@@ -31,7 +31,7 @@ namespace Plugin
 		std::string download, name, id;  // id: "Spells - Runes", the settings file's key
 		std::string category, author;    // a patch's place on the Patches page (`menugroup`); author empty: listed on its own
 		std::string desc;                // what it lights, broadly (`desc`), shown when the mouse is over its switch
-		bool        weapons{ false };    // it came in the Weapons download (`download`): the Weapon lights setting puts it out
+		bool        weapons{ false };    // it is a weapon option (`download`): the Weapon lights setting puts it out
 		int         order{ 0 };          // a later layer overrides an earlier one
 		int         menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool        switchable{ false };

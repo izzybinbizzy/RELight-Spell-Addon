@@ -4,7 +4,7 @@
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
-// installer put down, each with a brightness slider of its own. Patches: a switch per mod patch. Weapons: a switch per option of the Weapons download, laid out as
+// installer put down, each with a brightness slider of its own. Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
 // the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit.
 
 #define WIN32_LEAN_AND_MEAN
@@ -285,7 +285,7 @@ namespace Plugin
 				RehandSoon();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"Every light of the Weapons download: enchanted weapons, bound weapons and artifacts. Off puts them all out at "
+				"Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
 				"once; the switches on the Weapons page choose among them.");
 
 			GlowHeading("Wards");
@@ -324,7 +324,7 @@ namespace Plugin
 			DrawSwitches(Page::kPatches);
 		}
 
-		// his ask, 2026-09-26: the Weapons download's options on a page of their own, laid out as the Patches page
+		// his ask, 2026-09-26: the weapon options on a page of their own, laid out as the Patches page
 		void __stdcall RenderWeapons()
 		{
 			const GlowStyle style;
