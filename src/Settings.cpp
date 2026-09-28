@@ -9,7 +9,7 @@
 //   Reach=100                   percent, 50 to 150 - the peak is held
 //   LightsOffWhileSneaking=0
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
-//   WeaponLights=1              every light of the Weapons download, the enchantment lights included (Options.cpp)
+//   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
