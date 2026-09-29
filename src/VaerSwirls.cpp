@@ -2,7 +2,16 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// VAER Reborn on Thaumaturgy's own effects. Thaumaturgy points the Fear, Paralyze, Turn Undead, Banish, Silent Moons and
+// VAER Reborn's swirls, two passes, once at data loaded, only when VAEReborn.esp is loaded and the VAER Reborn option of the
+// Weapons download is installed (its enchantment lights are keyed by VAER's shaders, so without it a swap would leave the
+// weapon unlit):
+//
+// 1. VAER's own effects put back (his report 2026-09-28 late night, "vaer swirls are still not working for relight"). A plugin
+// loaded after VAEReborn.esp that edits the same vanilla effect (Thaumaturgy, Artificer, ...) carries the effect's old art, so
+// VAER's swirl is lost: 21 of VAER's 46 in his game, measured. Each gets VAER's Enchant Art and Enchant Shader back. The table
+// is relightgen.VAER_VANILLA_FORMS, read off VAEReborn.esp's own records; relightgen's selftest refuses one that differs.
+//
+// 2. VAER Reborn on Thaumaturgy's own effects. Thaumaturgy points the Fear, Paralyze, Turn Undead, Banish, Silent Moons and
 // second Absorb enchantments at new magic effects of its own, and VAER Reborn only dresses the vanilla ones, so those
 // weapons had no swirl. Each copy is given the enchant art and the enchant shader VAER made for the vanilla effect. Once, at
 // data loaded, and only when VAEReborn.esp and Thaumaturgy.esp are both loaded and the VAER Reborn option of the Weapons
@@ -43,6 +52,58 @@ namespace Plugin
 		};
 		// VAER_SWIRL_FORMS end
 
+		// an empty art plugin: VAER leaves that effect's art alone and sets only the shader
+		// VAER_VANILLA_FORMS begin
+		constexpr SwirlCopy kVaerOwn[] = {
+			{ "Skyrim.esm", 0x0F23F9, "VAEReborn.esp", 0x000817, "VAEReborn.esp", 0x000848, "C06BladeOfYsgramorEnchEffect" },
+			{ "ccbgssse004-ruinsedge.esl", 0x000802, "VAEReborn.esp", 0x000833, "VAEReborn.esp", 0x00083C, "ccBGSSSE004_BowBaseEffect" },
+			{ "ccbgssse006-stendarshammer.esl", 0x000808, "VAEReborn.esp", 0x000834, "VAEReborn.esp", 0x00083D, "ccBGSSSE006_EnchDamageFFContact" },
+			{ "ccbgssse007-chrysamere.esl", 0x000801, "VAEReborn.esp", 0x000835, "VAEReborn.esp", 0x00083E, "ccBGSSSE007_Chrysamere_Effect" },
+			{ "ccbgssse013-dawnfang.esl", 0x000D18, "VAEReborn.esp", 0x000836, "VAEReborn.esp", 0x00083F, "ccBGSSSE013_EnchBloodthirst" },
+			{ "ccbgssse013-dawnfang.esl", 0x000803, "VAEReborn.esp", 0x000837, "VAEReborn.esp", 0x000840, "ccBGSSSE013_EnchDawnfangDescriptionFX" },
+			{ "ccbgssse013-dawnfang.esl", 0x000804, "VAEReborn.esp", 0x000837, "VAEReborn.esp", 0x000840, "ccBGSSSE013_EnchDawnfangKillIncrementFX" },
+			{ "ccbgssse013-dawnfang.esl", 0x000819, "ccbgssse013-dawnfang.esl", 0x00080B, "VAEReborn.esp", 0x000840, "ccBGSSSE013_EnchFireDamageFFContact" },
+			{ "ccbgssse013-dawnfang.esl", 0x00081A, "VAEReborn.esp", 0x000837, "VAEReborn.esp", 0x000840, "ccBGSSSE013_EnchFrostDamageFFContact" },
+			{ "ccbgssse016-umbra.esm", 0x00C831, "VAEReborn.esp", 0x000838, "VAEReborn.esp", 0x000841, "ccBGSSSE016_EnchAbsorbHealthFFContact_SoulTrapFX" },
+			{ "ccbgssse020-graycowl.esl", 0x00086F, "VAEReborn.esp", 0x000839, "VAEReborn.esp", 0x000842, "ccBGSSSE020_EnchTurnUndeadFFContact" },
+			{ "ccbgssse067-daedinv.esm", 0x17094E, "VAEReborn.esp", 0x00083A, "VAEReborn.esp", 0x000844, "ccBGSSSE067_EnchBanishFFContact" },
+			{ "ccbgssse067-daedinv.esm", 0x175AC0, "VAEReborn.esp", 0x00083B, "VAEReborn.esp", 0x000843, "ccBGSSSE067_EnchFireDamageFFContact_NoShader" },
+			{ "Skyrim.esm", 0x106617, "VAEReborn.esp", 0x000814, "Skyrim.esm", 0x10A043, "ChillrendEnchFrostDamageFFContact" },
+			{ "Skyrim.esm", 0x106616, "VAEReborn.esp", 0x000814, "Skyrim.esm", 0x10A043, "ChillrendParalysisFFContact" },
+			{ "Skyrim.esm", 0x091AE5, "VAEReborn.esp", 0x00081A, "VAEReborn.esp", 0x00082E, "DA07MehrunesRazorMagicEffect" },
+			{ "Skyrim.esm", 0x10FAF1, "VAEReborn.esp", 0x000811, "VAEReborn.esp", 0x000828, "DA08EnchAbsorbHealthFFContact" },
+			{ "Skyrim.esm", 0x0FEE38, "", 0x000000, "VAEReborn.esp", 0x00084B, "DA09EncDawnbreakeScriptEffect" },
+			{ "Skyrim.esm", 0x0FEFBC, "", 0x000000, "VAEReborn.esp", 0x00084B, "DA09EnchDawnbreakerEnchFireDamageFFContact" },
+			{ "Dawnguard.esm", 0x016696, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1DawnguardRuneAxeDamageEffect" },
+			{ "Dawnguard.esm", 0x016695, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1DawnguardRuneAxeIncrementKills" },
+			{ "Dawnguard.esm", 0x006924, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1DawnguardRuneVisualsEffect" },
+			{ "Dawnguard.esm", 0x015719, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1EnchSunDamage" },
+			{ "Dawnguard.esm", 0x01571B, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1EnchSunDamageUndead" },
+			{ "Dawnguard.esm", 0x014557, "VAEReborn.esp", 0x00080C, "VAEReborn.esp", 0x00082D, "DLC1RuneHammerVisualEffect" },
+			{ "Dragonborn.esm", 0x03570C, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchAbsorbHealthFFContact50" },
+			{ "Dragonborn.esm", 0x03570E, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchAbsorbMagickaFFContact50" },
+			{ "Dragonborn.esm", 0x03570F, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchAbsorbStaminaFFContact50" },
+			{ "Dragonborn.esm", 0x02C46B, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchFireDamageFFContact50" },
+			{ "Dragonborn.esm", 0x02C46D, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchFrostDamageFFContact50" },
+			{ "Dragonborn.esm", 0x02C46C, "VAEReborn.esp", 0x000804, "VAEReborn.esp", 0x00082B, "DLC2EnchShockDamageFFContact50" },
+			{ "Skyrim.esm", 0x03B0B1, "VAEReborn.esp", 0x00080A, "VAEReborn.esp", 0x000826, "dunSilentMoonsEnchFFContact" },
+			{ "Skyrim.esm", 0x0AA155, "VAEReborn.esp", 0x000800, "VAEReborn.esp", 0x000828, "EnchAbsorbHealthFFContact" },
+			{ "Skyrim.esm", 0x0AA156, "VAEReborn.esp", 0x000801, "VAEReborn.esp", 0x00082A, "EnchAbsorbMagickaFFContact" },
+			{ "Skyrim.esm", 0x0AA157, "VAEReborn.esp", 0x000802, "VAEReborn.esp", 0x000826, "EnchAbsorbStaminaFFContact" },
+			{ "Skyrim.esm", 0x0ACBB5, "VAEReborn.esp", 0x000803, "VAEReborn.esp", 0x000827, "EnchBanishFFContact" },
+			{ "Skyrim.esm", 0x04605A, "VAEReborn.esp", 0x000808, "VAEReborn.esp", 0x000824, "EnchFireDamageFFContact" },
+			{ "Skyrim.esm", 0x04605B, "VAEReborn.esp", 0x000809, "VAEReborn.esp", 0x000825, "EnchFrostDamageFFContact" },
+			{ "Skyrim.esm", 0x05B451, "VAEReborn.esp", 0x000807, "VAEReborn.esp", 0x00082C, "EnchInfluenceConfDownFFContactLow" },
+			{ "Skyrim.esm", 0x05B44F, "VAEReborn.esp", 0x000805, "VAEReborn.esp", 0x000830, "EnchMagickaDamageFFContact" },
+			{ "Skyrim.esm", 0x0ACBB6, "VAEReborn.esp", 0x00080B, "VAEReborn.esp", 0x000823, "EnchParalysisFFContact" },
+			{ "Skyrim.esm", 0x04605C, "VAEReborn.esp", 0x00080D, "VAEReborn.esp", 0x000829, "EnchShockDamageFFContact" },
+			{ "Skyrim.esm", 0x05B452, "VAEReborn.esp", 0x00080F, "VAEReborn.esp", 0x00082E, "EnchSoulTrapFFContact" },
+			{ "Skyrim.esm", 0x05B450, "VAEReborn.esp", 0x000806, "VAEReborn.esp", 0x000831, "EnchStaminaDamageFFContact" },
+			{ "Skyrim.esm", 0x05B46B, "VAEReborn.esp", 0x00080E, "VAEReborn.esp", 0x00082F, "EnchTurnUndeadFFContact" },
+			{ "Skyrim.esm", 0x0F1AC2, "VAEReborn.esp", 0x000810, "VAEReborn.esp", 0x000829, "MQ203DragonDamageFFContact" },
+		};
+		// VAER_VANILLA_FORMS end
+
 		// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
 		[[nodiscard]] bool Loaded(std::string_view a_name)
 		{
@@ -64,15 +125,43 @@ namespace Plugin
 
 	void VaerSwirls()
 	{
-		if (!Loaded("VAEReborn.esp") || !Loaded("Thaumaturgy.esp")) {
-			SKSE::log::info("VAER on Thaumaturgy: VAEReborn.esp and Thaumaturgy.esp are not both loaded; nothing to do");
+		if (!Loaded("VAEReborn.esp")) {
+			SKSE::log::info("VAER: VAEReborn.esp is not loaded; nothing to do");
 			return;
 		}
 		if (!VaerOptionInstalled()) {
-			SKSE::log::info("VAER on Thaumaturgy: the VAER Reborn option is not installed; Thaumaturgy's effects keep their own art");
+			SKSE::log::info("VAER: the VAER Reborn option is not installed; every effect keeps the art its winning plugin gives it");
 			return;
 		}
-		auto*       dh = RE::TESDataHandler::GetSingleton();
+		auto* dh = RE::TESDataHandler::GetSingleton();
+		// 1. VAER's own effects: a plugin that is not loaded (a Creation Club file he does not have) is simply skipped
+		std::size_t back = 0, already = 0, absent = 0;
+		for (const auto& c : kVaerOwn) {
+			auto* effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
+			auto* art = c.artPlugin.empty() ? nullptr : dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
+			auto* shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
+			if (!effect || (!c.artPlugin.empty() && !art) || !shader) {
+				++absent;
+				continue;
+			}
+			if ((c.artPlugin.empty() || effect->data.enchantEffectArt == art) && effect->data.enchantShader == shader) {
+				++already;
+				continue;
+			}
+			if (!c.artPlugin.empty()) {
+				effect->data.enchantEffectArt = art;
+			}
+			effect->data.enchantShader = shader;
+			++back;
+			SKSE::log::info("[VAER] {} had lost VAER's swirl; given back", c.name);
+		}
+		SKSE::log::info("VAER: {} of VAER's effect(s) given their swirl back, {} still had it, {} not in this load order", back, already,
+			absent);
+		if (!Loaded("Thaumaturgy.esp")) {
+			SKSE::log::info("VAER on Thaumaturgy: Thaumaturgy.esp is not loaded; nothing more to do");
+			return;
+		}
+		// 2. Thaumaturgy's own copies
 		std::size_t set = 0, missing = 0;
 		for (const auto& c : kSwirlCopies) {
 			auto* effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
