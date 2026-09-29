@@ -4,7 +4,7 @@
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
-// installer put down, each with a brightness slider of its own. Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
+// installer put down (his call, 2026-09-28 late night: no per-option brightness sliders). Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
 // the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit.
 
 #define WIN32_LEAN_AND_MEAN
@@ -204,22 +204,6 @@ namespace Plugin
 					ImGuiMCP::TextDisabled("Weapon lights off - %zu held out", heldOut);
 				} else {
 					ImGuiMCP::TextDisabled("%zu lit", lit);
-				}
-				// the option's own brightness, on top of the Brightness slider; hidden while the switch is off
-				if (o.on) {
-					ImGuiMCP::Indent();
-					ImGuiMCP::SetNextItemWidth(180.0f);
-					int pct = o.brightness;
-					if (ImGuiMCP::SliderInt("Brightness", &pct, 10, 200, "%d%%")) {
-						SetOptionBrightness(i, pct);
-					}
-					if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
-						SaveSettings();
-					}
-					ImGuiMCP::SetItemTooltip("%s",
-						"How bright this option's lights are, on top of the Brightness slider on the Settings page. 100% leaves "
-						"them as they are. How far they carry does not change.");
-					ImGuiMCP::Unindent();
 				}
 				ImGuiMCP::PopID();
 				if (indented) {

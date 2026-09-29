@@ -178,7 +178,7 @@ namespace Plugin
 			if (have || gLive.size() >= kMaxLive) {
 				continue;
 			}
-			const float       fade = w.held->fade * scale * OptionBrightness(w.held->option);
+			const float       fade = w.held->fade * scale;
 			const float       reach = w.held->radius * reachScale;
 			RE::NiPointLight* light = nullptr;
 			auto* bs = MakeOurLight(*w.held, w.held->color, w.held->positions.front(), fade, reach, w.node, scene, light);
@@ -196,7 +196,7 @@ namespace Plugin
 		}
 		// the sliders reach a light already hung
 		for (auto& v : gLive) {
-			const float fade = v.held->fade * scale * OptionBrightness(v.held->option);
+			const float fade = v.held->fade * scale;
 			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
 				auto& d = v.light->GetLightRuntimeData();

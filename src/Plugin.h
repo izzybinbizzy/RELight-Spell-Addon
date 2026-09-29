@@ -36,7 +36,6 @@ namespace Plugin
 		int         menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool        switchable{ false };
 		bool        on{ true };
-		int         brightness{ 100 };  // percent, this option's own slider on top of the global one (Settings.cpp)
 		std::size_t meshes{ 0 }, bases{ 0 }, streams{ 0 };
 		std::size_t lit{ 0 }, heldOut{ 0 };  // counted every frame, shown in the menu
 	};
@@ -145,8 +144,6 @@ namespace Plugin
 	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
-	void                SetOptionBrightness(std::size_t a_index, int a_percent);  // every file of a pack together
-	[[nodiscard]] float OptionBrightness(std::size_t a_option);                    // 1.0 for kNone and for Core
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
 	void                             UpdateOptionLights();                           // every frame, after the sneaking pass
@@ -157,7 +154,7 @@ namespace Plugin
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, std::size_t a_option = kNone);
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
 
 	// ------------------------------------------------------------------ Streams.cpp: lights that travel
 	void                      HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);

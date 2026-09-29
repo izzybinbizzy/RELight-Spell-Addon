@@ -109,8 +109,7 @@ namespace
 				gMagicLights.try_emplace(made, made);
 				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the sliders
 				if (hand || Plugin::IsSprayLight(a_light)) {
-					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr,
-						hand ? hand->option : Plugin::OptionOfSprayLight(a_light));
+					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
 				}
 			}
 			return made;

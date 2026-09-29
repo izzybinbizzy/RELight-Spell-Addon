@@ -8,8 +8,7 @@
 //     Brightness  scales fade and cutoff by one ratio  -> the peak moves, the reach is held
 //     Reach       scales the radius, cutoff re-derived -> the reach moves, the peak is held
 // RE::Light rewrites fade every frame on a light that flickers or pulses, so each light remembers the fade we last
-// wrote; anything else it carries is a new base. Each option's own slider multiplies in the same way, from that base, so
-// no slider ever scales a value we wrote. A hand light with Dynamic Lighting breathes or crackles here (Oscillate),
+// wrote; anything else it carries is a new base, so no slider ever scales a value we wrote. A hand light with Dynamic Lighting breathes or crackles here (Oscillate),
 // and a light on an object an art pick recolours (`tint`) takes that colour. Runs last in the player update.
 
 #include "Plugin.h"
@@ -23,7 +22,6 @@ namespace Plugin
 			RE::NiPointer<RE::NiLight> light;
 			const HandFx*              fx{ nullptr };
 			const RE::NiColor*         tint{ nullptr };
-			std::size_t                option{ kNone };     // whose own slider it follows
 			float                      base{ 0.0f };        // the fade RE::Light last gave it
 			float                      written{ -1.0f };    // the fade we last wrote
 			float                      baseRadius{ 0.0f };  // the reach RE::Light last gave it
@@ -67,7 +65,6 @@ namespace Plugin
 		{
 			RE::NiPointer<RE::NiLight> light;
 			const HandFx*              fx;
-			std::size_t                option;
 		};
 		std::vector<Made>                                                 gNew;  // lights made since the last frame
 		std::uint32_t                                                     gFrame = 0;
@@ -88,19 +85,6 @@ namespace Plugin
 		// RE::Light names every light it makes from a config "RL" + the node it hung it on. An enchantment light hangs on
 		// the actor holding the weapon, so it is found by its shader instead (Options.cpp) - his report, 2026-09-26: "the
 		// sliders don't work for enchantments"
-		// the option a light of ours belongs to: its object's, else its enchantment's, else its spray record's
-		[[nodiscard]] std::size_t OptionOfSeen(RE::NiLight* a_light, const RE::TESBoundObject* a_base)
-		{
-			if (const auto o = OptionOf(a_base); o != kNone) {
-				return o;
-			}
-			if (const auto o = EnchantOptionOf(a_light); o != kNone) {
-				return o;
-			}
-			const auto* proj = a_base ? a_base->As<RE::BGSProjectile>() : nullptr;
-			return proj ? OptionOfSprayLight(proj->data.light) : kNone;
-		}
-
 		[[nodiscard]] bool OursByObject(RE::NiLight* a_light, const RE::TESBoundObject* a_base)
 		{
 			if (IsSprayProjectileLight(a_base)) {
@@ -151,11 +135,11 @@ namespace Plugin
 		}
 	}
 
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx, std::size_t a_option)
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx)
 	{
 		if (a_light) {
 			std::lock_guard l{ gNewLock };
-			gNew.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_fx, a_option });
+			gNew.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_fx });
 		}
 	}
 
@@ -167,7 +151,6 @@ namespace Plugin
 				auto& s = gSeen[m.light.get()];
 				s.light = m.light;
 				s.fx = m.fx;
-				s.option = m.option;
 			}
 			gNew.clear();
 		}
@@ -190,11 +173,9 @@ namespace Plugin
 				if (!OursByObject(niLight, base)) {
 					continue;
 				}
-				it = gSeen.emplace(niLight, Seen{ .light = RE::NiPointer<RE::NiLight>(niLight), .tint = TintOf(base),
-												.option = OptionOfSeen(niLight, base) })
-						 .first;
+				it = gSeen.emplace(niLight, Seen{ .light = RE::NiPointer<RE::NiLight>(niLight), .tint = TintOf(base) }).first;
 			}
-			Apply(niLight, it->second, scale * OptionBrightness(it->second.option), reach, dt);
+			Apply(niLight, it->second, scale, reach, dt);
 		}
 		// a light only this table still holds has left the game
 		if ((++gFrame & 15) == 0) {
