@@ -232,7 +232,7 @@ namespace Plugin
 						live.heldOut = false;
 					}
 					DressHandLight(live.light.get(), *h);
-					RememberLight(live.light.get(), HandFxOf(h->key), h->option);
+					RememberLight(live.light.get(), HandFxOf(h->key));
 				} else if (!live.heldOut) {
 					live.light->SetAppCulled(true);
 					live.heldOut = true;

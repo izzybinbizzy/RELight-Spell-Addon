@@ -282,7 +282,7 @@ namespace Plugin
 		}
 		const auto* tint = TintOf(base);
 		const auto& colour = tint ? *tint : s->color;
-		const float fade = s->fade * Brightness() * OptionBrightness(s->option);
+		const float fade = s->fade * Brightness();
 		const float reach = s->radius * Reach();
 		for (const auto& at : s->positions) {
 			RE::NiPointLight* light = nullptr;
@@ -319,7 +319,7 @@ namespace Plugin
 			} else if (!off && !hidden && v.light->GetAppCulled()) {
 				v.light->SetAppCulled(false);
 			}
-			const float fade = v.stream->fade * scale * OptionBrightness(v.stream->option);
+			const float fade = v.stream->fade * scale;
 			const float reach = v.stream->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
 				auto& d = v.light->GetLightRuntimeData();

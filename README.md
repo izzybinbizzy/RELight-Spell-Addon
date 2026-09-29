@@ -5,7 +5,7 @@ Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `LICENSE`.
 Ships with RELight - Spell Addon and is required by it.
 
 - **Brightness** and **Reach** - sliders for this mod's lights only.
-- **A switch and a brightness slider for each option you installed** - untick one and its lights go out; mod patches have
+- **A switch for each option you installed** - untick one and its lights go out; mod patches have
   their own page, by category and author.
 - **Travelling lights** for sprays, breath shouts and beams, which RE::Light cannot do from a config.
 - **Held weapon lights** - a staff or weapon this mod lights on the ground carries its light in your hand while it is drawn,
