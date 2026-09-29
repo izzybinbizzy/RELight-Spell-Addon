@@ -50,7 +50,7 @@ namespace Plugin
 		RE::NiPointLight* CloneMaster()
 		{
 			if (!gMaster) {
-				auto* fresh = RE::NiPointLight::Create();
+				const RE::NiPointer<RE::NiPointLight> fresh(RE::NiPointLight::Create());  // let go once cloned
 				if (!fresh) {
 					return nullptr;
 				}
