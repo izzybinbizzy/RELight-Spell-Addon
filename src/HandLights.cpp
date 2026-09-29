@@ -147,6 +147,14 @@ namespace Plugin
 				}
 				gTargets.push_back({ effect, mine, std::move(key) });
 			}
+			// an effect whose casting art moved to a mesh no layer lights is no target now: it gets its own light back,
+			// or it would keep our light for the art it no longer wears
+			for (const auto& [effect, light] : own) {
+				if (ours.contains(effect->data.light) &&
+					std::ranges::none_of(gTargets, [effect](const Target& a_t) { return a_t.effect == effect; })) {
+					effect->data.light = light;
+				}
+			}
 			return byPath;
 		}
 	}
