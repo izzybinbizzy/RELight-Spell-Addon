@@ -111,16 +111,6 @@ namespace Plugin
 			return dh && (dh->LookupLoadedModByName(a_name) || dh->LookupLoadedLightModByName(a_name));
 		}
 
-		// VAER's ART ONLY on Banish - measured in his game 2026-09-28 late night, two A/B builds: with VAER's Banish shader
-		// (L3sEnchPurpleBanFXShader, a rune membrane) the blade showed blocky blue rectangles; with neither form Banish had no swirl;
-		// with VAER's swirl art and the effect's own shader the swirl is back and the blocks are gone. So these take the art only.
-		constexpr std::string_view kArtOnly[] = { "EnchBanishFFContact", "MAG_EnchBanishFFContact01" };
-
-		[[nodiscard]] bool ArtOnly(std::string_view a_name)
-		{
-			return std::ranges::find(kArtOnly, a_name) != std::end(kArtOnly);
-		}
-
 		// the VAER Reborn option's data file is there only when the player ticked the option in the installer
 		[[nodiscard]] bool VaerOptionInstalled()
 		{
@@ -147,24 +137,21 @@ namespace Plugin
 		// 1. VAER's own effects: a plugin that is not loaded (a Creation Club file he does not have) is simply skipped
 		std::size_t back = 0, already = 0, absent = 0;
 		for (const auto& c : kVaerOwn) {
-			const bool artOnly = ArtOnly(c.name);
-			auto*      effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
-			auto*      art = c.artPlugin.empty() ? nullptr : dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
-			auto*      shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
+			auto* effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
+			auto* art = c.artPlugin.empty() ? nullptr : dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
+			auto* shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
 			if (!effect || (!c.artPlugin.empty() && !art) || !shader) {
 				++absent;
 				continue;
 			}
-			if ((c.artPlugin.empty() || effect->data.enchantEffectArt == art) && (artOnly || effect->data.enchantShader == shader)) {
+			if ((c.artPlugin.empty() || effect->data.enchantEffectArt == art) && effect->data.enchantShader == shader) {
 				++already;
 				continue;
 			}
 			if (!c.artPlugin.empty()) {
 				effect->data.enchantEffectArt = art;
 			}
-			if (!artOnly) {
-				effect->data.enchantShader = shader;
-			}
+			effect->data.enchantShader = shader;
 			++back;
 			SKSE::log::info("[VAER] {} had lost VAER's swirl; given back", c.name);
 		}
@@ -192,18 +179,6 @@ namespace Plugin
 		// 2. Thaumaturgy's own copies
 		std::size_t set = 0, missing = 0;
 		for (const auto& c : kSwirlCopies) {
-			if (ArtOnly(c.name)) {
-				auto* e = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
-				auto* a = dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
-				if (e && a) {
-					e->data.enchantEffectArt = a;
-					++set;
-					SKSE::log::info("[VAER] {} now wears VAER's swirl {:08X}, its own shader kept", c.name, a->GetFormID());
-				} else {
-					++missing;
-				}
-				continue;
-			}
 			auto* effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
 			auto* art = dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
 			auto* shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
