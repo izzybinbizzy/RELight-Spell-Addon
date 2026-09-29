@@ -157,6 +157,21 @@ namespace Plugin
 		}
 		SKSE::log::info("VAER: {} of VAER's effect(s) given their swirl back, {} still had it, {} not in this load order", back, already,
 			absent);
+		// his call 2026-09-28 late night: two of VAER's shaders (Stendarr's Hammer, Dawnfang's Bloodthirst) name their fill
+		// texture "....dds.dds", a file that does not exist, so they draw nothing - point any such name at the real file
+		std::size_t typos = 0;
+		for (const auto& c : kVaerOwn) {
+			auto* shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
+			const char* tex = shader ? shader->fillTexture.textureName.c_str() : nullptr;
+			const std::size_t len = tex ? std::strlen(tex) : 0;
+			if (len > 8 && _stricmp(tex + len - 8, ".dds.dds") == 0) {
+				const std::string fixed(tex, len - 4);
+				SKSE::log::info("[VAER] {}: shader texture {} -> {}", c.name, tex, fixed);
+				shader->fillTexture.textureName = fixed;
+				++typos;
+			}
+		}
+		SKSE::log::info("VAER: {} shader texture name(s) ending .dds.dds fixed", typos);
 		if (!Loaded("Thaumaturgy.esp")) {
 			SKSE::log::info("VAER on Thaumaturgy: Thaumaturgy.esp is not loaded; nothing more to do");
 			return;
