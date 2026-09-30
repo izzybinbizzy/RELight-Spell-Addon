@@ -138,25 +138,9 @@ namespace
 		{
 			auto* root = func(a_this, a_backgroundLoading);
 			if (root) {
-				// ⚠ 2026-09-29, the Lightning Bolt freeze (a race - Truman's call): Load3D also runs on the game's loader
-				// threads, and a travelling light attached and handed to the shadow scene node from there changes the scene's
-				// light list while the main thread walks it. So the light is hung on the main thread, one frame later, and only
-				// if this 3D is still the object's own by then.
-				if (Plugin::StreamOf(a_this->GetBaseObject())) {
-					if (auto* tasks = SKSE::GetTaskInterface()) {
-						tasks->AddTask([handle = a_this->CreateRefHandle(), keep = RE::NiPointer<RE::NiAVObject>(root)]() {
-							const auto ref = handle.get();
-							if (!ref || ref->Get3D() != keep.get()) {
-								return;
-							}
-							Plugin::HangStreamLights(ref.get(), keep.get());
-							RE::BSSpinLockGuard lock(gLock);
-							if (PlayerSneaking()) {
-								CullTree(keep.get());
-							}
-						});
-					}
-				}
+				// the travelling lights go on first, so that sneaking below puts them out with everything else (their node
+				// attach is queued to the game's task queue - Streams.cpp MakeLight)
+				Plugin::HangStreamLights(a_this, root);
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);

@@ -41,6 +41,7 @@ namespace Plugin
 			RE::FormID                      owner{ 0 };         // the reference whose 3D carries it
 			float                           written{ -1.0f };   // the fade we last wrote
 			float                           wroteReach{ -1.0f };  // the reach we last wrote
+			bool                            attached{ false };    // the queued node attach has run (it had a parent once)
 		};
 
 		std::mutex                                      gLock;
@@ -85,9 +86,15 @@ namespace Plugin
 		// the object the light hangs on has left the game. A finished bolt can leave its node tree alive with our light
 		// still parented to it (measured 2026-09-24: Thunderbolt's light stayed lit after the bolt), so the light's parent
 		// alone does not say the object left. The release hook in main.cpp is the main route; this catches what it misses.
-		[[nodiscard]] bool OwnerGone(const Live& a_v)
+		// ⚠ 2026-09-29: the attach is queued (MakeLight), so a light with no parent YET is waiting for it, not orphaned.
+		[[nodiscard]] bool OwnerGone(Live& a_v)
 		{
-			if (!a_v.light || !a_v.light->parent) {
+			if (!a_v.light) {
+				return true;
+			}
+			if (a_v.light->parent) {
+				a_v.attached = true;
+			} else if (a_v.attached) {
 				return true;
 			}
 			const auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_v.owner);
@@ -197,7 +204,7 @@ namespace Plugin
 	{
 		// one travelling light, made the way ReLight makes its lights, registered with the shadow scene node
 		[[nodiscard]] RE::BSLight* MakeLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
-			float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
+			float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made, bool a_queue)
 		{
 			auto* light = CloneMaster();
 			if (!light) {
@@ -215,9 +222,17 @@ namespace Plugin
 			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
 			light->local.translate = a_at;
 			light->local.scale = 1.0f;
-			a_parent->AttachChild(light, true);
-			RE::NiUpdateData update{};
-			light->Update(update);
+			const RE::NiPointer<RE::NiPointLight> hold(light);   // freed here if it is never registered
+			// ⚠ 2026-09-29, the Lightning Bolt freeze (a race - Truman's call and his method): Load3D also runs on the game's
+			// loader threads, and a child attached straight onto the beam's live node tree from there raced the main thread.
+			// A travelling light's attach goes through the game's own task queue, which does it on the main thread
+			// (TaskQueueInterface::QueueNodeAttach, after the light is registered). A held light (Held.cpp) is made on the main
+			// thread and attaches at once, as before.
+			if (!a_queue) {
+				a_parent->AttachChild(light, true);
+				RE::NiUpdateData update{};
+				light->Update(update);
+			}
 			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
 			params.dynamic = true;
 			params.shadowLight = false;
@@ -234,8 +249,17 @@ namespace Plugin
 			params.lensFlareData = nullptr;
 			auto* bs = a_scene->AddLight(light, params);
 			if (!bs) {
-				a_parent->DetachChild(light);
+				if (!a_queue) {
+					a_parent->DetachChild(light);
+				}
 				return nullptr;
+			}
+			if (a_queue) {
+				if (auto* queue = RE::TaskQueueInterface::GetSingleton()) {
+					queue->QueueNodeAttach(light, a_parent);
+				} else {
+					a_parent->AttachChild(light, true);
+				}
 			}
 			a_made = light;
 			return bs;
@@ -251,7 +275,7 @@ namespace Plugin
 	RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade, float a_reach,
 		RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
 	{
-		return MakeLight(a_s, a_colour, a_at, a_fade, a_reach, a_parent, a_scene, a_made);
+		return MakeLight(a_s, a_colour, a_at, a_fade, a_reach, a_parent, a_scene, a_made, false);   // Held.cpp: the main thread
 	}
 
 	void HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
@@ -286,7 +310,7 @@ namespace Plugin
 		const float reach = s->radius * Reach();
 		for (const auto& at : s->positions) {
 			RE::NiPointLight* light = nullptr;
-			auto*             bs = MakeLight(*s, colour, at, fade, reach, parent, scene, light);
+			auto*             bs = MakeLight(*s, colour, at, fade, reach, parent, scene, light, true);
 			if (!bs) {
 				SKSE::log::warn("[STREAM] {}: the light could not be made or registered", s->key);
 				return;
