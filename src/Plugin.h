@@ -156,16 +156,12 @@ namespace Plugin
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
 	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
 
-	// ------------------------------------------------------------------ Streams.cpp: lights that travel
-	void                      HangStreamLights(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
-	void                      UpdateStreamLights();
-	void                      DropStreamLights(const RE::TESObjectREFR* a_ref);  // its 3D is being taken apart
-	[[nodiscard]] std::size_t LiveStreamLights();
-	void                      TakeStreamProjectileLights();  // once, after the data is read
-	void                      ClaimSprayLights();            // once, after the data is read, BEFORE MakeHandLights
-	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
-	void                      ApplyStreamProjectileLights(bool a_log);  // after any switch
-	// one light made and registered the travelling-light way (ReLight's method); nullptr when it could not be
+	// ------------------------------------------------------------------ Streams.cpp: sprays, beams, breath shouts
+	void               ClaimSprayLights();  // once, after the data is read, BEFORE MakeHandLights
+	[[nodiscard]] bool IsSprayLight(const RE::TESObjectLIGH* a_light);
+	// the light RE::Light (or the game) makes for a projectile a `stream` line names: ours for the sliders
+	[[nodiscard]] bool IsStreamObject(const RE::TESObjectREFR* a_ref);
+	// one light made and registered the ReLight way, on the main thread (Held.cpp); nullptr when it could not be
 	[[nodiscard]] RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
 		float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made);
 

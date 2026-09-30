@@ -24,7 +24,6 @@ namespace Plugin
 			if (auto* tasks = SKSE::GetTaskInterface()) {
 				tasks->AddTask([]() {
 					ApplyHandLights(true);
-					ApplyStreamProjectileLights(true);
 				});
 			}
 		}
@@ -296,8 +295,8 @@ namespace Plugin
 
 			DrawSwitches(Page::kSettings);
 			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled("%zu data file(s), %zu travelling light(s) and %zu held weapon light(s) right now, %zu spell(s) with a hand light",
-				DataFiles(), LiveStreamLights(), LiveHeldLights(), HandEffects());
+			ImGuiMCP::TextDisabled("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light",
+				DataFiles(), LiveHeldLights(), HandEffects());
 		}
 
 		// his ask, 2026-09-23: the mod patches on a page of their own
