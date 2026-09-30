@@ -58,9 +58,13 @@ namespace Plugin
 		}
 
 		// RE::Light hangs its enchantment light on this weapon in the hand when an effect of its enchantment (the instance's
-		// own, else the weapon's) carries an enchantment shader a config of ours names
+		// own, else the weapon's) carries an enchantment shader a config of ours names. A bound weapon is never lit that way (its
+		// shader is ours, yet RE::Light puts no light on it), so its held line lights it
 		[[nodiscard]] bool EnchantmentLit(RE::Actor* a_actor, bool a_left, const RE::TESObjectWEAP* a_weapon)
 		{
+			if (a_weapon->IsBound()) {
+				return false;
+			}
 			const auto* entry = a_actor->GetEquippedEntryData(a_left);
 			const auto* ench = entry ? entry->GetEnchantment() : nullptr;
 			if (!ench) {
