@@ -57,14 +57,10 @@ namespace Plugin
 			return type == T::kTwoHandSword || type == T::kTwoHandAxe || type == T::kBow || type == T::kCrossbow;
 		}
 
-		// RE::Light hangs its enchantment light on this weapon in the hand when an effect of its enchantment (the instance's
-		// own, else the weapon's) carries an enchantment shader a config of ours names. A bound weapon is never lit that way (its
-		// shader is ours, yet RE::Light puts no light on it), so its held line lights it
+		// RE::Light may hang its enchantment light on this weapon in the hand: an effect of its enchantment (the instance's own,
+		// else the weapon's) carries an enchantment shader a config of ours names
 		[[nodiscard]] bool EnchantmentLit(RE::Actor* a_actor, bool a_left, const RE::TESObjectWEAP* a_weapon)
 		{
-			if (a_weapon->IsBound()) {
-				return false;
-			}
 			const auto* entry = a_actor->GetEquippedEntryData(a_left);
 			const auto* ench = entry ? entry->GetEnchantment() : nullptr;
 			if (!ench) {
@@ -76,6 +72,23 @@ namespace Plugin
 			return std::ranges::any_of(ench->effects, [](const RE::Effect* a_e) {
 				return a_e && a_e->baseEffect && OptionOfShader(a_e->baseEffect->data.enchantShader) != kNone;
 			});
+		}
+
+		// ...and has it? Measured 2026-09-30 on a Bound Sword: some games it does (its "RL" light, fadeAmount 5, on the weapon),
+		// others none at all (after a load, in a long session) - so the held line lights the weapon whenever that light is not
+		// there, in this view, and steps aside the frame it is
+		[[nodiscard]] bool ReLightOn(RE::NiAVObject* a_node)
+		{
+			bool found = false;
+			RE::BSVisit::TraverseScenegraphLights(a_node, [&found](RE::NiPointLight* a_light) {
+				const char* n = a_light ? a_light->name.c_str() : nullptr;
+				if (n && n[0] == 'R' && n[1] == 'L' && a_light->fadeAmount == 5.0f) {
+					found = true;
+					return RE::BSVisit::BSVisitControl::kStop;
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			return found;
 		}
 
 		// the drawn weapon's own 3D in this view, parented to the hand node - the config's position is relative to the mesh.
@@ -125,10 +138,10 @@ namespace Plugin
 				auto* form = a_actor->GetEquippedObject(left);
 				auto* weapon = form ? form->As<RE::TESObjectWEAP>() : nullptr;
 				// a weapon held in both hands is one weapon: it is lit once, from the right hand
-				if (!weapon || (left && weapon == a_actor->GetEquippedObject(false) && BothHands(weapon)) ||
-					EnchantmentLit(a_actor, left, weapon)) {
+				if (!weapon || (left && weapon == a_actor->GetEquippedObject(false) && BothHands(weapon))) {
 					continue;
 				}
+				const bool enchanted = EnchantmentLit(a_actor, left, weapon);
 				for (const bool fp : { false, true }) {
 					if (fp && !isPlayer) {
 						break;
@@ -137,7 +150,7 @@ namespace Plugin
 					if (!held || !OptionLit(held->option)) {
 						continue;
 					}
-					if (auto* node = NodeFor(a_actor, left, fp, weapon)) {
+					if (auto* node = NodeFor(a_actor, left, fp, weapon); node && !(enchanted && ReLightOn(node))) {
 						a_out.push_back({ a_actor, left, fp, held, node });
 					}
 				}
