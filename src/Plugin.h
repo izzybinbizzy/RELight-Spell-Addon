@@ -121,7 +121,7 @@ namespace Plugin
 	void                      ApplyHandLights(bool a_log);             // after any switch that decides who lights a hand
 	[[nodiscard]] const Hand* HandOfLight(const RE::TESObjectLIGH* a_light);  // nullptr unless it is one of ours, in use
 	void                      DressHandLight(RE::NiLight* a_light, const Hand& a_hand);
-	void                      NoteHandLight(RE::NiLight* a_light, const Hand& a_hand);  // a lit hand light, so a menu change reaches it
+	void                      NoteHandLight(RE::NiLight* a_light, const std::string& a_key);  // a lit hand light, so a menu change reaches it (main thread)
 	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);            // put out by a switch until the next cast
 	[[nodiscard]] std::size_t HandLightsMade();
 	[[nodiscard]] std::size_t HandEffects();

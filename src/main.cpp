@@ -81,6 +81,30 @@ namespace
 		gCulled.clear();
 	}
 
+	// on the main thread only (an SKSE task from the hook below): a new spell light goes into our lists, and the lists
+	// let go of what has left the game - so the last reference to a light is only ever dropped on the main thread
+	void NoteMagicLight(const RE::NiPointer<RE::NiLight>& a_light, const std::string& a_handKey, bool a_ours)
+	{
+		if (!a_light || Gone(a_light)) {
+			return;   // the game let go of it before the main thread came round: nothing to note (freed right here)
+		}
+		RE::BSSpinLockGuard lock(gLock);
+		if ((++gMade & 63) == 0) {
+			std::erase_if(gMagicLights, [](const auto& a_kv) { return Gone(a_kv.second); });
+		}
+		gMagicLights.try_emplace(a_light.get(), a_light);
+		if (!a_handKey.empty()) {
+			Plugin::NoteHandLight(a_light.get(), a_handKey);
+		}
+		// a hand light of ours, a spray light RE::Light made from our config, and the light of a beam or breath
+		// projectile our data names (RE::Light lights it; Streams.cpp) are ours for the sliders
+		if (a_ours) {
+			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey));
+		}
+		// a light made while the player was already sneaking was never made (the hook returns nullptr); one made just
+		// before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
+	}
+
 	struct MagicLight
 	{
 		static RE::NiPointLight* thunk(RE::TESObjectLIGH* a_light, RE::TESObjectREFR* a_ref, RE::NiNode* a_node,
@@ -96,21 +120,22 @@ namespace
 			if (hand) {
 				made = netimmerse_cast<RE::NiPointLight*>(
 					a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
-				Plugin::DressHandLight(made, *hand);
-				Plugin::NoteHandLight(made, *hand);
+				Plugin::DressHandLight(made, *hand);   // only writes the fresh light's own fields
 			} else {
 				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 			}
+			// ⚠ 2026-09-29, the Lightning Bolt freeze (found with Truman, by switching hooks off one at a time): this hook
+			// also runs on the game's loader and job threads. It used to keep the light in our lists right here and, every
+			// 64th light, let go of lights nothing else held - so a light could be FREED on a loader thread while the game's
+			// threads walked the scene. RE::Light's own hook keeps nothing (it marks the light and returns); ours now hands
+			// the light to the main thread (an SKSE task, Truman's route for main-thread work), where every list of ours is
+			// filled and emptied. The task holds the light until then, and lets go of it on the main thread too.
 			if (made) {
-				RE::BSSpinLockGuard lock(gLock);
-				if ((++gMade & 63) == 0) {
-					std::erase_if(gMagicLights, [](const auto& a_kv) { return Gone(a_kv.second); });
-				}
-				gMagicLights.try_emplace(made, made);
-				// a hand light of ours, a spray light RE::Light made from our config, and the light of a beam or breath
-				// projectile our data names (RE::Light lights it; Streams.cpp) are ours for the sliders
-				if (hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref)) {
-					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
+				const bool ours = hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref);
+				if (auto* tasks = SKSE::GetTaskInterface()) {
+					tasks->AddTask([light = RE::NiPointer<RE::NiLight>(made), key = hand ? hand->key : std::string{}, ours]() {
+						NoteMagicLight(light, key, ours);
+					});
 				}
 			}
 			return made;
