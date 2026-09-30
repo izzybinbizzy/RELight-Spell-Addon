@@ -11,7 +11,7 @@
 //   Settings.cpp    the settings file
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
-//   Streams.cpp     lights that travel with sprays, breath shouts and beams
+//   Streams.cpp     sprays, breath shouts and beams: RE::Light lights them, the menu reaches their lights
 //   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
@@ -107,8 +107,9 @@ namespace
 					std::erase_if(gMagicLights, [](const auto& a_kv) { return Gone(a_kv.second); });
 				}
 				gMagicLights.try_emplace(made, made);
-				// a hand light of ours, and a spray light RE::Light made from our config, are ours for the sliders
-				if (hand || Plugin::IsSprayLight(a_light)) {
+				// a hand light of ours, a spray light RE::Light made from our config, and the light of a beam or breath
+				// projectile our data names (RE::Light lights it; Streams.cpp) are ours for the sliders
+				if (hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref)) {
 					Plugin::RememberLight(made, hand ? Plugin::HandFxOf(hand->key) : nullptr);
 				}
 			}
@@ -138,9 +139,6 @@ namespace
 		{
 			auto* root = func(a_this, a_backgroundLoading);
 			if (root) {
-				// the travelling lights go on first, so that sneaking below puts them out with everything else (their node
-				// attach is queued to the game's task queue - Streams.cpp MakeLight)
-				Plugin::HangStreamLights(a_this, root);
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);
@@ -155,23 +153,6 @@ namespace
 		static void Install()
 		{
 			func = REL::Relocation<std::uintptr_t>(T::VTABLE[0]).write_vfunc(0x6A, thunk);
-		}
-	};
-
-	// a projectile's 3D is taken apart: its travelling lights leave with it (Illuminated's route; the per-frame check in
-	// Streams.cpp alone missed a finished Thunderbolt, whose light stayed lit - measured 2026-09-24)
-	template <class T>
-	struct Release3D
-	{
-		static void thunk(T* a_this)
-		{
-			Plugin::DropStreamLights(a_this);
-			func(a_this);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-		static void Install()
-		{
-			func = REL::Relocation<std::uintptr_t>(T::VTABLE[0]).write_vfunc(0x6B, thunk);
 		}
 	};
 
@@ -192,7 +173,6 @@ namespace
 			// after the sneaking pass, in the same frame, so a light given back above and then held out
 			// here never reaches the screen in between
 			Plugin::UpdateOptionLights();
-			Plugin::UpdateStreamLights();
 			Plugin::UpdateHeldLights();
 			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
 			Plugin::UpdateBrightness(a_delta);
@@ -239,17 +219,9 @@ namespace
 		Load3D<RE::BarrierProjectile>::Install();
 		Load3D<RE::Explosion>::Install();
 		Load3D<RE::Hazard>::Install();
-		// only the classes a stream can hang on
-		Release3D<RE::MissileProjectile>::Install();
-		Release3D<RE::ArrowProjectile>::Install();
-		Release3D<RE::GrenadeProjectile>::Install();
-		Release3D<RE::BeamProjectile>::Install();
-		Release3D<RE::FlameProjectile>::Install();
-		Release3D<RE::ConeProjectile>::Install();
-		Release3D<RE::BarrierProjectile>::Install();
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
 		PlayerUpdate::func = vtbl.write_vfunc(0xAD, PlayerUpdate::thunk);
-		SKSE::log::info("projectile, explosion and hazard loads, projectile unloads and the player update hooked after every plugin loaded");
+		SKSE::log::info("projectile, explosion and hazard loads and the player update hooked after every plugin loaded");
 	}
 }
 
@@ -275,7 +247,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::ClaimSprayLights();  // before the hand lights remember each effect's own light
 			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
-			Plugin::TakeStreamProjectileLights();
 			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
 			InstallLate();
 			Plugin::RegisterMenu();

@@ -3,8 +3,8 @@
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // Our own Brightness and Reach sliders. RE::Light's multiplier scales every RE::Light light in the game; these touch
-// only this mod's lights (RE::Light's lights on objects our data names, our hand lights and spray lights; Streams.cpp
-// scales its own). Under inverse square lighting reach = sqrt(K * fade / cutoff - size²), so:
+// only this mod's lights (RE::Light's lights on objects our data names, our hand lights, spray lights and the lights of
+// the beam and breath projectiles our `stream` lines name). Under inverse square lighting reach = sqrt(K * fade / cutoff - size²), so:
 //     Brightness  scales fade and cutoff by one ratio  -> the peak moves, the reach is held
 //     Reach       scales the radius, cutoff re-derived -> the reach moves, the peak is held
 // RE::Light rewrites fade every frame on a light that flickers or pulses, so each light remembers the fade we last
