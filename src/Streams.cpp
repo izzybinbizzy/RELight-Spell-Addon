@@ -1,6 +1,6 @@
 // RELight - Spell Addon - SKSE plugin
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // Lights that travel - sprays, breath shouts and beams. A RE::Light config cannot bind a light to a named node
 // (its `attachPath` is child indices), so the build writes these as `stream` lines and this hangs the lights.

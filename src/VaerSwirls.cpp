@@ -1,6 +1,6 @@
 // RELight - Spell Addon - SKSE plugin
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // VAER Reborn's swirls, two passes, once at data loaded, only when VAEReborn.esp is loaded and the VAER Reborn option of the
 // Weapons download is installed (its enchantment lights are keyed by VAER's shaders, so without it a swap would leave the

@@ -3,7 +3,7 @@
 //
 // This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 // General Public License as published by the Free Software Foundation, either version 3 of the License,
-// or (at your option) any later version. See LICENSE.txt.
+// or (at your option) any later version. See LICENSE.
 //
 // THE FILES, AND WHAT EACH ONE IS FOR
 //   main.cpp        this file - the hooks, and spell lights going out while you sneak
@@ -138,8 +138,25 @@ namespace
 		{
 			auto* root = func(a_this, a_backgroundLoading);
 			if (root) {
-				// the travelling lights go on first, so that sneaking below puts them out with everything else
-				Plugin::HangStreamLights(a_this, root);
+				// ⚠ 2026-09-29, the Lightning Bolt freeze (a race - Truman's call): Load3D also runs on the game's loader
+				// threads, and a travelling light attached and handed to the shadow scene node from there changes the scene's
+				// light list while the main thread walks it. So the light is hung on the main thread, one frame later, and only
+				// if this 3D is still the object's own by then.
+				if (Plugin::StreamOf(a_this->GetBaseObject())) {
+					if (auto* tasks = SKSE::GetTaskInterface()) {
+						tasks->AddTask([handle = a_this->CreateRefHandle(), keep = RE::NiPointer<RE::NiAVObject>(root)]() {
+							const auto ref = handle.get();
+							if (!ref || ref->Get3D() != keep.get()) {
+								return;
+							}
+							Plugin::HangStreamLights(ref.get(), keep.get());
+							RE::BSSpinLockGuard lock(gLock);
+							if (PlayerSneaking()) {
+								CullTree(keep.get());
+							}
+						});
+					}
+				}
 				RE::BSSpinLockGuard lock(gLock);
 				if (PlayerSneaking()) {
 					CullTree(root);
