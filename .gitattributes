@@ -1,0 +1,2 @@
+# shell scripts run under bash (CI, WSL): LF on every checkout
+*.sh text eol=lf
