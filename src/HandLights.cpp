@@ -281,7 +281,8 @@ namespace Plugin
 		}
 	}
 
-	void NoteHandLight(RE::NiLight* a_light, const Hand& a_hand)
+	// main thread only (main.cpp NoteMagicLight): the erase below can drop a light's last reference, which frees it
+	void NoteHandLight(RE::NiLight* a_light, const std::string& a_key)
 	{
 		if (!a_light) {
 			return;
@@ -290,7 +291,7 @@ namespace Plugin
 		if (gLive.size() >= 64) {
 			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
 		}
-		gLive.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_hand.key });
+		gLive.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_key });
 	}
 
 	bool HandLightHeldOut(const RE::NiLight* a_light)
