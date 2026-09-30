@@ -1,6 +1,6 @@
 // RELight - Spell Addon - SKSE plugin
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the

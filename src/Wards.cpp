@@ -1,6 +1,6 @@
 // RELight - Spell Addon - SKSE plugin
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // The wards: one dome per ward, and the colour pick. Everything here steps down when DynamicWards.dll is loaded, which
 // dresses every ward itself (his call, 2026-09-24: "have the whole ward system step down if dynamic wards is present").

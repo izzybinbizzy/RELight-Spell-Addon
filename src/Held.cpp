@@ -1,6 +1,6 @@
 // RELight - Spell Addon - SKSE plugin
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // A weapon's own light while it is drawn. RE::Light lights a weapon's mesh only where the weapon is a reference (on the
 // ground, on a rack) and reaches a weapon in the hand only through its enchantment shader. The build writes the light each

@@ -23,3 +23,7 @@ Panel and are saved to `SKSE\Plugins\RelightSpellAddon.ini`.
 The travelling lights are made the way ReLight by Truman makes its lights, with his permission.
 
 Needs SKSE and RE::Light. Without SKSE Menu Framework there is no menu and the settings file still applies.
+
+`src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from
+[SKSE-Menu-Framework-3-Example](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-Example), MIT licensed
+(see `src/SKSEMenuFramework.LICENSE.txt`).
