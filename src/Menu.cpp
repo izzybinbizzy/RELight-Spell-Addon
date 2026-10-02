@@ -12,6 +12,7 @@
 #include "Plugin.h"
 
 #include "SKSEMenuFramework.h"
+#include "Translation.h"
 
 namespace Plugin
 {
@@ -48,6 +49,8 @@ namespace Plugin
 		// check marks and slider grips, frames a touch warmer when hovered. Scoped to our pages, so no other mod's changes.
 		constexpr ImGuiMCP::ImVec4 kGold{ 1.0f, 0.86f, 0.55f, 1.0f };
 		constexpr ImGuiMCP::ImVec4 kEmber{ 0.93f, 0.72f, 0.45f, 0.85f };
+		// every shown line goes through T(): Data\SKSE\Plugins\RelightSpellAddon\Translation.json (relightgen.py writes the English one)
+		using Translation::T;
 
 		// his call, 2026-09-27: as Illuminated does - when CS Light is loaded, say which of its options light the same
 		// things a second time (the option names are CS Light's own installer's, spelling included)
@@ -97,7 +100,7 @@ namespace Plugin
 				IM_COL32(255, 186, 90, 0), IM_COL32(255, 186, 90, 0), IM_COL32(255, 186, 90, 46));
 			ImDrawListManager::AddLine(dl, ImVec2{ at.x, at.y + h }, ImVec2{ at.x + w * 0.55f, at.y + h }, IM_COL32(255, 205, 120, 110), 1.0f);
 			Dummy(ImVec2{ 0.0f, 3.0f });
-			TextColored(kGold, "  %s", a_text);
+			TextColored(kGold, "  %s", T(a_text));
 			Dummy(ImVec2{ 0.0f, 4.0f });
 		}
 
@@ -158,7 +161,7 @@ namespace Plugin
 			for (std::size_t n = 0; n < order.size(); ++n) {
 				const auto i = order[n];
 				auto& o = opts[i];
-				static const std::string kPackHeading = "Mod Patches (also on the Patches page)";
+				static const std::string kPackHeading = T("Mod Patches (also on the Patches page)");
 				const auto& heading = n >= packsFrom             ? kPackHeading :
 				                      withVanilla.contains(i)    ? shown :
 				                      grouped                    ? (o.category.empty() ? o.download : o.category) :
@@ -166,13 +169,13 @@ namespace Plugin
 				if (heading != shown) {
 					shown = heading;
 					author.clear();
-					GlowHeading(shown.c_str());
+					GlowHeading(shown.c_str());  // GlowHeading translates
 				}
 				if (grouped && o.author != author) {
 					author = o.author;
 					if (!author.empty()) {
 						ImGuiMCP::Spacing();
-						ImGuiMCP::TextColored(kEmber, "%s", author.c_str());
+						ImGuiMCP::TextColored(kEmber, "%s", T(author.c_str()));
 					}
 				}
 				const bool indented = grouped && !o.author.empty();  // an author's mods sit under the author's name
@@ -181,13 +184,13 @@ namespace Plugin
 				}
 				ImGuiMCP::PushID(static_cast<int>(i));
 				bool on = o.on;
-				if (ImGuiMCP::Checkbox(o.name.c_str(), &on)) {
+				if (ImGuiMCP::Checkbox(T(o.name.c_str()), &on)) {
 					SetOptionOn(i, on);
 					SaveSettings();
 					RehandSoon();
 				}
 				if (!o.desc.empty()) {  // his call, 2026-09-26: a broad word on what each switch lights
-					ImGuiMCP::SetItemTooltip("%s", o.desc.c_str());
+					ImGuiMCP::SetItemTooltip("%s", T(o.desc.c_str()));
 				}
 				std::size_t lit = 0, heldOut = 0;  // every file of a pack
 				for (const auto& m : opts) {
@@ -198,11 +201,11 @@ namespace Plugin
 				}
 				ImGuiMCP::SameLine();
 				if (!o.on) {
-					ImGuiMCP::TextDisabled("off - %zu held out", heldOut);
+					ImGuiMCP::TextDisabled(T("off - %zu held out"), heldOut);
 				} else if (o.weapons && !WeaponLightsOn()) {
-					ImGuiMCP::TextDisabled("Weapon lights off - %zu held out", heldOut);
+					ImGuiMCP::TextDisabled(T("Weapon lights off - %zu held out"), heldOut);
 				} else {
-					ImGuiMCP::TextDisabled("%zu lit", lit);
+					ImGuiMCP::TextDisabled(T("%zu lit"), lit);
 				}
 				ImGuiMCP::PopID();
 				if (indented) {
@@ -215,69 +218,69 @@ namespace Plugin
 		{
 			const GlowStyle style;
 			if (const auto* cs = CSLightLoaded()) {
-				ImGuiMCP::TextColored(kGold, "%s is loaded.", cs);
-				ImGuiMCP::TextWrapped("%s", "RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice.");
+				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
+				ImGuiMCP::TextWrapped("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
 				ImGuiMCP::Separator();
 			}
 			GlowHeading("Lights");
 			int b = BrightnessPercent();
-			if (ImGuiMCP::SliderInt("Brightness", &b, 10, 200, "%d%%")) {
+			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);
 			}
 			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
 				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
-				"is what the old Reduced download was. How far they carry does not change - that is the slider below.");
+				T("How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
+				"is what the old Reduced download was. How far they carry does not change - that is the slider below."));
 
 			int r = ReachPercent();
-			if (ImGuiMCP::SliderInt("Reach", &r, 50, 150, "%d%%")) {
+			if (ImGuiMCP::SliderInt(T("Reach"), &r, 50, 150, "%d%%")) {
 				SetReachPercent(r);
 			}
 			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
 				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
-				"that is the slider above.");
+				T("How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
+				"that is the slider above."));
 
 			bool sneak = SneakOn();
-			if (ImGuiMCP::Checkbox("Lights off while sneaking", &sneak)) {
+			if (ImGuiMCP::Checkbox(T("Lights off while sneaking"), &sneak)) {
 				SetSneakOn(sneak);
 				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
-				"hazards - and the ones already lit go out. They come back when you stand up.");
+				T("While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
+				"hazards - and the ones already lit go out. They come back when you stand up."));
 
 			bool hands = HandLightsOn();
-			if (ImGuiMCP::Checkbox("Hand lights", &hands)) {
+			if (ImGuiMCP::Checkbox(T("Hand lights"), &hands)) {
 				SetHandLightsOn(hands);
 				SaveSettings();
 				RehandSoon();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding.");
+				T("A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding."));
 
 			// his call, 2026-09-26: "a toggle for weapon lights just like hand lights and right under it"
 			bool weapons = WeaponLightsOn();
-			if (ImGuiMCP::Checkbox("Weapon lights", &weapons)) {
+			if (ImGuiMCP::Checkbox(T("Weapon lights"), &weapons)) {
 				SetWeaponLightsOn(weapons);
 				SaveSettings();
 				RehandSoon();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				"Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
-				"once; the switches on the Weapons page choose among them.");
+				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
+				"once; the switches on the Weapons page choose among them."));
 
 			GlowHeading("Wards");
 			if (WardsSteppedDown()) {
-				ImGuiMCP::TextDisabled("%s", "Dynamic Wards is installed - it colors the wards, so this setting stands aside.");
+				ImGuiMCP::TextDisabled("%s", T("Dynamic Wards is installed - it colors the wards, so this setting stands aside."));
 			} else {
-				static const char* const kColours[] = { "Vanilla blue", "White" };
+				const char* const kColours[] = { T("Vanilla blue"), T("White") };
 				int                      c = WardColour();
-				if (ImGuiMCP::Combo("Ward color", &c, kColours, 2)) {
+				if (ImGuiMCP::Combo(T("Ward color"), &c, kColours, 2)) {
 					SetWardColour(c);
 					SaveSettings();
 					// the art forms and lights are changed on the game's main thread; the next cast shows it
@@ -289,13 +292,13 @@ namespace Plugin
 					}
 				}
 				ImGuiMCP::SetItemTooltip("%s",
-					"The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one colour. "
-					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast.");
+					T("The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one colour. "
+					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
 			}
 
 			DrawSwitches(Page::kSettings);
 			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light",
+			ImGuiMCP::TextDisabled(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"),
 				DataFiles(), LiveHeldLights(), HandEffects());
 		}
 
@@ -303,7 +306,7 @@ namespace Plugin
 		void __stdcall RenderPatches()
 		{
 			const GlowStyle style;
-			ImGuiMCP::TextDisabled("%s", "Lights for other mods' spells and weapons. Each switch only matters if you have that mod.");
+			ImGuiMCP::TextDisabled("%s", T("Lights for other mods' spells and weapons. Each switch only matters if you have that mod."));
 			DrawSwitches(Page::kPatches);
 		}
 
@@ -311,22 +314,23 @@ namespace Plugin
 		void __stdcall RenderWeapons()
 		{
 			const GlowStyle style;
-			ImGuiMCP::TextDisabled("%s", WeaponLightsOn() ? "Lights for weapons: enchantments, bound weapons and artifacts."
-			                                              : "Weapon lights is off on the Settings page, so every light here is out.");
+			ImGuiMCP::TextDisabled("%s", WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.")
+			                                              : T("Weapon lights is off on the Settings page, so every light here is out."));
 			DrawSwitches(Page::kWeapons);
 		}
 	}
 
 	void RegisterMenu()
 	{
+		SKSE::log::info("{}", Translation::Load("Data/SKSE/Plugins/RelightSpellAddon/Translation.json"));
 		if (!SKSEMenuFramework::IsInstalled()) {
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
 		}
-		SKSEMenuFramework::SetSection("RELight - Spell Addon");
-		SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
-		SKSEMenuFramework::AddSectionItem("Patches", RenderPatches);
-		SKSEMenuFramework::AddSectionItem("Weapons", RenderWeapons);
+		SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
+		SKSEMenuFramework::AddSectionItem(T("Settings"), RenderSettings);
+		SKSEMenuFramework::AddSectionItem(T("Patches"), RenderPatches);
+		SKSEMenuFramework::AddSectionItem(T("Weapons"), RenderWeapons);
 		SKSE::log::info("settings page added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 }
