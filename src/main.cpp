@@ -15,6 +15,7 @@
 //   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
+//   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
 //   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
 //   Menu.cpp       the settings page, in SKSE Menu Framework's Mod Control Panel
 //   Plugin.h        what they share      PCH.h  what they all include
@@ -24,11 +25,11 @@
 namespace
 {
 	RE::BSSpinLock gLock;
-	// every spell light the game made through the hooked call sites, held so sneaking can find it again
-	std::unordered_map<RE::NiLight*, RE::NiPointer<RE::NiLight>> gMagicLights;
-	std::vector<RE::NiPointer<RE::NiLight>>                      gCulled;
-	bool                                                         gWasSneaking = false;
-	std::uint32_t                                                gMade = 0;
+	// every spell light the game made through the hooked call sites, so sneaking can find it again; and the lights put
+	// out while sneaking. Plain pointers: Keep.cpp holds each light, and ForgetSpellLights drops it here before it is freed
+	std::unordered_set<RE::NiLight*> gMagicLights;
+	std::vector<RE::NiLight*>        gCulled;
+	bool                             gWasSneaking = false;
 
 	bool PlayerSneaking()
 	{
@@ -46,9 +47,6 @@ namespace
 							FT::ProjectileFlame, FT::ProjectileCone, FT::ProjectileBarrier, FT::Explosion, FT::PlacedHazard);
 	}
 
-	// a light only these lists still hold has left the game
-	[[nodiscard]] bool Gone(const RE::NiPointer<RE::NiLight>& a_light) { return !a_light || a_light->GetRefCount() <= 1; }
-
 	void CullSpellLights()
 	{
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -65,34 +63,33 @@ namespace
 			}
 			if (gMagicLights.contains(niLight) || IsSpellObject(Plugin::ReferenceOf(niLight))) {
 				niLight->SetAppCulled(true);
-				gCulled.emplace_back(niLight);
+				Plugin::KeepLight(niLight);
+				gCulled.push_back(niLight);
 			}
 		}
 	}
 
 	void UncullAll()
 	{
-		for (auto& l : gCulled) {
+		for (auto* l : gCulled) {
 			// a light held out for a switched-off option (or a hand light a switch put out) stays out when the player stands up
-			if (l && !Plugin::HeldOutForOption(l.get()) && !Plugin::HandLightHeldOut(l.get())) {
+			if (!Plugin::HeldOutForOption(l) && !Plugin::HandLightHeldOut(l)) {
 				l->SetAppCulled(false);
 			}
 		}
 		gCulled.clear();
 	}
 
-	// on the main thread only (an SKSE task from the hook below): a new spell light goes into our lists, and the lists
-	// let go of what has left the game - so the last reference to a light is only ever dropped on the main thread
+	// on the main thread only (an SKSE task from the hook below): a new spell light goes into our lists. The last
+	// reference to a light is only ever dropped on the main thread (here, or in Keep.cpp's sweep)
 	void NoteMagicLight(const RE::NiPointer<RE::NiLight>& a_light, const std::string& a_handKey, bool a_ours)
 	{
-		if (!a_light || Gone(a_light)) {
+		if (!a_light || a_light->GetRefCount() <= 1) {
 			return;   // the game let go of it before the main thread came round: nothing to note (freed right here)
 		}
+		Plugin::KeepLight(a_light.get());
 		RE::BSSpinLockGuard lock(gLock);
-		if ((++gMade & 63) == 0) {
-			std::erase_if(gMagicLights, [](const auto& a_kv) { return Gone(a_kv.second); });
-		}
-		gMagicLights.try_emplace(a_light.get(), a_light);
+		gMagicLights.insert(a_light.get());
 		if (!a_handKey.empty()) {
 			Plugin::NoteHandLight(a_light.get(), a_handKey);
 		}
@@ -151,7 +148,8 @@ namespace
 		RE::BSVisit::TraverseScenegraphLights(a_root, [](RE::NiPointLight* a_light) {
 			if (a_light && !a_light->GetAppCulled()) {
 				a_light->SetAppCulled(true);
-				gCulled.emplace_back(a_light);
+				Plugin::KeepLight(a_light);
+				gCulled.push_back(a_light);
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
@@ -186,6 +184,8 @@ namespace
 		static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 		{
 			func(a_this, a_delta);
+			// first: every list forgets the lights that left the game since the last frame, and they are freed
+			Plugin::SweepKeptLights();
 			const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
 			RE::BSSpinLockGuard lock(gLock);
 			if (sneaking) {
@@ -193,7 +193,6 @@ namespace
 			} else if (gWasSneaking) {
 				UncullAll();
 			}
-			std::erase_if(gCulled, Gone);
 			gWasSneaking = sneaking;
 			// after the sneaking pass, in the same frame, so a light given back above and then held out
 			// here never reaches the screen in between
@@ -248,6 +247,14 @@ namespace
 		PlayerUpdate::func = vtbl.write_vfunc(0xAD, PlayerUpdate::thunk);
 		SKSE::log::info("projectile, explosion and hazard loads and the player update hooked after every plugin loaded");
 	}
+}
+
+void Plugin::ForgetSpellLights(const GoneLights& a_gone)
+{
+	RE::BSSpinLockGuard lock(gLock);
+	std::erase_if(gMagicLights, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
+	std::erase_if(gCulled, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
+	ForgetOptionLights(a_gone);  // its list lives under this lock too (the player update and the load hooks)
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)

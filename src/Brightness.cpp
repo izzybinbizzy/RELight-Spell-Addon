@@ -17,9 +17,9 @@ namespace Plugin
 {
 	namespace
 	{
+		// keyed by the light, which Keep.cpp holds; ForgetSliderLights drops the row before the light is freed
 		struct Seen
 		{
-			RE::NiPointer<RE::NiLight> light;
 			const HandFx*              fx{ nullptr };
 			const RE::NiColor*         tint{ nullptr };
 			float                      base{ 0.0f };        // the fade RE::Light last gave it
@@ -63,11 +63,10 @@ namespace Plugin
 		std::mutex                                                        gNewLock;
 		struct Made
 		{
-			RE::NiPointer<RE::NiLight> light;
-			const HandFx*              fx;
+			RE::NiLight*  light;
+			const HandFx* fx;
 		};
 		std::vector<Made>                                                 gNew;  // lights made since the last frame
-		std::uint32_t                                                     gFrame = 0;
 
 		[[nodiscard]] const RE::TESBoundObject* BaseOf(RE::NiLight* a_light)
 		{
@@ -138,9 +137,17 @@ namespace Plugin
 	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx)
 	{
 		if (a_light) {
+			KeepLight(a_light);
 			std::lock_guard l{ gNewLock };
-			gNew.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_fx });
+			gNew.push_back({ a_light, a_fx });
 		}
+	}
+
+	void ForgetSliderLights(const GoneLights& a_gone)
+	{
+		std::lock_guard l{ gNewLock };
+		std::erase_if(gNew, [&](const Made& a_m) { return a_gone.contains(a_m.light); });
+		std::erase_if(gSeen, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
 	}
 
 	void UpdateBrightness(float a_delta)
@@ -148,9 +155,7 @@ namespace Plugin
 		{
 			std::lock_guard l{ gNewLock };
 			for (auto& m : gNew) {
-				auto& s = gSeen[m.light.get()];
-				s.light = m.light;
-				s.fx = m.fx;
+				gSeen[m.light].fx = m.fx;
 			}
 			gNew.clear();
 		}
@@ -168,18 +173,15 @@ namespace Plugin
 			auto* niLight = bsLight->light.get();
 			auto  it = gSeen.find(niLight);
 			if (it == gSeen.end()) {
-				// only OUR lights are remembered: holding every light in the game would keep alive lights it let go
+				// only OUR lights are remembered
 				const auto* base = BaseOf(niLight);
 				if (!OursByObject(niLight, base)) {
 					continue;
 				}
-				it = gSeen.emplace(niLight, Seen{ .light = RE::NiPointer<RE::NiLight>(niLight), .tint = TintOf(base) }).first;
+				KeepLight(niLight);
+				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base) }).first;
 			}
 			Apply(niLight, it->second, scale, reach, dt);
-		}
-		// a light only this table still holds has left the game
-		if ((++gFrame & 15) == 0) {
-			std::erase_if(gSeen, [](const auto& a_kv) { return !a_kv.second.light || a_kv.second.light->GetRefCount() <= 1; });
 		}
 	}
 }

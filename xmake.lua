@@ -1,7 +1,7 @@
 -- RELight - Spell Addon - SKSE plugin. GPL-3.0-or-later, see LICENSE.txt.
 set_xmakever("3.0.0")
 set_project("RelightSpellAddon")
-set_version("1.2.0")
+set_version("1.4.0")
 set_license("GPL-3.0-or-later")
 set_arch("x64")
 set_languages("c++23")

@@ -27,9 +27,9 @@ namespace Plugin
 	{
 		struct Held
 		{
-			RE::NiPointer<RE::NiLight> light;
-			std::size_t                option;
-			bool                       enchant{ false };
+			RE::NiLight* light;  // held in Keep.cpp; ForgetOptionLights drops it here before it is freed
+			std::size_t  option;
+			bool         enchant{ false };
 		};
 		std::vector<Held>                                      gHeldOut;
 		std::unordered_map<const RE::NiLight*, std::size_t>    gEnchant;  // this frame's enchantment lights -> option
@@ -111,7 +111,7 @@ namespace Plugin
 			if (!a_held.enchant) {
 				return true;
 			}
-			auto* ref = ReferenceOf(a_held.light.get());
+			auto* ref = ReferenceOf(a_held.light);
 			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
 			return actor && actor->AsActorState()->IsWeaponDrawn();
 		}
@@ -135,7 +135,12 @@ namespace Plugin
 
 	bool HeldOutForOption(const RE::NiLight* a_light)
 	{
-		return std::ranges::any_of(gHeldOut, [a_light](const Held& h) { return h.light.get() == a_light; });
+		return std::ranges::any_of(gHeldOut, [a_light](const Held& h) { return h.light == a_light; });
+	}
+
+	void ForgetOptionLights(const GoneLights& a_gone)
+	{
+		std::erase_if(gHeldOut, [&](const Held& h) { return a_gone.contains(h.light); });
 	}
 
 	void UpdateOptionLights()
@@ -146,11 +151,8 @@ namespace Plugin
 			o.heldOut = 0;
 		}
 		FindEnchantLights();
-		// give back whatever belongs to a switch that is on again, and forget what has unloaded
+		// give back whatever belongs to a switch that is on again (what has unloaded is already forgotten: Keep.cpp)
 		std::erase_if(gHeldOut, [](Held& h) {
-			if (!h.light || h.light->GetRefCount() <= 1) {
-				return true;
-			}
 			if (!Off(h.option)) {
 				if (MayGiveBack(h)) {
 					h.light->SetAppCulled(false);
@@ -177,7 +179,8 @@ namespace Plugin
 				if (!niLight->GetAppCulled()) {
 					niLight->SetAppCulled(true);
 					if (!HeldOutForOption(niLight)) {
-						gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(niLight), opt, IsEnchantLight(niLight) });
+						KeepLight(niLight);
+						gHeldOut.push_back({ niLight, opt, IsEnchantLight(niLight) });
 					}
 				}
 			} else if (!niLight->GetAppCulled()) {
@@ -205,7 +208,8 @@ namespace Plugin
 		RE::BSVisit::TraverseScenegraphLights(a_root, [opt](RE::NiPointLight* a_light) {
 			if (a_light && !a_light->GetAppCulled() && IsReLightLight(a_light)) {
 				a_light->SetAppCulled(true);
-				gHeldOut.push_back({ RE::NiPointer<RE::NiLight>(a_light), opt });
+				KeepLight(a_light);
+				gHeldOut.push_back({ a_light, opt });
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
