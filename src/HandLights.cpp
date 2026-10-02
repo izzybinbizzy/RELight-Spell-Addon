@@ -29,9 +29,9 @@ namespace Plugin
 		// "i have to dispel the spell then re-cast")
 		struct Live
 		{
-			RE::NiPointer<RE::NiLight> light;
-			std::string                key;
-			bool                       heldOut{ false };  // put out because nothing lights its key any more
+			RE::NiLight* light;  // held in Keep.cpp; ForgetHandLights drops it here before it is freed
+			std::string  key;
+			bool         heldOut{ false };  // put out because nothing lights its key any more
 		};
 
 		std::mutex                                                   gLock;
@@ -232,15 +232,14 @@ namespace Plugin
 			gLit = lit;
 			// the lights already in a caster's hands take the change now; one whose key nothing lights any more goes out
 			// until the next cast gives the effect its own light back
-			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
 			for (auto& live : gLive) {
 				if (const Hand* h = on ? Picked(Winner(live.key)) : nullptr) {
 					if (live.heldOut) {
 						live.light->SetAppCulled(false);
 						live.heldOut = false;
 					}
-					DressHandLight(live.light.get(), *h);
-					RememberLight(live.light.get(), HandFxOf(h->key));
+					DressHandLight(live.light, *h);
+					RememberLight(live.light, HandFxOf(h->key));
 				} else if (!live.heldOut) {
 					live.light->SetAppCulled(true);
 					live.heldOut = true;
@@ -281,23 +280,27 @@ namespace Plugin
 		}
 	}
 
-	// main thread only (main.cpp NoteMagicLight): the erase below can drop a light's last reference, which frees it
+	// main thread (main.cpp NoteMagicLight)
 	void NoteHandLight(RE::NiLight* a_light, const std::string& a_key)
 	{
 		if (!a_light) {
 			return;
 		}
+		KeepLight(a_light);
 		std::lock_guard l{ gLock };
-		if (gLive.size() >= 64) {
-			std::erase_if(gLive, [](const Live& a_l) { return !a_l.light || a_l.light->GetRefCount() <= 1; });
-		}
-		gLive.push_back({ RE::NiPointer<RE::NiLight>(a_light), a_key });
+		gLive.push_back({ a_light, a_key });
+	}
+
+	void ForgetHandLights(const GoneLights& a_gone)
+	{
+		std::lock_guard l{ gLock };
+		std::erase_if(gLive, [&](const Live& a_l) { return a_gone.contains(a_l.light); });
 	}
 
 	bool HandLightHeldOut(const RE::NiLight* a_light)
 	{
 		std::lock_guard l{ gLock };
-		return std::ranges::any_of(gLive, [a_light](const Live& a_l) { return a_l.heldOut && a_l.light.get() == a_light; });
+		return std::ranges::any_of(gLive, [a_light](const Live& a_l) { return a_l.heldOut && a_l.light == a_light; });
 	}
 
 	std::size_t HandLightsMade()

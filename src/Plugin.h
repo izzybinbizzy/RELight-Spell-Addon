@@ -115,6 +115,16 @@ namespace Plugin
 	[[nodiscard]] const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson);
 	[[nodiscard]] std::size_t   OptionOfSprayLight(const RE::TESObjectLIGH* a_light);  // the option whose `spraylight` line names it
 
+	// ------------------------------------------------------------------ Keep.cpp: the one place a game light is held
+	using GoneLights = std::unordered_set<const RE::NiLight*>;
+	void                      KeepLight(RE::NiLight* a_light);  // any thread: alive for our lists while the game has it
+	void                      SweepKeptLights();                // main thread, first each frame: what left the game is forgotten, then freed
+	[[nodiscard]] std::size_t KeptLights();
+	void                      ForgetSpellLights(const GoneLights& a_gone);   // main.cpp (and Options.cpp, under its lock)
+	void                      ForgetOptionLights(const GoneLights& a_gone);  // Options.cpp: called by ForgetSpellLights only
+	void                      ForgetHandLights(const GoneLights& a_gone);    // HandLights.cpp
+	void                      ForgetSliderLights(const GoneLights& a_gone);  // Brightness.cpp
+
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
 	void                      MakeHandLights();                        // once, after the data and the settings are read
 	void                      RefindHandLights();                      // when a save loads: casting art may have changed
