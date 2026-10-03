@@ -5,7 +5,8 @@
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
 // installer put down (his call, 2026-09-28 late night: no per-option brightness sliders). Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
-// the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit.
+// the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit. The look is the shared
+// MenuStyle.h in warm spell-light gold, with this mod's glowing headings.
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -13,6 +14,7 @@
 
 #include "SKSEMenuFramework.h"
 #include "Translation.h"
+#include "MenuStyle.h"
 
 namespace Plugin
 {
@@ -54,6 +56,14 @@ namespace Plugin
 
 		// his call, 2026-09-27: as Illuminated does - when CS Light is loaded, say which of its options light the same
 		// things a second time (the option names are CS Light's own installer's, spelling included)
+		// a printf line with three counts, for a widget that takes plain text
+		[[nodiscard]] std::string Fill3(const char* a_format, std::size_t a_a, std::size_t a_b, std::size_t a_c)
+		{
+			char buf[256];
+			std::snprintf(buf, sizeof(buf), a_format, a_a, a_b, a_c);
+			return buf;
+		}
+
 		[[nodiscard]] const char* CSLightLoaded()
 		{
 			auto* dh = RE::TESDataHandler::GetSingleton();
@@ -71,24 +81,21 @@ namespace Plugin
 			GlowStyle()
 			{
 				using namespace ImGuiMCP;
-				PushStyleColor(ImGuiCol_CheckMark, ImVec4{ 1.0f, 0.80f, 0.42f, 1.0f });
-				PushStyleColor(ImGuiCol_SliderGrab, ImVec4{ 1.0f, 0.74f, 0.38f, 0.90f });
-				PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4{ 1.0f, 0.86f, 0.55f, 1.0f });
 				PushStyleColor(ImGuiCol_FrameBg, ImVec4{ 0.12f, 0.10f, 0.08f, 0.75f });
 				PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4{ 0.30f, 0.21f, 0.10f, 0.75f });
 				PushStyleColor(ImGuiCol_Separator, ImVec4{ 1.0f, 0.78f, 0.45f, 0.22f });
-				PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
 			}
-			~GlowStyle()
-			{
-				ImGuiMCP::PopStyleVar(1);
-				ImGuiMCP::PopStyleColor(6);
-			}
+			~GlowStyle() { ImGuiMCP::PopStyleColor(3); }
 			GlowStyle(const GlowStyle&) = delete;
 			GlowStyle& operator=(const GlowStyle&) = delete;
-		};
 
-		void GlowHeading(const char* a_text)
+		private:
+			MenuStyle::Page page;  // the shared accent, rounding and hovers
+		};
+		namespace Icon = MenuStyle::Icon;
+
+		// a heading on a soft glow; a_icon 0 for none (the Patches and Weapons pages' category headings)
+		void GlowHeading(const char* a_text, unsigned a_icon = 0)
 		{
 			using namespace ImGuiMCP;
 			Spacing();
@@ -100,7 +107,15 @@ namespace Plugin
 				IM_COL32(255, 186, 90, 0), IM_COL32(255, 186, 90, 0), IM_COL32(255, 186, 90, 46));
 			ImDrawListManager::AddLine(dl, ImVec2{ at.x, at.y + h }, ImVec2{ at.x + w * 0.55f, at.y + h }, IM_COL32(255, 205, 120, 110), 1.0f);
 			Dummy(ImVec2{ 0.0f, 3.0f });
-			TextColored(kGold, "  %s", T(a_text));
+			Text(" ");
+			SameLine(0.0f, 0.0f);
+			if (a_icon) {
+				FontAwesome::PushSolid();
+				TextColored(kGold, "%s", FontAwesome::UnicodeToUtf8(a_icon).c_str());
+				FontAwesome::Pop();
+				SameLine();
+			}
+			TextColored(kGold, "%s", T(a_text));
 			Dummy(ImVec2{ 0.0f, 4.0f });
 		}
 
@@ -217,12 +232,14 @@ namespace Plugin
 		void __stdcall RenderSettings()
 		{
 			const GlowStyle style;
+			MenuStyle::Status(true, Fill3(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"), DataFiles(),
+				LiveHeldLights(), HandEffects()).c_str());
 			if (const auto* cs = CSLightLoaded()) {
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
 				ImGuiMCP::TextWrapped("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
 				ImGuiMCP::Separator();
 			}
-			GlowHeading("Lights");
+			GlowHeading("Lights", Icon::kBulb);
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);
@@ -274,7 +291,7 @@ namespace Plugin
 				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
 				"once; the switches on the Weapons page choose among them."));
 
-			GlowHeading("Wards");
+			GlowHeading("Wards", Icon::kShield);
 			if (WardsSteppedDown()) {
 				ImGuiMCP::TextDisabled("%s", T("Dynamic Wards is installed - it colors the wards, so this setting stands aside."));
 			} else {
@@ -297,16 +314,13 @@ namespace Plugin
 			}
 
 			DrawSwitches(Page::kSettings);
-			ImGuiMCP::Separator();
-			ImGuiMCP::TextDisabled(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"),
-				DataFiles(), LiveHeldLights(), HandEffects());
 		}
 
 		// his ask, 2026-09-23: the mod patches on a page of their own
 		void __stdcall RenderPatches()
 		{
 			const GlowStyle style;
-			ImGuiMCP::TextDisabled("%s", T("Lights for other mods' spells and weapons. Each switch only matters if you have that mod."));
+			MenuStyle::Note(T("Lights for other mods' spells and weapons. Each switch only matters if you have that mod."));
 			DrawSwitches(Page::kPatches);
 		}
 
@@ -314,8 +328,8 @@ namespace Plugin
 		void __stdcall RenderWeapons()
 		{
 			const GlowStyle style;
-			ImGuiMCP::TextDisabled("%s", WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.")
-			                                              : T("Weapon lights is off on the Settings page, so every light here is out."));
+			MenuStyle::Status(WeaponLightsOn(), WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.")
+			                                                     : T("Weapon lights is off on the Settings page, so every light here is out."));
 			DrawSwitches(Page::kWeapons);
 		}
 	}
@@ -327,6 +341,7 @@ namespace Plugin
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
 		}
+		MenuStyle::gTheme = MenuStyle::MakeTheme(0xFFD58A);  // warm spell-light gold
 		SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
 		SKSEMenuFramework::AddSectionItem(T("Settings"), RenderSettings);
 		SKSEMenuFramework::AddSectionItem(T("Patches"), RenderPatches);
