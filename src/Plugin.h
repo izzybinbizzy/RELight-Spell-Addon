@@ -70,6 +70,13 @@ namespace Plugin
 		int   order{ 0 };
 	};
 
+	// RE::Light marks every light that moves with its owner (torches, spell lights) `fadeAmount = 4`: its flicker prevention
+	// (IsLightAffectingSurface, disableLights.cpp) lets such a light reach every surface instead of only the surfaces whose
+	// seven closest lights it was among when they were first counted. Our hand, held and travelling lights never pass through
+	// RE::Light, so they carry the mark themselves - without it they lit only actors with flicker prevention on (a user's
+	// report, 2026-10-04: "some magic doesn't work in 1st person")
+	inline constexpr float kMovingLightMark = 4.0f;
+
 	// the build's cutoff constant (0.8 * 69.99², as in gen.py and relightgen.py): cutoff = kK * fade / (reach² + size²)
 	inline constexpr float kK = 3918.88f;
 

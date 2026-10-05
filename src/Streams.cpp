@@ -114,6 +114,7 @@ namespace Plugin
 			return nullptr;
 		}
 		light->name = kLightName;
+		light->fadeAmount = kMovingLightMark;
 		auto& data = light->GetLightRuntimeData();
 		data.diffuse = a_colour;
 		data.fade = a_fade;

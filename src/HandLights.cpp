@@ -268,6 +268,7 @@ namespace Plugin
 		if (!a_light) {
 			return;
 		}
+		a_light->fadeAmount = kMovingLightMark;
 		auto& data = a_light->GetLightRuntimeData();
 		data.fade = a_hand.fade;
 		data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
