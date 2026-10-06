@@ -33,6 +33,7 @@ namespace Plugin
 		};
 		std::vector<Held>                                      gHeldOut;
 		std::unordered_map<const RE::NiLight*, std::size_t>    gEnchant;  // this frame's enchantment lights -> option
+		std::vector<RE::NiLight*>                              gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
 
 		bool IsReLightLight(RE::NiLight* a_light)
 		{
@@ -105,6 +106,49 @@ namespace Plugin
 
 		bool Off(std::size_t a_option) { return a_option != kNone && !OptionLit(a_option); }
 
+		// The sheathed net (1.5, three user reports 2026-10-05 "my enchanted weapons keep glowing even when sheathed"):
+		// RE::Light puts its enchantment light out on the sheathe animation's end and lights it again whenever the
+		// enchantment effect starts, so a weapon put away some other way, or an effect that restarts on a put-away
+		// weapon, could keep it lit. Here an enchantment light on an actor whose weapon is fully SHEATHED is put out every
+		// frame, and given back the moment that actor starts to draw. To be removed if RE::Light covers it itself.
+		bool FullySheathed(RE::NiLight* a_light)
+		{
+			auto* ref = ReferenceOf(a_light);
+			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
+			return actor && actor->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kSheathed;
+		}
+
+		void SheathedNet(RE::NiLight* a_light)
+		{
+			if (!IsEnchantLight(a_light) || a_light->GetAppCulled() || !FullySheathed(a_light)) {
+				return;
+			}
+			a_light->SetAppCulled(true);
+			if (std::ranges::find(gSheathedOut, a_light) == gSheathedOut.end()) {
+				KeepLight(a_light);
+				gSheathedOut.push_back(a_light);
+			}
+		}
+
+		void GiveBackDrawn()
+		{
+			std::erase_if(gSheathedOut, [](RE::NiLight* a_light) {
+				if (FullySheathed(a_light)) {
+					return false;
+				}
+				// a switched-off option keeps it out: it moves to that option's list, which gives it back with the switch
+				if (const auto opt = OptionOfLight(a_light); Off(opt)) {
+					if (!HeldOutForOption(a_light)) {
+						KeepLight(a_light);
+						gHeldOut.push_back({ a_light, opt, true });
+					}
+				} else if (!HeldOutForOption(a_light)) {
+					a_light->SetAppCulled(false);
+				}
+				return true;
+			});
+		}
+
 		// RE::Light culls an enchantment light on sheathe: a switch turned back on must not light a sheathed weapon
 		bool MayGiveBack(const Held& a_held)
 		{
@@ -141,6 +185,7 @@ namespace Plugin
 	void ForgetOptionLights(const GoneLights& a_gone)
 	{
 		std::erase_if(gHeldOut, [&](const Held& h) { return a_gone.contains(h.light); });
+		std::erase_if(gSheathedOut, [&](RE::NiLight* l) { return a_gone.contains(l); });
 	}
 
 	void UpdateOptionLights()
@@ -161,6 +206,7 @@ namespace Plugin
 			}
 			return false;
 		});
+		GiveBackDrawn();
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		if (!ssn) {
 			return;
@@ -170,6 +216,7 @@ namespace Plugin
 				continue;
 			}
 			auto*      niLight = bsLight->light.get();
+			SheathedNet(niLight);  // every RE::Light enchantment light, ours or not
 			const auto opt = OptionOfLight(niLight);
 			if (opt == kNone) {
 				continue;
