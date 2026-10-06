@@ -1,0 +1,23 @@
+# CodeRabbit settings for this repository (https://docs.coderabbit.ai/reference/configuration)
+language: en-US
+reviews:
+  profile: assertive
+  high_level_summary: true
+  poem: false
+  request_changes_workflow: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  path_instructions:
+    - path: "src/**"
+      instructions: >-
+        SKSE plugin for Skyrim Special Edition / Anniversary Edition built on CommonLibSSE-NG.
+        Check that game objects are only touched on the main thread (or through the SKSE task
+        interface), that every pointer from the game is null-checked, that hooks and
+        relocations hold for SE, AE and (where the plugin builds one) VR, and that nothing
+        leaks or holds a reference past the object's life.
+chat:
+  auto_reply: true
