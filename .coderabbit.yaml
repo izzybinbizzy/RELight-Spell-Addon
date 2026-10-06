@@ -8,6 +8,7 @@ reviews:
   review_status: true
   auto_review:
     enabled: true
+    auto_pause_after_reviewed_commits: 0
     drafts: false
     base_branches:
       - main
