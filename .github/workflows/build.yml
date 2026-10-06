@@ -1,0 +1,47 @@
+# Build: every push to main and every pull request compiles the plugin with MSVC on Windows (build.bat, CommonLib at the
+# pinned commit) and checks the DLL from outside. Docs-only changes skip it.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  pull_request:
+    paths-ignore: ["**/*.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build
+        shell: cmd
+        # CommonLib downloads a prebuilt library whenever GITHUB_ACTIONS is set, built for other targets; unset, it is
+        # built from source exactly as build.bat does on a PC.
+        run: |
+          set GITHUB_ACTIONS=
+          build.bat
+      - name: Check the DLL from outside
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem build -Recurse -Filter RelightSpellAddon.dll | Select-Object -First 1
+          if (-not $dll) { throw "RelightSpellAddon.dll was not built" }
+          $exports = dumpbin /nologo /exports $dll.FullName | Out-String
+          foreach ($name in 'SKSEPlugin_Load', 'SKSEPlugin_Version') {
+            if ($exports -notmatch $name) { throw "RelightSpellAddon.dll does not export $name" }
+          }
+          $deps = dumpbin /nologo /dependents $dll.FullName | Out-String
+          if ($deps -match '(?i)(msvcp140|vcruntime140)\.dll') { throw "RelightSpellAddon.dll needs the Visual C++ runtime DLLs (expected the static runtime)" }
+          "### RelightSpellAddon.dll: $([math]::Round($dll.Length / 1KB)) KB, exports SKSEPlugin_Load and SKSEPlugin_Version, static runtime" >> $env:GITHUB_STEP_SUMMARY

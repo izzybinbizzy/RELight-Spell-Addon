@@ -1,0 +1,11 @@
+# Checks run on every push and pull request by .github/workflows/lint.yml (and locally with `pre-commit run --all-files`).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: (^|/)lib/
+      - id: end-of-file-fixer
+        exclude: (^|/)lib/
+      - id: check-yaml
+      - id: check-added-large-files
