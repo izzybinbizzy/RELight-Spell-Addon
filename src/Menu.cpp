@@ -147,13 +147,21 @@ namespace Plugin
 			std::size_t                     packsFrom = order.size();
 			std::unordered_set<std::size_t> withVanilla;  // packs shown under the first category's heading
 			if (a_page == Page::kWeapons) {
+				// the ids with a Weapons half, gathered once per draw (the same fix as the counts below - CodeRabbit's CWE-407
+				// read of line 211, 2026-10-06: a scan of every option for every row made the draw quadratic)
+				std::unordered_set<std::string_view> weaponIds;
+				for (const auto& m : opts) {
+					if (m.weapons) {
+						weaponIds.insert(m.id);
+					}
+				}
 				std::vector<std::size_t> packs;
 				for (const auto i : OptionsInMenuOrder()) {
 					const auto& o = opts[i];
 					if (!o.switchable || PageOf(o) != Page::kPatches || drawn.contains(o.id)) {
 						continue;
 					}
-					const bool weaponHalf = std::ranges::any_of(opts, [&o](const Option& m) { return m.id == o.id && m.weapons; });
+					const bool weaponHalf = weaponIds.contains(o.id);
 					if (weaponHalf && drawn.insert(o.id).second) {
 						packs.push_back(i);
 					}
@@ -171,6 +179,16 @@ namespace Plugin
 				withVanilla.insert(packs.begin(), rest.begin());
 				order.insert(order.end(), rest.begin(), rest.end());
 				packsFrom = order.size() - (packs.size() - ccCount);
+			}
+			// every file of a pack, counted once per draw (CodeRabbit deep scan 2026-10-06, CWE-407: a scan of every option
+			// for every row was quadratic in the number of installed data files)
+			std::unordered_map<std::string_view, std::pair<std::size_t, std::size_t>> counts;
+			for (const auto& m : opts) {
+				if (m.switchable) {
+					auto& c = counts[m.id];
+					c.first += m.lit;
+					c.second += m.heldOut;
+				}
 			}
 			std::string shown, author;
 			for (std::size_t n = 0; n < order.size(); ++n) {
@@ -207,13 +225,7 @@ namespace Plugin
 				if (!o.desc.empty()) {  // his call, 2026-09-26: a broad word on what each switch lights
 					ImGuiMCP::SetItemTooltip("%s", T(o.desc.c_str()));
 				}
-				std::size_t lit = 0, heldOut = 0;  // every file of a pack
-				for (const auto& m : opts) {
-					if (m.switchable && m.id == o.id) {
-						lit += m.lit;
-						heldOut += m.heldOut;
-					}
-				}
+				const auto [lit, heldOut] = counts[o.id];  // every file of a pack
 				ImGuiMCP::SameLine();
 				if (!o.on) {
 					ImGuiMCP::TextDisabled(T("off - %zu held out"), heldOut);

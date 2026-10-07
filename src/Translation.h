@@ -9,6 +9,7 @@
 // print garbage or crash - and the log says which.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -28,9 +29,12 @@ namespace Translation
 			return map;
 		}
 
-		// the printf conversions (%% excluded) and the {} fields of a line, in order
-		inline std::vector<std::string> Placeholders(std::string_view a_s)
+		// the printf conversions (%% excluded) and the {} fields of a line, in order. A '*' width or precision belongs to its
+		// conversion ("%*s" is not "%s" - it takes one more argument). a_format: the line is printed through printf, so the
+		// space and ' flags count too ("% d" takes an argument there); otherwise "100% is" stays plain text.
+		inline std::vector<std::string> Placeholders(std::string_view a_s, bool a_format = false)
 		{
+			const std::string_view   flags = a_format ? std::string_view("-+#0123456789.lhzjtL* '") : std::string_view("-+#0123456789.lhzjtL*");
 			std::vector<std::string> out;
 			for (std::size_t i = 0; i < a_s.size(); ++i) {
 				if (a_s[i] == '%') {
@@ -38,9 +42,9 @@ namespace Translation
 						++i;
 						continue;
 					}
-					// a conversion is flags/width/length then one conversion letter, no space: "100% is" is plain text
+					// a conversion is flags/width/length then one conversion letter
 					std::size_t j = i + 1;
-					while (j < a_s.size() && std::string_view("-+#0123456789.lhzjtL").find(a_s[j]) != std::string_view::npos) {
+					while (j < a_s.size() && flags.find(a_s[j]) != std::string_view::npos) {
 						++j;
 					}
 					if (j < a_s.size() && std::string_view("diouxXeEfFgGaAcspn").find(a_s[j]) != std::string_view::npos) {
@@ -265,7 +269,10 @@ namespace Translation
 				++same;
 				continue;
 			}
-			if (Detail::Placeholders(en) != Detail::Placeholders(tr)) {
+			// an English line with a conversion is printed through printf: read both sides by printf's own rules
+			const auto lenient = Detail::Placeholders(en);
+			const bool format = std::ranges::any_of(lenient, [](const std::string& p) { return p.starts_with('%'); });
+			if (Detail::Placeholders(en, format) != Detail::Placeholders(tr, format)) {
 				++bad;
 				if (badLines.size() < 400) {
 					badLines += "\n  placeholders differ, English kept: \"" + en + "\"";
