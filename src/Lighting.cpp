@@ -37,6 +37,9 @@ namespace Plugin
 			std::ifstream in(kPickPath);
 			std::string   line;
 			while (in && std::getline(in, line)) {
+				if (line.size() >= 3 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
+					line.erase(0, 3);  // a UTF-8 BOM some editors write
+				}
 				std::string word;
 				for (const char c : line) {
 					if (c == '#') {

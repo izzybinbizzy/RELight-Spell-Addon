@@ -123,10 +123,10 @@ namespace Plugin
 		const float radius = isl ? a_reach : PlainRadius(a_reach);
 		data.fade = isl ? a_fade : PlainFade(a_fade);
 		data.radius = { radius, radius, a_s.size };  // x and y are the reach; z carries the light's size
-		if (!isl) {
-			data.ambient = PlainAmbient(a_colour);
-		}
 		light->SetLightAttenuation(radius);           // without it the light has no attenuation and lights nothing
+		if (!isl) {
+			data.ambient = PlainAmbient(a_colour);  // after SetLightAttenuation, which writes the same two words
+		}
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
 		// the peak with the reach held (at 100%/100% it equals the file's)
 		if (isl) {
