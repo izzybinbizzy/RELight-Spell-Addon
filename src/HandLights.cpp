@@ -84,13 +84,15 @@ namespace Plugin
 		{
 			auto& d = a_light->data;
 			d.time = -1;
-			d.radius = static_cast<std::uint32_t>(std::lround((std::max)(a_hand.radius, 0.0f)));
+			// ENB and Vanilla (Lighting.cpp): an inverse-square hand light is drawn plain - its reach as a radius, no flag
+			const bool plain = a_hand.inverseSquare && !IslLighting();
+			d.radius = static_cast<std::uint32_t>(std::lround((std::max)(plain ? PlainRadius(a_hand.radius) : a_hand.radius, 0.0f)));
 			d.color.red = a_hand.rgb[0];
 			d.color.green = a_hand.rgb[1];
 			d.color.blue = a_hand.rgb[2];
 			d.color.alpha = 0;
 			std::uint32_t flags = a_hand.portalStrict ? static_cast<std::uint32_t>(RE::TES_LIGHT_FLAGS::kPortalStrict) : 0u;
-			if (a_hand.inverseSquare) {
+			if (a_hand.inverseSquare && !plain) {
 				flags |= kLighInverseSquare;
 			}
 			d.flags = static_cast<RE::TES_LIGHT_FLAGS>(flags);
@@ -100,7 +102,7 @@ namespace Plugin
 			d.flickerPeriodRecip = 1.0f;
 			d.flickerIntensityAmplitude = 0.0f;
 			d.flickerMovementAmplitude = 0.0f;
-			a_light->fade = a_hand.fade;
+			a_light->fade = plain ? PlainFade(a_hand.fade) : a_hand.fade;
 		}
 	}
 
@@ -176,8 +178,10 @@ namespace Plugin
 
 	void MakeHandLights()
 	{
-		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour
-		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli");
+		// inverse square lighting only on the Community Shaders pick with its shader there (Lighting.cpp); without it the two
+		// words DressHandLight writes are ambient colour
+		ReadLighting();
+		gIsl = IslLighting();
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };
@@ -270,9 +274,14 @@ namespace Plugin
 		}
 		a_light->fadeAmount = kMovingLightMark;
 		auto& data = a_light->GetLightRuntimeData();
-		data.fade = a_hand.fade;
-		data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
+		const bool plain = !gIsl && a_hand.inverseSquare;  // ENB and Vanilla: drawn plain (Lighting.cpp)
+		const float radius = plain ? PlainRadius(a_hand.radius) : a_hand.radius;
+		data.fade = plain ? PlainFade(a_hand.fade) : a_hand.fade;
+		data.radius = { radius, radius, a_hand.size };
 		data.diffuse = a_hand.color;
+		if (!gIsl) {
+			data.ambient = PlainAmbient(a_hand.color);
+		}
 		if (gIsl) {
 			if (a_hand.inverseSquare) {
 				Isl::SetOn(a_light);

@@ -252,6 +252,7 @@ namespace Plugin
 				ImGuiMCP::Separator();
 			}
 			GlowHeading("Lights", Icon::kBulb);
+			ImGuiMCP::TextDisabled(T("Our lights are drawn for: %s"), T(LightingName()));
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);

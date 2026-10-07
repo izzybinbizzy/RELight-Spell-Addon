@@ -85,6 +85,14 @@ namespace Plugin
 		return std::clamp(kK * a_fade / (a_reach * a_reach + a_size * a_size), 0.01f, 0.99f);
 	}
 
+	// Lighting.cpp: which lighting the game draws with - Community Shaders (inverse square), ENB or Vanilla (plain)
+	void                      ReadLighting();  // data load, before the hand lights
+	[[nodiscard]] bool        IslLighting();   // our lights are drawn inverse square
+	[[nodiscard]] const char* LightingName();
+	[[nodiscard]] float       PlainRadius(float a_reach);  // an inverse-square reach, drawn by the game's own lighting
+	[[nodiscard]] float       PlainFade(float a_fade);
+	[[nodiscard]] RE::NiColor PlainAmbient(const RE::NiColor& a_colour);
+
 	// Community Shaders' inverse square lighting reads a flag and the cutoff from the two words before a light's
 	// colour - the words RE::Light's `Overlay` writes. Without Community Shaders those words are ambient colour.
 	namespace Isl
