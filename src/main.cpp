@@ -17,9 +17,13 @@
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
 //   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
+//   Lighting.cpp    Community Shaders, ENB or Vanilla: how our own lights are drawn
+//   Fade*.cpp       the fading module (Illuminated's, ported 2026-10-08): weapon and staff lights follow their charge,
+//                   a spell's hand light your magicka - its own settings (Fading.ini), rule files and menu pages
 //   Menu.cpp       the settings page, in SKSE Menu Framework's Mod Control Panel
 //   Plugin.h        what they share      PCH.h  what they all include
 
+#include "Fade.h"
 #include "Plugin.h"
 
 namespace
@@ -96,10 +100,28 @@ namespace
 		// a hand light of ours, a spray light RE::Light made from our config, and the light of a beam or breath
 		// projectile our data names (RE::Light lights it; Streams.cpp) are ours for the sliders
 		if (a_ours) {
-			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey));
+			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey),
+				a_handKey.empty() ? 0 : Plugin::ElementOfHandKey(a_handKey));
 		}
 		// a light made while the player was already sneaking was never made (the hook returns nullptr); one made just
 		// before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
+	}
+
+	// "Hand lights for" (Illuminated's light budget for big fights, ported 2026-10-08): a caster the setting leaves out gets
+	// no casting light at all - this is the call that would make it, ours or RE::Light's, so nothing is made and put out
+	[[nodiscard]] bool LeftOutCaster(const RE::TESObjectREFR* a_ref)
+	{
+		const int   who = Plugin::HandLightsFor();
+		const auto* actor = who && a_ref ? a_ref->As<RE::Actor>() : nullptr;
+		if (!actor || actor->IsPlayerRef()) {
+			return false;
+		}
+		constexpr float kNearby = 2800.0f;  // "about forty paces"
+		if (who == 1) {
+			const auto* player = RE::PlayerCharacter::GetSingleton();
+			return !player || actor->GetPosition().GetSquaredDistance(player->GetPosition()) > kNearby * kNearby;
+		}
+		return who == 3 || !actor->IsPlayerTeammate();
 	}
 
 	struct MagicLight
@@ -107,7 +129,7 @@ namespace
 		static RE::NiPointLight* thunk(RE::TESObjectLIGH* a_light, RE::TESObjectREFR* a_ref, RE::NiNode* a_node,
 			bool a_forceDynamic, bool a_useLightRadius, bool a_affectRequesterOnly)
 		{
-			if (PlayerSneaking()) {
+			if (PlayerSneaking() || LeftOutCaster(a_ref)) {
 				return nullptr;
 			}
 			// our hand lights are made with the game's own function and never reach RE::Light, which would switch off
@@ -200,8 +222,47 @@ namespace
 			Plugin::UpdateHeldLights();
 			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
 			Plugin::UpdateBrightness(a_delta);
+			Fade::UpdateHands(a_delta);  // after the sliders, on what they wrote (Brightness.cpp has why they never compound)
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	// the fading module's other two places: right after each enchantment effect's update (RE::Light rewrites a flickering
+	// enchantment light's fade there) and after the cell's light animations - this frame's numbers again
+	template <class T>
+	struct EffectUpdate
+	{
+		static void thunk(T* a_this)
+		{
+			func(a_this);
+			Fade::AfterReferenceEffect(a_this, std::is_same_v<T, RE::ModelReferenceEffect>);  // an art model, not a shader's actor
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+		static void                                    Install()
+		{
+			func = REL::Relocation<std::uintptr_t>(T::VTABLE[0]).write_vfunc(0x3B, thunk);  // ReferenceEffect::UpdatePosition
+		}
+	};
+
+	struct CellAnimations
+	{
+		static void thunk(RE::TESObjectCELL* a_cell)
+		{
+			func(a_cell);
+			Fade::ReapplyAll();
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+		static void                                    Install()
+		{
+			REL::Relocation<std::uintptr_t> site{ RELOCATION_ID(18458, 18889), 0x52 };
+			if (*reinterpret_cast<const std::uint8_t*>(site.address()) != 0xE8) {
+				SKSE::log::warn(
+					"cell animations: the expected call is not there (another plugin rewrote it?); fading lights may "
+					"show their full strength for part of a frame");
+				return;
+			}
+			func = SKSE::GetTrampoline().write_call<5>(site.address(), thunk);
+		}
 	};
 
 	void Install()
@@ -245,7 +306,12 @@ namespace
 		Load3D<RE::Hazard>::Install();
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
 		PlayerUpdate::func = vtbl.write_vfunc(0xAD, PlayerUpdate::thunk);
-		SKSE::log::info("projectile, explosion and hazard loads and the player update hooked after every plugin loaded");
+		EffectUpdate<RE::ShaderReferenceEffect>::Install();
+		EffectUpdate<RE::ModelReferenceEffect>::Install();
+		CellAnimations::Install();
+		SKSE::log::info(
+			"projectile, explosion and hazard loads, the player update, effect updates and cell animations hooked after every "
+			"plugin loaded");
 	}
 }
 
@@ -259,12 +325,19 @@ void Plugin::ForgetSpellLights(const GoneLights& a_gone)
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 64 });
+	// ONE trampoline for every call this DLL wraps (the spell-light call sites, up to 4, + the cell animations + the fading
+	// module's two charge-bar calls, 14 bytes each, room to spare): a second SKSE::AllocTrampoline would replace the buffer
+	// under live hooks
+	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 160 });
+	Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the plugins load
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
 		if (!a_msg) {
 			return;
 		}
-		if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+		if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame) {
+			Fade::OnGameLoading();
+		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+			Fade::OnPostLoad();
 			// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
 			Install();
 			// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows
@@ -282,7 +355,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
 			InstallLate();
 			Plugin::RegisterMenu();
+			Fade::OnDataLoaded();  // after the menu: its two pages go under the Spell Addon's section, after ours
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
+			if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
+				Fade::OnGameLoading();
+			}
 			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back
 			Plugin::RefindHandLights();           // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
 		}

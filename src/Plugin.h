@@ -86,8 +86,10 @@ namespace Plugin
 	}
 
 	// Lighting.cpp: which lighting the game draws with - Community Shaders (inverse square), ENB or Vanilla (plain)
-	void                      ReadLighting();  // data load, before the hand lights
-	[[nodiscard]] bool        IslLighting();   // our lights are drawn inverse square
+	void                      ReadLighting();     // data load, before the hand lights
+	[[nodiscard]] bool        IslLighting();      // our lights are drawn inverse square
+	[[nodiscard]] bool        EnbLighting();      // the ENB pick
+	[[nodiscard]] bool        ShadersLighting();  // the Community Shaders pick (with or without its shader)
 	[[nodiscard]] const char* LightingName();
 	[[nodiscard]] float       PlainRadius(float a_reach);  // an inverse-square reach, drawn by the game's own lighting
 	[[nodiscard]] float       PlainFade(float a_fade);
@@ -150,6 +152,8 @@ namespace Plugin
 	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);                   // put out by a switch until the next cast
 	[[nodiscard]] std::size_t HandLightsMade();
 	[[nodiscard]] std::size_t HandEffects();
+	[[nodiscard]] int         ElementOfHandKey(std::string_view a_key);  // the element of the effects that wear it (0 if they disagree)
+	[[nodiscard]] std::size_t AutoHandEffects();                         // spells lit by an automatic hand light now
 
 	// ------------------------------------------------------------------ Settings.cpp: the settings file
 	void                LoadSettings();
@@ -169,6 +173,31 @@ namespace Plugin
 	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
+	// Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods")
+	[[nodiscard]] int  LightingChoice();  // 0 found by itself, 1 Community Shaders, 2 ENB, 3 Vanilla (read at data load)
+	void               SetLightingChoice(int a_v);
+	[[nodiscard]] int  LightColors();  // 0 automatic (as drawn), 1 paler, 2 deeper
+	void               SetLightColors(int a_v);
+	[[nodiscard]] int  DimInDaylight();  // 0 off, 1 a little, 2 more
+	void               SetDimInDaylight(int a_v);
+	[[nodiscard]] int  HandLightsFor();  // 0 everyone, 1 everyone nearby, 2 player and followers, 3 player only
+	void               SetHandLightsFor(int a_v);
+	[[nodiscard]] int  ElementColor(int a_element);  // 0 the spell's own, 1..kNamedColorCount a named color
+	void               SetElementColor(int a_element, int a_v);
+	[[nodiscard]] bool AutoLightsOn();
+	void               SetAutoLightsOn(bool a_on);
+	[[nodiscard]] bool LeaveToENBLight();
+	void               SetLeaveToENBLight(bool a_on);
+
+	// ------------------------------------------------------------------ Brightness.cpp: elements and their colors
+	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by; a projectile or explosion takes the element of the
+	// effects that fire it (none if they disagree). The named colors are Dynamic Wards' preset hues, as in Illuminated.
+	inline constexpr int         kNamedColorCount = 10;
+	inline constexpr const char* kElementNames[] = { "", "Fire", "Frost", "Shock" };
+	[[nodiscard]] int            ElementOf(const RE::EffectSetting* a_effect);
+	[[nodiscard]] int            ElementOfForm(const RE::TESForm* a_form);
+	[[nodiscard]] RE::NiColor    NamedColor(int a_pick);  // a_pick 1..kNamedColorCount (their names: Menu.cpp)
+	[[nodiscard]] bool           TouchedByENBLight(const RE::TESForm* a_form);
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
 	void                             UpdateOptionLights();                           // every frame, after the sneaking pass
@@ -179,7 +208,9 @@ namespace Plugin
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
+	// the fading module (Fade*.cpp) wrote this light's fade: taken only when it started from our value (never scaled twice)
+	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after);
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, int a_element = 0);
 
 	// ------------------------------------------------------------------ Streams.cpp: sprays, beams, breath shouts
 	void               ClaimSprayLights();  // once, after the data is read, BEFORE MakeHandLights

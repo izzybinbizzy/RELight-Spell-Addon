@@ -16,6 +16,11 @@ Ships with RELight - Spell Addon and is required by it.
 - **Hand lights** - a light on your hands while you cast, made in memory, with Dynamic Lighting. No plugin, no script.
   On by default.
 - **Lights off while sneaking**, off by default.
+- **Fading lights** - weapon, staff and bound weapon lights follow their charge, a spell's hand light your magicka
+  (rule files in `SKSE\Plugins\RelightSpellAddon\Fading`).
+- **Presets, dim in daylight, light colors, Fire / Frost / Shock colors, hand lights for (a budget for big fights)** and a
+  hand light for every spell no patch covers.
+- **Community Shaders, ENB or Vanilla** - found by itself or picked in the menu; our lights are drawn for it.
 
 Every change applies at once, even to a spell you are holding. Settings are in SKSE Menu Framework's Mod Control
 Panel and are saved to `SKSE\Plugins\RelightSpellAddon.ini`.

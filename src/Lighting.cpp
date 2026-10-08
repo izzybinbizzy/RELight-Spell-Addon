@@ -10,7 +10,8 @@
 //                       radius. Our lights are drawn plain - the reach they have under Community Shaders at Dynamic Wards'
 //                       house light (reach 133 drawn at radius 178, fade x 1.14), ambient a tenth of the colour.
 //
-// The pick is one word in `SKSE\Plugins\RelightSpellAddon\Lighting.txt` (cs, enb, vanilla), which the installer's option
+// The menu's Lighting choice wins when it names one (restart). Else the pick is one word in
+// `SKSE\Plugins\RelightSpellAddon\Lighting.txt` (cs, enb, vanilla), which the installer's option
 // installs. With no file the game is looked at: Community Shaders' inverse square shader, else an ENB's settings in the
 // game folder, else Vanilla. Inverse square only on the Community Shaders pick with its shader there.
 
@@ -29,6 +30,7 @@ namespace Plugin
 
 		std::atomic<int>  gPick{ 0 };
 		std::atomic<bool> gFromFile{ false };
+		std::atomic<bool> gFromMenu{ false };
 		std::atomic<bool> gIslShader{ false };
 
 		// the first word of the first line that has one, lower case; "" for none
@@ -65,7 +67,12 @@ namespace Plugin
 		gIslShader = std::filesystem::exists(kIslShader, ec);
 		const auto word = FirstWord();
 		int        pick = -1;
-		if (word == "cs" || word == "communityshaders" || word == "shaders") {
+		// the menu's "Lighting" (Illuminated's, ported 2026-10-08 - his "add everything from illuminated into relight")
+		// names one when the game was looked at wrongly; read once here, so a change takes effect at the next start
+		if (const int menu = LightingChoice(); menu >= 1 && menu <= 3) {
+			pick = menu - 1;
+			gFromMenu = true;
+		} else if (word == "cs" || word == "communityshaders" || word == "shaders") {
 			pick = 0;
 		} else if (word == "enb") {
 			pick = 1;
@@ -74,7 +81,7 @@ namespace Plugin
 		} else if (!word.empty()) {
 			SKSE::log::warn("lighting: Lighting.txt says '{}', which is not cs, enb or vanilla; the game is looked at instead", word);
 		}
-		gFromFile = pick >= 0;
+		gFromFile = pick >= 0 && !gFromMenu;
 		if (pick < 0) {
 			const bool enb = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
 			pick = gIslShader ? 0 : enb ? 1 :
@@ -82,11 +89,17 @@ namespace Plugin
 		}
 		gPick = pick;
 		SKSE::log::info("lighting: {} ({}); inverse square shader {}; our lights drawn {}", kNames[pick],
-			gFromFile ? "the installer's pick" : "no Lighting.txt, looked at the game", gIslShader ? "installed" : "not installed",
+			gFromMenu ? "picked in the menu" : gFromFile ? "the installer's pick" :
+														   "no Lighting.txt, looked at the game",
+			gIslShader ? "installed" : "not installed",
 			IslLighting() ? "inverse square" : "plain");
 	}
 
 	bool IslLighting() { return gPick.load() == 0 && gIslShader.load(); }
+
+	bool EnbLighting() { return gPick.load() == 1; }
+
+	bool ShadersLighting() { return gPick.load() == 0; }
 
 	const char* LightingName() { return kNames[gPick.load()]; }
 
