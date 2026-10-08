@@ -118,22 +118,14 @@ namespace Plugin
 		light->fadeAmount = kMovingLightMark;
 		auto& data = light->GetLightRuntimeData();
 		data.diffuse = a_colour;
-		// ENB and Vanilla (Lighting.cpp): the reach asked for, drawn plain - no inverse square words, a tenth of the colour
-		// as ambient (a new light's ambient is white)
-		const bool  isl = IslLighting();
-		const float radius = isl ? a_reach : PlainRadius(a_reach);
-		data.fade = isl ? a_fade : PlainFade(a_fade);
-		data.radius = { radius, radius, a_s.size };  // x and y are the reach; z carries the light's size
-		light->SetLightAttenuation(radius);          // without it the light has no attenuation and lights nothing
-		if (!isl) {
-			data.ambient = PlainAmbient(a_colour);  // after SetLightAttenuation, which writes the same two words
-		}
+		data.fade = a_fade;
+		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
+		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
-		// the peak with the reach held (at 100%/100% it equals the file's)
-		if (isl) {
-			Isl::SetOn(light);
-			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
-		}
+		// the peak with the reach held (at 100%/100% it equals the file's). Written as RE::Light's own lights carry them
+		// (its overlay data, always) - no lighting pick of our own (his word 2026-10-08: "relight is relight is relight")
+		Isl::SetOn(light);
+		Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
 		light->local.translate = a_at;
 		light->local.scale = 1.0f;
 		const RE::NiPointer<RE::NiPointLight> hold(light);  // freed here if it is never registered

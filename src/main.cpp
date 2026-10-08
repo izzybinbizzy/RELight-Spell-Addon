@@ -17,7 +17,6 @@
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
 //   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
-//   Lighting.cpp    Community Shaders, ENB or Vanilla: how our own lights are drawn
 //   Fade*.cpp       the fading module (Illuminated's, ported 2026-10-08): weapon and staff lights follow their charge,
 //                   a spell's hand light your magicka - its own settings (Fading.ini), rule files and menu pages
 //   Menu.cpp       the settings page, in SKSE Menu Framework's Mod Control Panel

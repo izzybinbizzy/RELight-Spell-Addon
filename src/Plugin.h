@@ -85,16 +85,6 @@ namespace Plugin
 		return std::clamp(kK * a_fade / (a_reach * a_reach + a_size * a_size), 0.01f, 0.99f);
 	}
 
-	// Lighting.cpp: which lighting the game draws with - Community Shaders (inverse square), ENB or Vanilla (plain)
-	void                      ReadLighting();     // data load, before the hand lights
-	[[nodiscard]] bool        IslLighting();      // our lights are drawn inverse square
-	[[nodiscard]] bool        EnbLighting();      // the ENB pick
-	[[nodiscard]] bool        ShadersLighting();  // the Community Shaders pick (with or without its shader)
-	[[nodiscard]] const char* LightingName();
-	[[nodiscard]] float       PlainRadius(float a_reach);  // an inverse-square reach, drawn by the game's own lighting
-	[[nodiscard]] float       PlainFade(float a_fade);
-	[[nodiscard]] RE::NiColor PlainAmbient(const RE::NiColor& a_colour);
-
 	// Community Shaders' inverse square lighting reads a flag and the cutoff from the two words before a light's
 	// colour - the words RE::Light's `Overlay` writes. Without Community Shaders those words are ambient colour.
 	namespace Isl
@@ -174,8 +164,7 @@ namespace Plugin
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
 	// Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods")
-	[[nodiscard]] int  LightingChoice();  // 0 found by itself, 1 Community Shaders, 2 ENB, 3 Vanilla (read at data load)
-	void               SetLightingChoice(int a_v);
+	// - never its lighting picks (his word: "Relight doesn't get vanilla or enb light just relight and the added features")
 	[[nodiscard]] int  LightColors();  // 0 automatic (as drawn), 1 paler, 2 deeper
 	void               SetLightColors(int a_v);
 	[[nodiscard]] int  DimInDaylight();  // 0 off, 1 a little, 2 more
@@ -186,8 +175,6 @@ namespace Plugin
 	void               SetElementColor(int a_element, int a_v);
 	[[nodiscard]] bool AutoLightsOn();
 	void               SetAutoLightsOn(bool a_on);
-	[[nodiscard]] bool LeaveToENBLight();
-	void               SetLeaveToENBLight(bool a_on);
 
 	// ------------------------------------------------------------------ Brightness.cpp: elements and their colors
 	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by; a projectile or explosion takes the element of the
@@ -197,7 +184,6 @@ namespace Plugin
 	[[nodiscard]] int            ElementOf(const RE::EffectSetting* a_effect);
 	[[nodiscard]] int            ElementOfForm(const RE::TESForm* a_form);
 	[[nodiscard]] RE::NiColor    NamedColor(int a_pick);  // a_pick 1..kNamedColorCount (their names: Menu.cpp)
-	[[nodiscard]] bool           TouchedByENBLight(const RE::TESForm* a_form);
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
 	void                             UpdateOptionLights();                           // every frame, after the sneaking pass

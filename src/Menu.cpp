@@ -253,7 +253,6 @@ namespace Plugin
 				ImGuiMCP::Separator();
 			}
 			GlowHeading("Lights", Icon::kBulb);
-			ImGuiMCP::TextDisabled(T("Our lights are drawn for: %s"), T(LightingName()));
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);
@@ -322,20 +321,7 @@ namespace Plugin
 				SaveSettings();
 			}
 			ImGuiMCP::SetItemTooltip("%s",
-				T("Automatic draws each color as RE::Light gives it: the paler look on Community Shaders, the deeper one on ENB and Vanilla. "
-				  "Paler or Deeper keeps one look on every lighting."));
-
-			const char* const kLightings[] = { T("Found by itself"), T("Community Shaders"), T("ENB"), T("Vanilla") };
-			int               pick = LightingChoice();
-			if (ImGuiMCP::Combo(T("Lighting"), &pick, kLightings, 4)) {
-				SetLightingChoice(pick);
-				SaveSettings();
-			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("Which lighting your game draws with. Found by itself looks at your game: Community Shaders when its inverse square "
-				  "lighting is installed, else ENB when an ENB is in the game folder, else Vanilla. Pick one only if it found the wrong one."));
-			ImGuiMCP::SameLine();
-			ImGuiMCP::TextDisabled("%s", T("(takes effect the next time the game starts)"));
+				T("Automatic draws each color as RE::Light gives it. Paler lifts every color toward white, Deeper takes it richer."));
 
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox(T("Lights off while sneaking"), &sneak)) {
@@ -406,15 +392,6 @@ namespace Plugin
 				  "gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
 			ImGuiMCP::SameLine();
 			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
-			if (auto* dh = RE::TESDataHandler::GetSingleton(); dh && (dh->LookupLoadedModByName("ENB Light.esp") || dh->LookupLoadedLightModByName("ENB Light.esp"))) {
-				bool leave = LeaveToENBLight();
-				if (ImGuiMCP::Checkbox(T("Leave ENB Light's spells to it"), &leave)) {
-					SetLeaveToENBLight(leave);
-					SaveSettings();
-					RehandSoon();
-				}
-				ImGuiMCP::SetItemTooltip("%s", T("On ENB: a spell ENB Light gives its own light keeps that light, so it is not lit twice."));
-			}
 
 			GlowHeading("Wards", Icon::kShield);
 			if (WardsSteppedDown()) {

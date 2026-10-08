@@ -15,7 +15,7 @@
 // casting light off, having no config for it. Behind the setting "Light spells this mod has no patch for" it gets a hand
 // light of ours instead: in the color of its own casting light when it has one, else its element's (the color most of the
 // tuned spells of that element wear: fire, frost, shock), at the middle strength and reach of the tuned hand lights. A spell
-// with neither keeps what it has: no color is guessed. On ENB, a spell ENB Light changed is left to ENB Light (its switch).
+// with neither keeps what it has: no color is guessed.
 
 #include "Plugin.h"
 
@@ -29,7 +29,6 @@ namespace Plugin
 			RE::TESObjectLIGH* own;  // the light its plugin gave it
 			std::string        key;
 			bool               automatic{ false };  // no layer lights its art: key names an automatic hand (gAutoHands)
-			bool               enbLight{ false };   // ENB Light changed the effect or its art: left to it on ENB
 		};
 
 		constexpr std::string_view          kAutoPrefix = "auto ";
@@ -111,15 +110,13 @@ namespace Plugin
 		{
 			auto& d = a_light->data;
 			d.time = -1;
-			// ENB and Vanilla (Lighting.cpp): an inverse-square hand light is drawn plain - its reach as a radius, no flag
-			const bool plain = a_hand.inverseSquare && !IslLighting();
-			d.radius = static_cast<std::uint32_t>(std::lround((std::max)(plain ? PlainRadius(a_hand.radius) : a_hand.radius, 0.0f)));
+			d.radius = static_cast<std::uint32_t>(std::lround((std::max)(a_hand.radius, 0.0f)));
 			d.color.red = a_hand.rgb[0];
 			d.color.green = a_hand.rgb[1];
 			d.color.blue = a_hand.rgb[2];
 			d.color.alpha = 0;
 			std::uint32_t flags = a_hand.portalStrict ? static_cast<std::uint32_t>(RE::TES_LIGHT_FLAGS::kPortalStrict) : 0u;
-			if (a_hand.inverseSquare && !plain) {
+			if (a_hand.inverseSquare) {
 				flags |= kLighInverseSquare;
 			}
 			d.flags = static_cast<RE::TES_LIGHT_FLAGS>(flags);
@@ -129,7 +126,7 @@ namespace Plugin
 			d.flickerPeriodRecip = 1.0f;
 			d.flickerIntensityAmplitude = 0.0f;
 			d.flickerMovementAmplitude = 0.0f;
-			a_light->fade = plain ? PlainFade(a_hand.fade) : a_hand.fade;
+			a_light->fade = a_hand.fade;
 		}
 	}
 
@@ -248,8 +245,7 @@ namespace Plugin
 					gAutoHands.emplace(key, std::move(h));
 				}
 				noteElement(key, ElementOf(effect));
-				const bool enb = TouchedByENBLight(effect) || TouchedByENBLight(effect->data.castingArt);
-				gTargets.push_back({ effect, ownOf(effect), std::move(key), true, enb });
+				gTargets.push_back({ effect, ownOf(effect), std::move(key), true });
 			}
 			for (const auto& [key, v] : votes) {
 				const auto best = std::ranges::max_element(v.begin() + 1, v.end());
@@ -285,10 +281,10 @@ namespace Plugin
 
 	void MakeHandLights()
 	{
-		// inverse square lighting only on the Community Shaders pick with its shader there (Lighting.cpp); without it the two
-		// words DressHandLight writes are ambient colour
-		ReadLighting();
-		gIsl = IslLighting();
+		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour.
+		// No lighting pick of our own (his word 2026-10-08: "relight is relight is relight") - our lights follow RE::Light's
+		std::error_code ec;
+		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };
@@ -320,7 +316,7 @@ namespace Plugin
 				AutoLightsOn() ? "on" : "off");
 			for (const auto& t : gTargets) {
 				if (t.automatic) {
-					SKSE::log::info("[HAND-AUTO] {:08X} {} | {}{}", t.effect->GetFormID(), t.effect->GetFullName(), t.key, t.enbLight ? " | ENB Light's" : "");
+					SKSE::log::info("[HAND-AUTO] {:08X} {} | {}", t.effect->GetFormID(), t.effect->GetFullName(), t.key);
 				}
 			}
 		}
@@ -348,9 +344,8 @@ namespace Plugin
 			}
 			std::size_t autoLit = 0;
 			for (auto& t : gTargets) {
-				auto*      copy = t.automatic ? gAutoCopies[t.key] : gCopies[t.key];
-				const bool left = t.automatic && t.enbLight && EnbLighting() && LeaveToENBLight();  // ENB Light lights it
-				auto*      want = gInUse.contains(copy) && !left ? copy : t.own;
+				auto* copy = t.automatic ? gAutoCopies[t.key] : gCopies[t.key];
+				auto* want = gInUse.contains(copy) ? copy : t.own;
 				if (t.effect->data.light != want) {
 					t.effect->data.light = want;
 				}
@@ -406,15 +401,10 @@ namespace Plugin
 			return;
 		}
 		a_light->fadeAmount = kMovingLightMark;
-		auto&       data = a_light->GetLightRuntimeData();
-		const bool  plain = !gIsl && a_hand.inverseSquare;  // ENB and Vanilla: drawn plain (Lighting.cpp)
-		const float radius = plain ? PlainRadius(a_hand.radius) : a_hand.radius;
-		data.fade = plain ? PlainFade(a_hand.fade) : a_hand.fade;
-		data.radius = { radius, radius, a_hand.size };
+		auto& data = a_light->GetLightRuntimeData();
+		data.fade = a_hand.fade;
+		data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
 		data.diffuse = a_hand.color;
-		if (!gIsl) {
-			data.ambient = PlainAmbient(a_hand.color);
-		}
 		if (gIsl) {
 			if (a_hand.inverseSquare) {
 				Isl::SetOn(a_light);

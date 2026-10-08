@@ -216,14 +216,11 @@ namespace Plugin
 			const float fade = v.held->fade * scale;
 			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
-				auto&      d = v.light->GetLightRuntimeData();
-				const bool isl = IslLighting();  // ENB and Vanilla: drawn plain, as MakeOurLight made it
-				d.fade = isl ? fade : PlainFade(fade);
-				d.radius.x = isl ? reach : PlainRadius(reach);
-				d.radius.y = d.radius.x;
-				if (isl) {
-					Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
-				}
+				auto& d = v.light->GetLightRuntimeData();
+				d.fade = fade;
+				d.radius.x = reach;
+				d.radius.y = reach;
+				Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
 				v.written = fade;
 				v.wroteReach = reach;
 			}

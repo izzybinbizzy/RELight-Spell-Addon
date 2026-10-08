@@ -15,8 +15,8 @@
 // RE::Light lights the objects; what it has no setting for is done here, on the lights this pass already looks after):
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
-//   Light colors      Automatic draws each color as RE::Light gives it; Paler turns it from linear light to the screen's
-//                     (the Community Shaders look), Deeper the other way
+//   Light colors      Automatic draws each color as RE::Light gives it; Paler turns it from linear light to the screen's,
+//                     Deeper the other way (never a lighting pick: his "relight is relight is relight", 2026-10-08)
 //   Fire / Frost / Shock colors   a named color on every light of that element (a hand light by its effect, an object's
 //                     light by the effect that fires it); the spell's own otherwise
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
@@ -269,12 +269,6 @@ namespace Plugin
 			0xFF2EC4, 0xFFFFFF };
 		const auto              c = kColors[std::clamp(a_pick, 1, kNamedColorCount) - 1];
 		return { ((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f };
-	}
-
-	bool TouchedByENBLight(const RE::TESForm* a_form)
-	{
-		const auto* files = a_form ? a_form->sourceFiles.array : nullptr;
-		return files && std::ranges::any_of(*files, [](const RE::TESFile* f) { return f && f->GetFilename() == "ENB Light.esp"; });
 	}
 
 	void ForgetSliderLights(const GoneLights& a_gone)

@@ -17,5 +17,5 @@ namespace Fade
 	void              SweepOwnLights() {}
 	void              DropOwnLights() {}
 	std::size_t       OwnLightCount() { return 0; }
-	const char*       OwnLightLighting() { return Plugin::LightingName(); }
+	const char*       OwnLightLighting() { return "RE::Light"; }  // no lighting pick here (his "relight is relight is relight")
 }

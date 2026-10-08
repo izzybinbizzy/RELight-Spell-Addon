@@ -12,13 +12,11 @@
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
 //   Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods"):
-//   Lighting=0                  0 found by itself, 1 Community Shaders, 2 ENB, 3 Vanilla (Lighting.cpp, next start)
 //   LightColors=0               0 automatic (as drawn), 1 paler, 2 deeper (Brightness.cpp)
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   FireColor=0 FrostColor=0 ShockColor=0   0 the spell's own, 1-10 a named color (Brightness.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
-//   LeaveToENBLight=1           on ENB with ENB Light: a spell ENB Light changed keeps ENB Light's light
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
 // (A [Brightness] section from the old per-option sliders is ignored - his call 2026-09-28 late night, the sliders are gone.)
@@ -39,13 +37,11 @@ namespace Plugin
 		bool                  gHands = true;
 		bool                  gWeapons = true;
 		int                   gWard = 0;
-		int                   gLighting = 0;
 		int                   gLightColors = 0;
 		int                   gDaylight = 1;
 		int                   gHandsFor = 0;
 		int                   gElement[4]{};  // [1] fire, [2] frost, [3] shock
 		bool                  gAuto = true;
-		bool                  gLeaveEnb = true;
 		constexpr const char* kElementKeys[] = { "", "FireColor", "FrostColor", "ShockColor" };
 
 		std::string Trim(std::string s)
@@ -96,8 +92,6 @@ namespace Plugin
 				gWeapons = v != 0;
 			} else if (section == "Settings" && key == "WardColour") {
 				gWard = std::clamp(v, 0, 1);
-			} else if (section == "Settings" && key == "Lighting") {
-				gLighting = std::clamp(v, 0, 3);
 			} else if (section == "Settings" && key == "LightColors") {
 				gLightColors = std::clamp(v, 0, 2);
 			} else if (section == "Settings" && key == "DimInDaylight") {
@@ -106,8 +100,6 @@ namespace Plugin
 				gHandsFor = std::clamp(v, 0, 3);
 			} else if (section == "Settings" && key == "AutoLights") {
 				gAuto = v != 0;
-			} else if (section == "Settings" && key == "LeaveToENBLight") {
-				gLeaveEnb = v != 0;
 			} else if (section == "Settings" && (key == kElementKeys[1] || key == kElementKeys[2] || key == kElementKeys[3])) {
 				for (int e = 1; e <= 3; ++e) {
 					if (key == kElementKeys[e]) {
@@ -142,9 +134,9 @@ namespace Plugin
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
 		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
 			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0)
-			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard << "\nLighting=" << gLighting
+			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard
 			<< "\nLightColors=" << gLightColors << "\nDimInDaylight=" << gDaylight << "\nHandLightsFor=" << gHandsFor
-			<< "\nAutoLights=" << (gAuto ? 1 : 0) << "\nLeaveToENBLight=" << (gLeaveEnb ? 1 : 0);
+			<< "\nAutoLights=" << (gAuto ? 1 : 0);
 		for (int e = 1; e <= 3; ++e) {
 			out << "\n"
 				<< kElementKeys[e] << "=" << gElement[e];
@@ -225,8 +217,6 @@ namespace Plugin
 	}
 
 	// ---- Illuminated's settings, ported 2026-10-08 (each read where the file map at the top says)
-	int  LightingChoice() { return gLighting; }
-	void SetLightingChoice(int a_v) { gLighting = std::clamp(a_v, 0, 3); }
 	int  LightColors() { return gLightColors; }
 	void SetLightColors(int a_v) { gLightColors = std::clamp(a_v, 0, 2); }
 	int  DimInDaylight() { return gDaylight; }
@@ -242,8 +232,6 @@ namespace Plugin
 	}
 	bool AutoLightsOn() { return gAuto; }
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
-	bool LeaveToENBLight() { return gLeaveEnb; }
-	void SetLeaveToENBLight(bool a_on) { gLeaveEnb = a_on; }
 
 	// his call, 2026-09-26: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together
