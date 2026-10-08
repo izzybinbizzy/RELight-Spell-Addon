@@ -92,8 +92,9 @@ namespace Plugin
 		for (auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
-		SKSE::log::info("settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
-						"({} line(s) read)",
+		SKSE::log::info(
+			"settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
+			"({} line(s) read)",
 			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read);
 	}
 

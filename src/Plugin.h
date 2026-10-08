@@ -106,26 +106,26 @@ namespace Plugin
 		[[nodiscard]] inline bool  On(RE::NiLight* a_light) noexcept { return (Words(a_light)[0] & kFlag) != 0; }
 		inline void                SetOn(RE::NiLight* a_light) noexcept { Words(a_light)[0] |= kFlag; }
 		[[nodiscard]] inline float Cutoff(RE::NiLight* a_light) noexcept { return std::bit_cast<float>(Words(a_light)[1]); }
-		inline void SetCutoff(RE::NiLight* a_light, float a_cutoff) noexcept
+		inline void                SetCutoff(RE::NiLight* a_light, float a_cutoff) noexcept
 		{
 			Words(a_light)[1] = std::bit_cast<std::uint32_t>(std::clamp(a_cutoff, 0.01f, 0.99f));
 		}
 	}
 
-	void                                          LoadData();
-	[[nodiscard]] std::vector<Option>&            Options();
-	[[nodiscard]] const std::vector<std::size_t>& OptionsInMenuOrder();  // by `menu`, never the alphabetical file order
-	[[nodiscard]] std::size_t                     DataFiles();
-	[[nodiscard]] std::size_t                     OptionOf(const RE::TESForm* a_base);  // kNone when this mod does not light it
-	[[nodiscard]] std::size_t                     OptionOfShader(const RE::TESEffectShader* a_shader);  // an enchantment's, by editor ID
-	[[nodiscard]] bool                            OptionLit(std::size_t a_option);  // its switch is on, and Weapon lights if it is a weapon's
-	[[nodiscard]] const Stream*                   StreamOf(const RE::TESForm* a_base);  // nullptr unless it is one of our streams
-	[[nodiscard]] const RE::NiColor*              TintOf(const RE::TESForm* a_base);    // an art pick's colour, or nullptr
-	[[nodiscard]] std::string                     MeshKey(std::string_view a_path);
-	[[nodiscard]] std::string                     PathKey(std::string_view a_path);
-	[[nodiscard]] const StringMap<std::vector<Hand>>& Hands();  // hand key -> the layers that light it, highest order first
-	[[nodiscard]] const std::unordered_set<RE::FormID>& SprayLightRecords();  // spray light records, lit through our configs
-	[[nodiscard]] const HandFx* HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
+	void                                                LoadData();
+	[[nodiscard]] std::vector<Option>&                  Options();
+	[[nodiscard]] const std::vector<std::size_t>&       OptionsInMenuOrder();  // by `menu`, never the alphabetical file order
+	[[nodiscard]] std::size_t                           DataFiles();
+	[[nodiscard]] std::size_t                           OptionOf(const RE::TESForm* a_base);                  // kNone when this mod does not light it
+	[[nodiscard]] std::size_t                           OptionOfShader(const RE::TESEffectShader* a_shader);  // an enchantment's, by editor ID
+	[[nodiscard]] bool                                  OptionLit(std::size_t a_option);                      // its switch is on, and Weapon lights if it is a weapon's
+	[[nodiscard]] const Stream*                         StreamOf(const RE::TESForm* a_base);                  // nullptr unless it is one of our streams
+	[[nodiscard]] const RE::NiColor*                    TintOf(const RE::TESForm* a_base);                    // an art pick's colour, or nullptr
+	[[nodiscard]] std::string                           MeshKey(std::string_view a_path);
+	[[nodiscard]] std::string                           PathKey(std::string_view a_path);
+	[[nodiscard]] const StringMap<std::vector<Hand>>&   Hands();                           // hand key -> the layers that light it, highest order first
+	[[nodiscard]] const std::unordered_set<RE::FormID>& SprayLightRecords();               // spray light records, lit through our configs
+	[[nodiscard]] const HandFx*                         HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
 	// nullptr unless we light this weapon in the hand: its form first, then (first person) its first-person model, then its model
 	[[nodiscard]] const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson);
 	[[nodiscard]] std::size_t   OptionOfSprayLight(const RE::TESObjectLIGH* a_light);  // the option whose `spraylight` line names it
@@ -141,13 +141,13 @@ namespace Plugin
 	void                      ForgetSliderLights(const GoneLights& a_gone);  // Brightness.cpp
 
 	// ------------------------------------------------------------------ HandLights.cpp: lights on the caster's hands
-	void                      MakeHandLights();                        // once, after the data and the settings are read
-	void                      RefindHandLights();                      // when a save loads: casting art may have changed
-	void                      ApplyHandLights(bool a_log);             // after any switch that decides who lights a hand
+	void                      MakeHandLights();                               // once, after the data and the settings are read
+	void                      RefindHandLights();                             // when a save loads: casting art may have changed
+	void                      ApplyHandLights(bool a_log);                    // after any switch that decides who lights a hand
 	[[nodiscard]] const Hand* HandOfLight(const RE::TESObjectLIGH* a_light);  // nullptr unless it is one of ours, in use
 	void                      DressHandLight(RE::NiLight* a_light, const Hand& a_hand);
 	void                      NoteHandLight(RE::NiLight* a_light, const std::string& a_key);  // a lit hand light, so a menu change reaches it (main thread)
-	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);            // put out by a switch until the next cast
+	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);                   // put out by a switch until the next cast
 	[[nodiscard]] std::size_t HandLightsMade();
 	[[nodiscard]] std::size_t HandEffects();
 
@@ -174,7 +174,7 @@ namespace Plugin
 	void                             UpdateOptionLights();                           // every frame, after the sneaking pass
 	void                             CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
 	[[nodiscard]] bool               HeldOutForOption(const RE::NiLight* a_light);
-	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);  // the reference a scene-graph object belongs to
+	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);           // the reference a scene-graph object belongs to
 	[[nodiscard]] std::size_t        EnchantOptionOf(const RE::NiLight* a_light);  // kNone unless it is an enchantment light of ours
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
@@ -195,8 +195,8 @@ namespace Plugin
 	[[nodiscard]] std::size_t LiveHeldLights();
 
 	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its colour
-	void ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded
-	[[nodiscard]] bool WardsSteppedDown();  // Dynamic Wards is loaded: the wards are its
+	void               ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded
+	[[nodiscard]] bool WardsSteppedDown();             // Dynamic Wards is loaded: the wards are its
 
 	// ------------------------------------------------------------------ VaerSwirls.cpp: VAER Reborn's swirl on Thaumaturgy's effects
 	void VaerSwirls();  // once, after the data is read: Thaumaturgy's nine effect copies wear VAER's swirl art and shader

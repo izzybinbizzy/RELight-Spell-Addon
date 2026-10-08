@@ -77,7 +77,8 @@ namespace Plugin
 		gFromFile = pick >= 0;
 		if (pick < 0) {
 			const bool enb = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
-			pick = gIslShader ? 0 : enb ? 1 : 2;
+			pick = gIslShader ? 0 : enb ? 1 :
+			                              2;
 		}
 		gPick = pick;
 		SKSE::log::info("lighting: {} ({}); inverse square shader {}; our lights drawn {}", kNames[pick],

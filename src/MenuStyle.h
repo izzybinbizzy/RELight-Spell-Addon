@@ -59,7 +59,7 @@ namespace MenuStyle
 	public:
 		Page()
 		{
-			const auto& t = gTheme;
+			const auto&  t = gTheme;
 			const ImVec4 hover{ t.accentDim.x * 1.25f, t.accentDim.y * 1.25f, t.accentDim.z * 1.25f, 1.0f };
 			PushStyleColor(ImGuiCol_CheckMark, t.accent);
 			PushStyleColor(ImGuiCol_SliderGrab, t.accent);
@@ -112,7 +112,7 @@ namespace MenuStyle
 	// a small round dot and a label: on (accent) or off (muted)
 	inline void Status(bool a_on, const char* a_text)
 	{
-		const auto pos = GetCursorScreenPos();
+		const auto  pos = GetCursorScreenPos();
 		const float h = GetTextLineHeight();
 		ImDrawListManager::AddCircleFilled(GetWindowDrawList(), ImVec2(pos.x + h * 0.5f, pos.y + h * 0.5f), h * 0.3f,
 			a_on ? U32(kGood) : U32(kMuted, 0.6f), 12);
@@ -124,9 +124,9 @@ namespace MenuStyle
 	// the full spectrum as a bar: click or drag picks the hue at full colour; true when the mouse is let go
 	inline bool SpectrumBar(const char* a_id, float a_rgb[3])
 	{
-		const auto  pos = GetCursorScreenPos();
-		const float w = (std::max)(120.0f, GetContentRegionAvail().x), h = 16.0f;
-		auto*       dl = GetWindowDrawList();
+		const auto      pos = GetCursorScreenPos();
+		const float     w = (std::max)(120.0f, GetContentRegionAvail().x), h = 16.0f;
+		auto*           dl = GetWindowDrawList();
 		constexpr ImU32 kStops[] = { IM_COL32(255, 0, 0, 255), IM_COL32(255, 255, 0, 255), IM_COL32(0, 255, 0, 255),
 			IM_COL32(0, 255, 255, 255), IM_COL32(0, 0, 255, 255), IM_COL32(255, 0, 255, 255), IM_COL32(255, 0, 0, 255) };
 		for (int i = 0; i < 6; ++i) {

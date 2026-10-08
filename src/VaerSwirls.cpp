@@ -161,8 +161,8 @@ namespace Plugin
 		// texture "....dds.dds", a file that does not exist, so they draw nothing - point any such name at the real file
 		std::size_t typos = 0;
 		for (const auto& c : kVaerOwn) {
-			auto* shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
-			const char* tex = shader ? shader->fillTexture.textureName.c_str() : nullptr;
+			auto*             shader = dh->LookupForm<RE::TESEffectShader>(c.shader, c.shaderPlugin);
+			const char*       tex = shader ? shader->fillTexture.textureName.c_str() : nullptr;
 			const std::size_t len = tex ? std::strlen(tex) : 0;
 			if (len > 8 && _stricmp(tex + len - 8, ".dds.dds") == 0) {
 				const std::string fixed(tex, len - 4);

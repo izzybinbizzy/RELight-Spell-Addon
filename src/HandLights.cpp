@@ -18,9 +18,9 @@ namespace Plugin
 	{
 		struct Target
 		{
-			RE::EffectSetting*  effect;
-			RE::TESObjectLIGH*  own;  // the light its plugin gave it
-			std::string         key;
+			RE::EffectSetting* effect;
+			RE::TESObjectLIGH* own;  // the light its plugin gave it
+			std::string        key;
 		};
 
 		constexpr std::uint32_t kLighInverseSquare = 1u << 14;  // Community Shaders' inverse square flag on a LIGH record
@@ -34,13 +34,13 @@ namespace Plugin
 			bool         heldOut{ false };  // put out because nothing lights its key any more
 		};
 
-		std::mutex                                                   gLock;
-		std::vector<Target>                                          gTargets;
-		std::vector<Live>                                            gLive;
-		std::unordered_map<std::string, RE::TESObjectLIGH*>          gCopies;
-		std::unordered_map<const RE::TESObjectLIGH*, const Hand*>    gInUse;
-		std::size_t                                                  gLit = 0;
-		bool                                                         gIsl = false;
+		std::mutex                                                gLock;
+		std::vector<Target>                                       gTargets;
+		std::vector<Live>                                         gLive;
+		std::unordered_map<std::string, RE::TESObjectLIGH*>       gCopies;
+		std::unordered_map<const RE::TESObjectLIGH*, const Hand*> gInUse;
+		std::size_t                                               gLit = 0;
+		bool                                                      gIsl = false;
 
 		RE::TESObjectLIGH* NewLight()
 		{
@@ -202,8 +202,9 @@ namespace Plugin
 			}
 			byPath = FindTargets();
 		}
-		SKSE::log::info("hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
-						"their full art path); inverse square lighting {}",
+		SKSE::log::info(
+			"hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
+			"their full art path); inverse square lighting {}",
 			made, failed, gTargets.size(), byPath, gIsl ? "found" : "not found");
 		ApplyHandLights(true);
 	}
@@ -273,8 +274,8 @@ namespace Plugin
 			return;
 		}
 		a_light->fadeAmount = kMovingLightMark;
-		auto& data = a_light->GetLightRuntimeData();
-		const bool plain = !gIsl && a_hand.inverseSquare;  // ENB and Vanilla: drawn plain (Lighting.cpp)
+		auto&       data = a_light->GetLightRuntimeData();
+		const bool  plain = !gIsl && a_hand.inverseSquare;  // ENB and Vanilla: drawn plain (Lighting.cpp)
 		const float radius = plain ? PlainRadius(a_hand.radius) : a_hand.radius;
 		data.fade = plain ? PlainFade(a_hand.fade) : a_hand.fade;
 		data.radius = { radius, radius, a_hand.size };

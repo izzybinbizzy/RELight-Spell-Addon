@@ -104,7 +104,7 @@ namespace Plugin
 			if (const auto& biped = a_actor->GetBiped(a_firstPerson)) {
 				RE::NiNode* other = nullptr;
 				for (auto& obj : biped->objects) {
-					auto* clone = obj.item == a_weapon && obj.partClone ? obj.partClone->AsNode() : nullptr;
+					auto*       clone = obj.item == a_weapon && obj.partClone ? obj.partClone->AsNode() : nullptr;
 					const char* parent = clone && clone->parent ? clone->parent->name.c_str() : nullptr;
 					if (!parent) {
 						continue;
@@ -198,7 +198,7 @@ namespace Plugin
 			const float       fade = w.held->fade * scale;
 			const float       reach = w.held->radius * reachScale;
 			RE::NiPointLight* light = nullptr;
-			auto* bs = MakeOurLight(*w.held, w.held->color, w.held->positions.front(), fade, reach, w.node, scene, light);
+			auto*             bs = MakeOurLight(*w.held, w.held->color, w.held->positions.front(), fade, reach, w.node, scene, light);
 			if (!bs) {
 				SKSE::log::warn("[HELD] {}: the light could not be made or registered", w.held->key);
 				continue;
