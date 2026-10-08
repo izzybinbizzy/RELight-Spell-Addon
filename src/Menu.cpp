@@ -8,8 +8,7 @@
 // the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit. The look is the shared
 // MenuStyle.h in warm spell-light gold, with this mod's glowing headings.
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN  // NOMINMAX is set for every file in xmake.lua (the fading module needs it too)
 #include "Plugin.h"
 
 #include "SKSEMenuFramework.h"
@@ -254,7 +253,6 @@ namespace Plugin
 				ImGuiMCP::Separator();
 			}
 			GlowHeading("Lights", Icon::kBulb);
-			ImGuiMCP::TextDisabled(T("Our lights are drawn for: %s"), T(LightingName()));
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);
@@ -276,6 +274,54 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				T("How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
 				  "that is the slider above."));
+
+			// ---- Illuminated's light settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister
+			// mods"); RE::Light lights the objects, these are what it has no setting for
+			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is)
+			struct Preset
+			{
+				const char* name;
+				const char* tip;
+				int         brightness, reach, hands;
+			};
+			const Preset presets[] = {
+				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1 },
+				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0 },
+				{ T("Dramatic"), T("Brighter lights that reach further."), 150, 120, -1 },
+				{ T("Performance"), T("For big fights: hand lights for you and your followers only, and a shorter reach."), 100, 80, 2 },
+			};
+			ImGuiMCP::TextDisabled("%s", T("Presets:"));
+			for (const auto& p : presets) {
+				ImGuiMCP::SameLine();
+				if (ImGuiMCP::Button(p.name)) {
+					SetBrightnessPercent(p.brightness);
+					SetReachPercent(p.reach);
+					if (p.hands >= 0) {
+						SetHandLightsFor(p.hands);
+					}
+					SaveSettings();
+				}
+				ImGuiMCP::SetItemTooltip("%s", p.tip);
+			}
+
+			const char* const kDaylight[] = { T("Off"), T("A little"), T("More") };
+			int               day = DimInDaylight();
+			if (ImGuiMCP::Combo(T("Dim in daylight"), &day, kDaylight, 3)) {
+				SetDimInDaylight(day);
+				SaveSettings();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				T("This mod's lights are dimmer outdoors by day and in brightly lit rooms, where a bright light looks out of place, and at "
+				  "full strength at night and in the dark. Follows the time of day as it passes."));
+
+			const char* const kColorLooks[] = { T("Automatic"), T("Paler"), T("Deeper") };
+			int               look = LightColors();
+			if (ImGuiMCP::Combo(T("Light colors"), &look, kColorLooks, 3)) {
+				SetLightColors(look);
+				SaveSettings();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				T("Automatic draws each color as RE::Light gives it. Paler lifts every color toward white, Deeper takes it richer."));
 
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox(T("Lights off while sneaking"), &sneak)) {
@@ -305,6 +351,47 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
 				  "once; the switches on the Weapons page choose among them."));
+
+			GlowHeading("Spell Colors", Icon::kBulb);
+			const char* const kElementLabels[] = { "", T("Fire color"), T("Frost color"), T("Shock color") };  // literals, for Translation.json
+			for (int e = 1; e <= 3; ++e) {
+				// Brightness.cpp NamedColor's order (Dynamic Wards' preset hues)
+				const char* const items[] = { T("Auto (the spell's own)"), T("Crimson"), T("Ember"), T("Gold"), T("Green"), T("Teal"),
+					T("Frost"), T("Blue"), T("Violet"), T("Magenta"), T("White") };
+				static_assert(std::size(items) == kNamedColorCount + 1);
+				int c = ElementColor(e);
+				ImGuiMCP::PushID(e);
+				if (ImGuiMCP::Combo(kElementLabels[e], &c, items, static_cast<int>(std::size(items)))) {
+					SetElementColor(e, c);
+					SaveSettings();
+				}
+				ImGuiMCP::PopID();
+				ImGuiMCP::SetItemTooltip("%s", T("The color of every spell of that element - its hand, bolt and explosion. Auto keeps each spell's own color."));
+			}
+
+			GlowHeading("Big Fights", Icon::kBulb);
+			const char* const kWho[] = { T("Everyone"), T("Everyone nearby"), T("Player and followers"), T("Player only") };
+			int               who = HandLightsFor();
+			if (ImGuiMCP::Combo(T("Hand lights for"), &who, kWho, 4)) {
+				SetHandLightsFor(who);
+				SaveSettings();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				T("Which casters' hands carry a spell light. In a big fight fewer lights keep the game smooth. Everyone nearby leaves "
+				  "out casters farther than about forty paces from you. Reaches the next spell they ready."));
+
+			GlowHeading("Spells Without a Patch", Icon::kBulb);
+			bool autoOn = AutoLightsOn();
+			if (ImGuiMCP::Checkbox(T("Light spells this mod has no patch for"), &autoOn)) {
+				SetAutoLightsOn(autoOn);
+				SaveSettings();
+				RehandSoon();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				T("RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
+				  "gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
+			ImGuiMCP::SameLine();
+			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
 
 			GlowHeading("Wards", Icon::kShield);
 			if (WardsSteppedDown()) {

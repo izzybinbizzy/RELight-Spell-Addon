@@ -11,6 +11,12 @@
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
+//   Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods"):
+//   LightColors=0               0 automatic (as drawn), 1 paler, 2 deeper (Brightness.cpp)
+//   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
+//   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
+//   FireColor=0 FrostColor=0 ShockColor=0   0 the spell's own, 1-10 a named color (Brightness.cpp)
+//   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
 // (A [Brightness] section from the old per-option sliders is ignored - his call 2026-09-28 late night, the sliders are gone.)
@@ -25,12 +31,18 @@ namespace Plugin
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
-		int  gBrightness = 100;
-		int  gReach = 100;
-		bool gSneak = false;
-		bool gHands = true;
-		bool gWeapons = true;
-		int  gWard = 0;
+		int                   gBrightness = 100;
+		int                   gReach = 100;
+		bool                  gSneak = false;
+		bool                  gHands = true;
+		bool                  gWeapons = true;
+		int                   gWard = 0;
+		int                   gLightColors = 0;
+		int                   gDaylight = 1;
+		int                   gHandsFor = 0;
+		int                   gElement[4]{};  // [1] fire, [2] frost, [3] shock
+		bool                  gAuto = true;
+		constexpr const char* kElementKeys[] = { "", "FireColor", "FrostColor", "ShockColor" };
 
 		std::string Trim(std::string s)
 		{
@@ -80,6 +92,20 @@ namespace Plugin
 				gWeapons = v != 0;
 			} else if (section == "Settings" && key == "WardColour") {
 				gWard = std::clamp(v, 0, 1);
+			} else if (section == "Settings" && key == "LightColors") {
+				gLightColors = std::clamp(v, 0, 2);
+			} else if (section == "Settings" && key == "DimInDaylight") {
+				gDaylight = std::clamp(v, 0, 2);
+			} else if (section == "Settings" && key == "HandLightsFor") {
+				gHandsFor = std::clamp(v, 0, 3);
+			} else if (section == "Settings" && key == "AutoLights") {
+				gAuto = v != 0;
+			} else if (section == "Settings" && (key == kElementKeys[1] || key == kElementKeys[2] || key == kElementKeys[3])) {
+				for (int e = 1; e <= 3; ++e) {
+					if (key == kElementKeys[e]) {
+						gElement[e] = std::clamp(v, 0, kNamedColorCount);
+					}
+				}
 			} else if (section == "Switches") {
 				for (auto& o : Options()) {
 					if (o.switchable && o.id == key) {
@@ -108,7 +134,14 @@ namespace Plugin
 		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
 		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
 			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0)
-			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard << "\n";
+			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard
+			<< "\nLightColors=" << gLightColors << "\nDimInDaylight=" << gDaylight << "\nHandLightsFor=" << gHandsFor
+			<< "\nAutoLights=" << (gAuto ? 1 : 0);
+		for (int e = 1; e <= 3; ++e) {
+			out << "\n"
+				<< kElementKeys[e] << "=" << gElement[e];
+		}
+		out << "\n";
 		out << "[Switches]\n";
 		std::unordered_set<std::string> written;  // a pack's files share one switch, so one line
 		for (const auto& o : Options()) {
@@ -182,6 +215,23 @@ namespace Plugin
 			SKSE::log::info("ward colour set to {}", gWard == 1 ? "white" : "vanilla blue");
 		}
 	}
+
+	// ---- Illuminated's settings, ported 2026-10-08 (each read where the file map at the top says)
+	int  LightColors() { return gLightColors; }
+	void SetLightColors(int a_v) { gLightColors = std::clamp(a_v, 0, 2); }
+	int  DimInDaylight() { return gDaylight; }
+	void SetDimInDaylight(int a_v) { gDaylight = std::clamp(a_v, 0, 2); }
+	int  HandLightsFor() { return gHandsFor; }
+	void SetHandLightsFor(int a_v) { gHandsFor = std::clamp(a_v, 0, 3); }
+	int  ElementColor(int a_element) { return a_element >= 1 && a_element <= 3 ? gElement[a_element] : 0; }
+	void SetElementColor(int a_element, int a_v)
+	{
+		if (a_element >= 1 && a_element <= 3) {
+			gElement[a_element] = std::clamp(a_v, 0, kNamedColorCount);
+		}
+	}
+	bool AutoLightsOn() { return gAuto; }
+	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 
 	// his call, 2026-09-26: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together

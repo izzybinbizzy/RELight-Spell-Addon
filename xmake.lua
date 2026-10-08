@@ -16,12 +16,17 @@ set_config("skyrim_vr", false)
 
 includes("lib/commonlibsse-ng")
 
+-- the fading module's rule files (Fade*.cpp, Illuminated's, ported 2026-10-08)
+add_requires("nlohmann_json v3.12.0")
+
 target("RelightSpellAddon", function()
     add_deps("commonlibsse-ng")
+    add_packages("nlohmann_json")
+    add_defines("NOMINMAX")  -- windows.h min/max macros break std::min/max and numeric_limits::max
     add_rules("commonlibsse-ng.plugin", {
         name = "RelightSpellAddon",
         author = "izzydoingit",
-        description = "RELight - Spell Addon - brightness, option switches, travelling lights and lights off while sneaking",
+        description = "RELight - Spell Addon - brightness, option switches, travelling lights, lights off while sneaking and fading lights",
     })
     -- the source is split by job (see the file map at the top of src/main.cpp); every .cpp in src is built
     add_files("src/*.cpp")

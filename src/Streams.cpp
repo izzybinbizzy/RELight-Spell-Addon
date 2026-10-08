@@ -118,19 +118,13 @@ namespace Plugin
 		light->fadeAmount = kMovingLightMark;
 		auto& data = light->GetLightRuntimeData();
 		data.diffuse = a_colour;
-		// ENB and Vanilla (Lighting.cpp): the reach asked for, drawn plain - no inverse square words, a tenth of the colour
-		// as ambient (a new light's ambient is white)
-		const bool  isl = IslLighting();
-		const float radius = isl ? a_reach : PlainRadius(a_reach);
-		data.fade = isl ? a_fade : PlainFade(a_fade);
-		data.radius = { radius, radius, a_s.size };  // x and y are the reach; z carries the light's size
-		light->SetLightAttenuation(radius);          // without it the light has no attenuation and lights nothing
-		if (!isl) {
-			data.ambient = PlainAmbient(a_colour);  // after SetLightAttenuation, which writes the same two words
-		}
+		data.fade = a_fade;
+		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
+		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
-		// the peak with the reach held (at 100%/100% it equals the file's)
-		if (isl) {
+		// the peak with the reach held (at 100%/100% it equals the file's). Only when RE::Light's own test finds inverse
+		// square lighting (IslShader), as the hand lights - no lighting pick of our own (his "relight is relight is relight")
+		if (IslShader()) {
 			Isl::SetOn(light);
 			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
 		}
