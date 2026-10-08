@@ -219,9 +219,11 @@ namespace
 			// here never reaches the screen in between
 			Plugin::UpdateOptionLights();
 			Plugin::UpdateHeldLights();
-			// last: RE::Light has already written this frame's fades (its update runs inside `func` above)
+			// RE::Light has already written this frame's fades (its update runs inside `func` above): the sliders next, then
+			// the fading module as the final pass, on what the sliders wrote (each fade it writes is reported back -
+			// Brightness.cpp's NoteFadeWrite)
 			Plugin::UpdateBrightness(a_delta);
-			Fade::UpdateHands(a_delta);  // after the sliders, on what they wrote (Brightness.cpp has why they never compound)
+			Fade::UpdateHands(a_delta);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};

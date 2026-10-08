@@ -383,6 +383,8 @@ namespace Plugin
 		}
 	}
 
+	bool IslShader() { return gIsl; }
+
 	const Hand* HandOfLight(const RE::TESObjectLIGH* a_light)
 	{
 		if (!a_light) {

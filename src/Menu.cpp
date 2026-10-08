@@ -366,8 +366,8 @@ namespace Plugin
 					SaveSettings();
 				}
 				ImGuiMCP::PopID();
+				ImGuiMCP::SetItemTooltip("%s", T("The color of every spell of that element - its hand, bolt and explosion. Auto keeps each spell's own color."));
 			}
-			ImGuiMCP::SetItemTooltip("%s", T("The color of every spell of that element - its hand, bolt and explosion. Auto keeps each spell's own color."));
 
 			GlowHeading("Big Fights", Icon::kBulb);
 			const char* const kWho[] = { T("Everyone"), T("Everyone nearby"), T("Player and followers"), T("Player only") };

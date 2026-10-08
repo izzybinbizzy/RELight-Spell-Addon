@@ -321,7 +321,7 @@ namespace Fade
 			ImGuiMCP::Text(T("%zu light(s) being scaled; %zu glow(s) dimmed"), ScaledLightCount(), DimmedGlowCount());
 			if (const auto frozen = FrozenLightCount()) {
 				ImGuiMCP::TextColored(kGold, T("%zu light(s) held steady: another plugin scales them the same way"), frozen);
-				Tip("Two plugins each scaling the other's output would drive the light to black or white. this mod noticed "
+				Tip("Two plugins each scaling the other's output would drive the light to black or white. This mod noticed "
 					"and holds its base value; the light still fades, but check which other mod touches weapon lights.");
 			}
 

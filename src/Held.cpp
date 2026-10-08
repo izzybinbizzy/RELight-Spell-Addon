@@ -220,7 +220,9 @@ namespace Plugin
 				d.fade = fade;
 				d.radius.x = reach;
 				d.radius.y = reach;
-				Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
+				if (IslShader()) {  // without it these words are ambient colour (Plugin.h)
+					Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
+				}
 				v.written = fade;
 				v.wroteReach = reach;
 			}

@@ -87,6 +87,8 @@ namespace Plugin
 
 	// Community Shaders' inverse square lighting reads a flag and the cutoff from the two words before a light's
 	// colour - the words RE::Light's `Overlay` writes. Without Community Shaders those words are ambient colour.
+	// RE::Light's own test for it (the shader file), read at data load (HandLights.cpp): only then are the words written
+	[[nodiscard]] bool IslShader();
 	namespace Isl
 	{
 		inline constexpr std::uint32_t kFlag = 1u << 10;

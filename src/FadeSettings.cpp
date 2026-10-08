@@ -81,7 +81,9 @@ namespace Fade
 		SettingsText::Write(text, Config());
 		// written beside the file, then moved over it: a crash or a full disk mid-write leaves the old settings, never half a file
 		const std::string tmp = std::string(kPath) + ".tmp";
-		std::ofstream     out(tmp, std::ios::trunc);  // text mode: Windows line ends, as Notepad writes
+		std::error_code   dirEc;  // the folder the installer ships; made here too, so a missing one never loses a setting
+		std::filesystem::create_directories(std::filesystem::path(kPath).parent_path(), dirEc);
+		std::ofstream out(tmp, std::ios::trunc);  // text mode: Windows line ends, as Notepad writes
 		if (!out) {
 			SKSE::log::warn("settings: {} could not be written", kPath);
 			return;
