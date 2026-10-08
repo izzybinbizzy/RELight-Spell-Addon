@@ -20,7 +20,7 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr float       kFieldOfView = 90.0f;   // what a light that casts no shadow is given (from ReLight)
+		constexpr float       kFieldOfView = 90.0f;  // what a light that casts no shadow is given (from ReLight)
 		constexpr const char* kLightName = "RSAStream";
 
 		RE::NiPointer<RE::NiPointLight> gMaster;
@@ -91,8 +91,9 @@ namespace Plugin
 				++hazards;
 			}
 		}
-		SKSE::log::info("spray lights: {} record(s) are the sprays' alone now - taken off {} projectile(s), {} muzzle flash(es), "
-						"{} magic effect(s), {} explosion(s), {} hazard(s)",
+		SKSE::log::info(
+			"spray lights: {} record(s) are the sprays' alone now - taken off {} projectile(s), {} muzzle flash(es), "
+			"{} magic effect(s), {} explosion(s), {} hazard(s)",
 			gSpraySet.size(), proj, muzzle, effects, expl, hazards);
 	}
 
@@ -123,7 +124,7 @@ namespace Plugin
 		const float radius = isl ? a_reach : PlainRadius(a_reach);
 		data.fade = isl ? a_fade : PlainFade(a_fade);
 		data.radius = { radius, radius, a_s.size };  // x and y are the reach; z carries the light's size
-		light->SetLightAttenuation(radius);           // without it the light has no attenuation and lights nothing
+		light->SetLightAttenuation(radius);          // without it the light has no attenuation and lights nothing
 		if (!isl) {
 			data.ambient = PlainAmbient(a_colour);  // after SetLightAttenuation, which writes the same two words
 		}
@@ -135,7 +136,7 @@ namespace Plugin
 		}
 		light->local.translate = a_at;
 		light->local.scale = 1.0f;
-		const RE::NiPointer<RE::NiPointLight> hold(light);   // freed here if it is never registered
+		const RE::NiPointer<RE::NiPointLight> hold(light);  // freed here if it is never registered
 		a_parent->AttachChild(light, true);
 		RE::NiUpdateData update{};
 		light->Update(update);

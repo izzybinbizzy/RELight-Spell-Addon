@@ -85,7 +85,7 @@ namespace
 	void NoteMagicLight(const RE::NiPointer<RE::NiLight>& a_light, const std::string& a_handKey, bool a_ours)
 	{
 		if (!a_light || a_light->GetRefCount() <= 1) {
-			return;   // the game let go of it before the main thread came round: nothing to note (freed right here)
+			return;  // the game let go of it before the main thread came round: nothing to note (freed right here)
 		}
 		Plugin::KeepLight(a_light.get());
 		RE::BSSpinLockGuard lock(gLock);
@@ -117,7 +117,7 @@ namespace
 			if (hand) {
 				made = netimmerse_cast<RE::NiPointLight*>(
 					a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
-				Plugin::DressHandLight(made, *hand);   // only writes the fresh light's own fields
+				Plugin::DressHandLight(made, *hand);  // only writes the fresh light's own fields
 			} else {
 				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 			}
@@ -173,7 +173,7 @@ namespace
 			return root;
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
-		static void Install()
+		static void                                    Install()
 		{
 			func = REL::Relocation<std::uintptr_t>(T::VTABLE[0]).write_vfunc(0x6A, thunk);
 		}
@@ -186,7 +186,7 @@ namespace
 			func(a_this, a_delta);
 			// first: every list forgets the lights that left the game since the last frame, and they are freed
 			Plugin::SweepKeptLights();
-			const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
+			const bool          sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
 			RE::BSSpinLockGuard lock(gLock);
 			if (sneaking) {
 				CullSpellLights();
@@ -206,7 +206,7 @@ namespace
 
 	void Install()
 	{
-		auto& trampoline = SKSE::GetTrampoline();
+		auto&                                                         trampoline = SKSE::GetTrampoline();
 		std::vector<std::pair<REL::RelocationID, REL::VariantOffset>> sites{
 			{ RELOCATION_ID(33603, 34381), REL::VariantOffset(0xAC, 0xE2, 0xE2) },
 			{ RELOCATION_ID(33391, 34151), REL::VariantOffset(0x86, 0xCD, 0x86) },
@@ -218,7 +218,7 @@ namespace
 		std::uintptr_t first = 0;
 		for (auto& [id, off] : sites) {
 			REL::Relocation<std::uintptr_t> target{ id, off };
-			auto old = trampoline.write_call<5>(target.address(), MagicLight::thunk);
+			auto                            old = trampoline.write_call<5>(target.address(), MagicLight::thunk);
 			if (!first) {
 				first = old;
 				MagicLight::func = old;
@@ -276,7 +276,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Plugin::LoadData();
 			Plugin::LoadSettings();
-			Plugin::ClaimSprayLights();  // before the hand lights remember each effect's own light
+			Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
 			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
 			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
@@ -284,7 +284,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Plugin::RegisterMenu();
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
 			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back
-			Plugin::RefindHandLights();  // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
+			Plugin::RefindHandLights();           // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
 		}
 	});
 	return true;

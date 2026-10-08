@@ -30,11 +30,11 @@ namespace Plugin
 		constexpr const char*   k360Plugin = "360 Ward.esp";
 		constexpr const char*   kEmptyModel = "Effects\\FXEmptyObject.nif";
 
-		RE::BGSArtObject*                                    gEmpty = nullptr;
-		std::vector<RE::EffectSetting*>                      gSilenced;
-		std::unordered_map<RE::BGSArtObject*, std::string>   gOriginal;  // an art form's model before we pointed it at ours
-		bool                                                 gSteppedDownLogged = false;
-		std::optional<RE::Color>                             gWardLightColour;  // MagicLightWardHand01's own, before White
+		RE::BGSArtObject*                                  gEmpty = nullptr;
+		std::vector<RE::EffectSetting*>                    gSilenced;
+		std::unordered_map<RE::BGSArtObject*, std::string> gOriginal;  // an art form's model before we pointed it at ours
+		bool                                               gSteppedDownLogged = false;
+		std::optional<RE::Color>                           gWardLightColour;  // MagicLightWardHand01's own, before White
 
 		bool DynamicWardsLoaded() { return REX::W32::GetModuleHandleA("DynamicWards.dll") != nullptr; }
 
@@ -100,7 +100,7 @@ namespace Plugin
 		void FindExtras()
 		{
 			std::unordered_set<RE::EffectSetting*> extras(gSilenced.begin(), gSilenced.end());
-			auto* dh = RE::TESDataHandler::GetSingleton();
+			auto*                                  dh = RE::TESDataHandler::GetSingleton();
 			if (auto* shield = dh->LookupForm<RE::EffectSetting>(kShieldConcSelf, "Skyrim.esm"); shield && WearsWardArt(shield)) {
 				extras.insert(shield);
 			}
@@ -160,7 +160,7 @@ namespace Plugin
 				it = gOriginal.emplace(a_art, now ? now : "").first;
 			}
 			const std::string want = a_ours ? std::string(a_ours) : it->second;
-			const char*        now = a_art->GetModel();
+			const char*       now = a_art->GetModel();
 			if (!now || want != now) {
 				a_art->SetModel(want.c_str());
 			}
@@ -168,7 +168,7 @@ namespace Plugin
 
 		void Paint()
 		{
-			auto*      dh = RE::TESDataHandler::GetSingleton();
+			auto* dh = RE::TESDataHandler::GetSingleton();
 			// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
 			const bool has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
 			const bool white = WardColour() == 1;

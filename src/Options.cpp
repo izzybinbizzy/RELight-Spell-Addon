@@ -31,9 +31,9 @@ namespace Plugin
 			std::size_t  option;
 			bool         enchant{ false };
 		};
-		std::vector<Held>                                      gHeldOut;
-		std::unordered_map<const RE::NiLight*, std::size_t>    gEnchant;  // this frame's enchantment lights -> option
-		std::vector<RE::NiLight*>                              gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
+		std::vector<Held>                                   gHeldOut;
+		std::unordered_map<const RE::NiLight*, std::size_t> gEnchant;      // this frame's enchantment lights -> option
+		std::vector<RE::NiLight*>                           gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
 
 		bool IsReLightLight(RE::NiLight* a_light)
 		{
@@ -57,7 +57,7 @@ namespace Plugin
 			if (const auto* weap = skyrim_cast<RE::WeaponEnchantmentController*>(a_effect->controller); weap && !weap->shader) {
 				return nullptr;
 			}
-			auto* root = a_effect->GetAttachRoot();
+			auto*      root = a_effect->GetAttachRoot();
 			const auto ref = a_effect->target.get();
 			if (!root || !ref) {
 				return nullptr;
@@ -215,7 +215,7 @@ namespace Plugin
 			if (!bsLight || !bsLight->light) {
 				continue;
 			}
-			auto*      niLight = bsLight->light.get();
+			auto* niLight = bsLight->light.get();
 			SheathedNet(niLight);  // every RE::Light enchantment light, ours or not
 			const auto opt = OptionOfLight(niLight);
 			if (opt == kNone) {
@@ -247,7 +247,7 @@ namespace Plugin
 			return;
 		}
 		// done at load so a switched-off light never shows for the frame before the next player update
-		auto* ref = ReferenceOf(a_root);
+		auto*      ref = ReferenceOf(a_root);
 		const auto opt = ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		if (!Off(opt)) {
 			return;

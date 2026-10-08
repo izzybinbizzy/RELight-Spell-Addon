@@ -43,7 +43,8 @@ namespace Plugin
 
 		[[nodiscard]] Page PageOf(const Option& a_option)
 		{
-			return a_option.download == kPatches ? Page::kPatches : a_option.download == kWeapons ? Page::kWeapons : Page::kSettings;
+			return a_option.download == kPatches ? Page::kPatches : a_option.download == kWeapons ? Page::kWeapons :
+			                                                                                        Page::kSettings;
 		}
 
 		// The look (his ask, 2026-09-23: "a cool ui design ... not too crazy, just a subtle glowy vibe"): warm spell-light
@@ -169,7 +170,7 @@ namespace Plugin
 				std::ranges::stable_sort(packs, {}, [&opts](std::size_t a_i) { return std::make_tuple(opts[a_i].author, opts[a_i].name); });
 				// his call, 2026-09-27: "Creation Club always stays with vanilla stuff" - its switch sits in the page's first
 				// category (Artifacts, Bound Weapons), not with the mod patches at the bottom
-				const auto rest = std::ranges::stable_partition(packs, [&opts](std::size_t a_i) { return opts[a_i].name == "Creation Club"; });
+				const auto  rest = std::ranges::stable_partition(packs, [&opts](std::size_t a_i) { return opts[a_i].name == "Creation Club"; });
 				std::size_t at = 0;
 				while (at < order.size() && opts[order[at]].category == opts[order.front()].category) {
 					++at;
@@ -192,13 +193,13 @@ namespace Plugin
 			}
 			std::string shown, author;
 			for (std::size_t n = 0; n < order.size(); ++n) {
-				const auto i = order[n];
-				auto& o = opts[i];
+				const auto               i = order[n];
+				auto&                    o = opts[i];
 				static const std::string kPackHeading = T("Mod Patches (also on the Patches page)");
-				const auto& heading = n >= packsFrom             ? kPackHeading :
-				                      withVanilla.contains(i)    ? shown :
-				                      grouped                    ? (o.category.empty() ? o.download : o.category) :
-				                                                   o.download;
+				const auto&              heading = n >= packsFrom          ? kPackHeading :
+				                                   withVanilla.contains(i) ? shown :
+				                                   grouped                 ? (o.category.empty() ? o.download : o.category) :
+				                                                             o.download;
 				if (heading != shown) {
 					shown = heading;
 					author.clear();
@@ -245,7 +246,8 @@ namespace Plugin
 		{
 			const GlowStyle style;
 			MenuStyle::Status(true, Fill3(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"), DataFiles(),
-				LiveHeldLights(), HandEffects()).c_str());
+										LiveHeldLights(), HandEffects())
+										.c_str());
 			if (const auto* cs = CSLightLoaded()) {
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
 				ImGuiMCP::TextWrapped("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
@@ -262,7 +264,7 @@ namespace Plugin
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				T("How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
-				"is what the old Reduced download was. How far they carry does not change - that is the slider below."));
+				  "is what the old Reduced download was. How far they carry does not change - that is the slider below."));
 
 			int r = ReachPercent();
 			if (ImGuiMCP::SliderInt(T("Reach"), &r, 50, 150, "%d%%")) {
@@ -273,7 +275,7 @@ namespace Plugin
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				T("How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
-				"that is the slider above."));
+				  "that is the slider above."));
 
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox(T("Lights off while sneaking"), &sneak)) {
@@ -282,7 +284,7 @@ namespace Plugin
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				T("While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
-				"hazards - and the ones already lit go out. They come back when you stand up."));
+				  "hazards - and the ones already lit go out. They come back when you stand up."));
 
 			bool hands = HandLightsOn();
 			if (ImGuiMCP::Checkbox(T("Hand lights"), &hands)) {
@@ -302,14 +304,14 @@ namespace Plugin
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
-				"once; the switches on the Weapons page choose among them."));
+				  "once; the switches on the Weapons page choose among them."));
 
 			GlowHeading("Wards", Icon::kShield);
 			if (WardsSteppedDown()) {
 				ImGuiMCP::TextDisabled("%s", T("Dynamic Wards is installed - it colors the wards, so this setting stands aside."));
 			} else {
 				const char* const kColours[] = { T("Vanilla blue"), T("White") };
-				int                      c = WardColour();
+				int               c = WardColour();
 				if (ImGuiMCP::Combo(T("Ward color"), &c, kColours, 2)) {
 					SetWardColour(c);
 					SaveSettings();
@@ -323,7 +325,7 @@ namespace Plugin
 				}
 				ImGuiMCP::SetItemTooltip("%s",
 					T("The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one colour. "
-					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
+					  "Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
 			}
 
 			DrawSwitches(Page::kSettings);
@@ -341,8 +343,7 @@ namespace Plugin
 		void __stdcall RenderWeapons()
 		{
 			const GlowStyle style;
-			MenuStyle::Status(WeaponLightsOn(), WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.")
-			                                                     : T("Weapon lights is off on the Settings page, so every light here is out."));
+			MenuStyle::Status(WeaponLightsOn(), WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.") : T("Weapon lights is off on the Settings page, so every light here is out."));
 			DrawSwitches(Page::kWeapons);
 		}
 	}

@@ -20,15 +20,15 @@ namespace Plugin
 		// keyed by the light, which Keep.cpp holds; ForgetSliderLights drops the row before the light is freed
 		struct Seen
 		{
-			const HandFx*              fx{ nullptr };
-			const RE::NiColor*         tint{ nullptr };
-			float                      base{ 0.0f };        // the fade RE::Light last gave it
-			float                      written{ -1.0f };    // the fade we last wrote
-			float                      baseRadius{ 0.0f };  // the reach RE::Light last gave it
-			float                      wroteRadius{ -1.0f };
-			float                      baseCutoff{ -1.0f };  // the cutoff RE::Light (or its editor) last gave it
-			float                      wroteCutoff{ -2.0f };
-			std::array<float, 3>       phase{};
+			const HandFx*        fx{ nullptr };
+			const RE::NiColor*   tint{ nullptr };
+			float                base{ 0.0f };        // the fade RE::Light last gave it
+			float                written{ -1.0f };    // the fade we last wrote
+			float                baseRadius{ 0.0f };  // the reach RE::Light last gave it
+			float                wroteRadius{ -1.0f };
+			float                baseCutoff{ -1.0f };  // the cutoff RE::Light (or its editor) last gave it
+			float                wroteCutoff{ -2.0f };
+			std::array<float, 3> phase{};
 		};
 
 		// Dynamic Lighting on a hand light, as Let There Be Glow's Light Placer curves look:
@@ -59,14 +59,14 @@ namespace Plugin
 			return a_s.phase[1];
 		}
 
-		std::unordered_map<RE::NiLight*, Seen>                            gSeen;
-		std::mutex                                                        gNewLock;
+		std::unordered_map<RE::NiLight*, Seen> gSeen;
+		std::mutex                             gNewLock;
 		struct Made
 		{
 			RE::NiLight*  light;
 			const HandFx* fx;
 		};
-		std::vector<Made>                                                 gNew;  // lights made since the last frame
+		std::vector<Made> gNew;  // lights made since the last frame
 
 		[[nodiscard]] const RE::TESBoundObject* BaseOf(RE::NiLight* a_light)
 		{

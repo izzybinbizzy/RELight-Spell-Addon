@@ -55,11 +55,11 @@ namespace Plugin
 		std::size_t                                 gFiles = 0;
 
 		// what a base form resolves to never changes after the data has loaded; Load3D asks from loader threads too
-		std::mutex                                            gCacheLock;
-		std::unordered_map<RE::FormID, std::size_t>           gOwnerCache;
-		std::unordered_map<RE::FormID, const Stream*>         gStreamCache;
-		std::unordered_map<RE::FormID, const RE::NiColor*>    gTintCache;
-		std::unordered_map<RE::FormID, const Stream*>         gHeldCache[2];  // [first person]: asked every frame per drawn weapon
+		std::mutex                                         gCacheLock;
+		std::unordered_map<RE::FormID, std::size_t>        gOwnerCache;
+		std::unordered_map<RE::FormID, const Stream*>      gStreamCache;
+		std::unordered_map<RE::FormID, const RE::NiColor*> gTintCache;
+		std::unordered_map<RE::FormID, const Stream*>      gHeldCache[2];  // [first person]: asked every frame per drawn weapon
 
 		[[nodiscard]] std::vector<std::string_view> Split(std::string_view a_line)
 		{
@@ -298,7 +298,7 @@ namespace Plugin
 			if (!file.sawVersion || !file.sawFile) {
 				return false;
 			}
-			auto&      opt = file.option;
+			auto& opt = file.option;
 			if (!file.sawDownload) {
 				opt.weapons = opt.download == "Weapons";  // written before `download`: the menu heading was the download
 			}
@@ -454,7 +454,7 @@ namespace Plugin
 					return it->second;
 				}
 			}
-			const V value = a_work();
+			const V         value = a_work();
 			std::lock_guard l{ gCacheLock };
 			return a_cache.emplace(id, value).first->second;
 		}
@@ -539,8 +539,9 @@ namespace Plugin
 			std::ranges::stable_sort(list, std::greater{}, &Hand::order);
 		}
 		const auto switches = std::ranges::count_if(gOptions, &Option::switchable);
-		SKSE::log::info("data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
-						"{} tint(s), {} held weapon light(s)",
+		SKSE::log::info(
+			"data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
+			"{} tint(s), {} held weapon light(s)",
 			gFiles, bad, switches, gMeshOwner.size(), gBaseOwner.size(), gStreams.size(), gHands.size(),
 			gMeshTints.size() + gBaseTints.size(), gHeld.size() + gHeldBase.size());
 	}
