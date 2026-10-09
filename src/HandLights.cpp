@@ -17,6 +17,7 @@
 // tuned spells of that element wear: fire, frost, shock), at the middle strength and reach of the tuned hand lights. A spell
 // with neither keeps what it has: no color is guessed.
 
+#include "Fade.h"
 #include "Plugin.h"
 
 namespace Plugin
@@ -31,10 +32,10 @@ namespace Plugin
 			bool               automatic{ false };  // no layer lights its art: key names an automatic hand (gAutoHands)
 		};
 
-		constexpr std::string_view          kAutoPrefix = "auto ";
-		const std::vector<std::string_view> kSkipPrefixes{ "trap", "hazard", "voice", "ench", "test" };  // Illuminated's pass 1 list
+		constexpr std::string_view                kAutoPrefix = "auto ";
+		constexpr std::array<std::string_view, 5> kSkipPrefixes{ "trap", "hazard", "voice", "ench", "test" };  // Illuminated's pass 1 list
 
-		constexpr std::uint32_t kLighInverseSquare = 1u << 14;  // Community Shaders' inverse square flag on a LIGH record
+		constexpr std::uint32_t kLighInverseSquare = LightKit::kRecordInverseSquare;  // on a LIGH record (LightKit.h)
 
 		// a hand light already lit: a menu change reaches it at once instead of on the next cast (his report, 2026-09-23:
 		// "i have to dispel the spell then re-cast")
@@ -60,18 +61,13 @@ namespace Plugin
 
 		[[nodiscard]] bool SkippedPrefix(const RE::EffectSetting* a_effect)
 		{
-			std::string low = a_effect ? a_effect->GetFormEditorID() : "";
+			// the fading module keeps every magic effect's editor ID (the game drops them), so no other plugin is needed
+			std::string low = Fade::EditorID(a_effect);
 			std::ranges::transform(low, low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 			if (low.size() > 4 && low.starts_with("dlc")) {
 				low = low.substr(4);
 			}
 			return std::ranges::any_of(kSkipPrefixes, [&](std::string_view p) { return low.starts_with(p); });
-		}
-
-		RE::TESObjectLIGH* NewLight()
-		{
-			auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::TESObjectLIGH>();
-			return factory ? factory->Create() : nullptr;
 		}
 
 		// the layer that lights this hand now: the highest order whose option is not switched off
@@ -142,10 +138,10 @@ namespace Plugin
 				own.emplace(t.effect, t.own);
 			}
 			std::unordered_set<const RE::TESObjectLIGH*> ours;
-			for (auto& [_k, c] : gCopies) {
+			for (auto* c : gCopies | std::views::values) {
 				ours.insert(c);
 			}
-			for (auto& [_k, c] : gAutoCopies) {
+			for (auto* c : gAutoCopies | std::views::values) {
 				ours.insert(c);
 			}
 			gTargets.clear();
@@ -170,7 +166,7 @@ namespace Plugin
 					++votes[a_key][static_cast<std::size_t>(a_element)];
 				}
 			};
-			for (auto* effect : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::EffectSetting>()) {
+			for (auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
 				if (!effect || !effect->data.castingArt) {
 					continue;
 				}
@@ -236,7 +232,7 @@ namespace Plugin
 					h.rgb[2] = static_cast<std::uint8_t>(rgb);
 					h.color = { h.rgb[0] / 255.0f, h.rgb[1] / 255.0f, h.rgb[2] / 255.0f };
 					h.option = kNone;
-					auto* copy = NewLight();
+					auto* copy = LightKit::NewForm<RE::TESObjectLIGH>();
 					if (!copy) {
 						continue;
 					}
@@ -294,7 +290,7 @@ namespace Plugin
 				if (list.empty()) {
 					continue;
 				}
-				auto* copy = NewLight();
+				auto* copy = LightKit::NewForm<RE::TESObjectLIGH>();
 				if (!copy) {
 					++failed;
 					continue;
@@ -344,12 +340,14 @@ namespace Plugin
 			}
 			std::size_t autoLit = 0;
 			for (auto& t : gTargets) {
-				auto* copy = t.automatic ? gAutoCopies[t.key] : gCopies[t.key];
-				auto* want = gInUse.contains(copy) ? copy : t.own;
+				const auto& copies = t.automatic ? gAutoCopies : gCopies;
+				const auto  found = copies.find(t.key);
+				auto*       copy = found != copies.end() ? found->second : nullptr;
+				auto*       want = copy && gInUse.contains(copy) ? copy : t.own;
 				if (t.effect->data.light != want) {
 					t.effect->data.light = want;
 				}
-				if (want == copy) {
+				if (copy && want == copy) {
 					++lit;
 					autoLit += t.automatic ? 1 : 0;
 				} else {

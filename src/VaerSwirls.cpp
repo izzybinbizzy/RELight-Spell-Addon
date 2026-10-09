@@ -134,6 +134,9 @@ namespace Plugin
 			return;
 		}
 		auto* dh = RE::TESDataHandler::GetSingleton();
+		if (!dh) {
+			return;
+		}
 		// 1. VAER's own effects: a plugin that is not loaded (a Creation Club file he does not have) is simply skipped
 		std::size_t back = 0, already = 0, absent = 0;
 		for (const auto& c : kVaerOwn) {
@@ -190,11 +193,9 @@ namespace Plugin
 			}
 			effect->data.enchantEffectArt = art;
 			effect->data.enchantShader = shader;
-			if (effect->data.enchantEffectArt == art && effect->data.enchantShader == shader) {
-				++set;
-				SKSE::log::info("[VAER] {} now wears VAER's swirl {:08X} and shader {:08X}", c.name, art->GetFormID(),
-					shader->GetFormID());
-			}
+			++set;
+			SKSE::log::info("[VAER] {} now wears VAER's swirl {:08X} and shader {:08X}", c.name, art->GetFormID(),
+				shader->GetFormID());
 		}
 		SKSE::log::info("VAER on Thaumaturgy: {} of {} effect(s) given VAER's swirl, {} not found", set, std::size(kSwirlCopies),
 			missing);

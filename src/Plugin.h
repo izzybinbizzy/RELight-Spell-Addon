@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "LightKit.h"
+
 namespace Plugin
 {
 	// ------------------------------------------------------------------ Data.cpp: what the installed options light
@@ -26,6 +28,8 @@ namespace Plugin
 	template <class T>
 	using StringMap = std::unordered_map<std::string, T, StringHash, std::equal_to<>>;
 
+	using LightKit::Relaxed;  // a value one thread writes and another reads (LightKit.h)
+
 	struct Option
 	{
 		std::string download, name, id;  // id: "Spells - Runes", the settings file's key
@@ -35,9 +39,11 @@ namespace Plugin
 		int         order{ 0 };          // a later layer overrides an earlier one
 		int         menu{ 0 };           // where it sits in the menu, which is NOT the override order
 		bool        switchable{ false };
-		bool        on{ true };
-		std::size_t meshes{ 0 }, bases{ 0 }, streams{ 0 };
-		std::size_t lit{ 0 }, heldOut{ 0 };  // counted every frame, shown in the menu
+		// its switch: flipped by the menu (render thread), read every frame and by the 3D-load hooks (loader threads)
+		Relaxed<bool> on{ true };
+		std::size_t   meshes{ 0 }, bases{ 0 }, streams{ 0 };
+		// counted every frame on the main thread, shown in the menu (render thread)
+		Relaxed<std::size_t> lit{ 0 }, heldOut{ 0 };
 	};
 
 	struct Stream
@@ -77,34 +83,27 @@ namespace Plugin
 	// report, 2026-10-04: "some magic doesn't work in 1st person")
 	inline constexpr float kMovingLightMark = 4.0f;
 
-	// the build's cutoff constant (0.8 * 69.99², as in gen.py and relightgen.py): cutoff = kK * fade / (reach² + size²)
-	inline constexpr float kK = 3918.88f;
-
-	[[nodiscard]] inline float CutoffFor(float a_fade, float a_reach, float a_size) noexcept
+	// RE::Light's marks on a light it made: its name starts "RL" (a config's light, LightManager.cpp), and an enchantment
+	// light also carries fadeAmount 5 (ShaderReferenceEffect::Init; its sheathe handler reads the same two)
+	[[nodiscard]] inline bool IsReLightLight(const RE::NiLight* a_light) noexcept
 	{
-		return std::clamp(kK * a_fade / (a_reach * a_reach + a_size * a_size), 0.01f, 0.99f);
+		const char* n = a_light ? a_light->name.c_str() : nullptr;
+		return n && n[0] == 'R' && n[1] == 'L';
+	}
+	[[nodiscard]] inline bool IsEnchantLight(const RE::NiLight* a_light) noexcept
+	{
+		return IsReLightLight(a_light) && a_light->fadeAmount == 5.0f;
 	}
 
-	// Community Shaders' inverse square lighting reads a flag and the cutoff from the two words before a light's
-	// colour - the words RE::Light's `Overlay` writes. Without Community Shaders those words are ambient colour.
-	// RE::Light's own test for it (the shader file), read at data load (HandLights.cpp): only then are the words written
+	// the build's cutoff: K * fade / (reach² + size²), clamped where Community Shaders reads one (LightKit.h)
+	using LightKit::CutoffFor;
+	using LightKit::kK;
+
+	// Community Shaders' inverse square lighting reads a flag and the cutoff from two words of a light (LightKit.h has
+	// how they are written). RE::Light's own test for it (the shader file), read at data load (HandLights.cpp): only
+	// then are the words written
 	[[nodiscard]] bool IslShader();
-	namespace Isl
-	{
-		inline constexpr std::uint32_t kFlag = 1u << 10;
-
-		[[nodiscard]] inline std::uint32_t* Words(RE::NiLight* a_light) noexcept
-		{
-			return reinterpret_cast<std::uint32_t*>(&a_light->GetLightRuntimeData());
-		}
-		[[nodiscard]] inline bool  On(RE::NiLight* a_light) noexcept { return (Words(a_light)[0] & kFlag) != 0; }
-		inline void                SetOn(RE::NiLight* a_light) noexcept { Words(a_light)[0] |= kFlag; }
-		[[nodiscard]] inline float Cutoff(RE::NiLight* a_light) noexcept { return std::bit_cast<float>(Words(a_light)[1]); }
-		inline void                SetCutoff(RE::NiLight* a_light, float a_cutoff) noexcept
-		{
-			Words(a_light)[1] = std::bit_cast<std::uint32_t>(std::clamp(a_cutoff, 0.01f, 0.99f));
-		}
-	}
+	namespace Isl = LightKit::Isl;
 
 	void                                                LoadData();
 	[[nodiscard]] std::vector<Option>&                  Options();
@@ -129,7 +128,7 @@ namespace Plugin
 	void                      KeepLight(RE::NiLight* a_light);  // any thread: alive for our lists while the game has it
 	void                      SweepKeptLights();                // main thread, first each frame: what left the game is forgotten, then freed
 	[[nodiscard]] std::size_t KeptLights();
-	void                      ForgetSpellLights(const GoneLights& a_gone);   // main.cpp (and Options.cpp, under its lock)
+	void                      ForgetSpellLights(const GoneLights& a_gone);   // main.cpp (it calls Options.cpp's too)
 	void                      ForgetOptionLights(const GoneLights& a_gone);  // Options.cpp: called by ForgetSpellLights only
 	void                      ForgetHandLights(const GoneLights& a_gone);    // HandLights.cpp
 	void                      ForgetSliderLights(const GoneLights& a_gone);  // Brightness.cpp
@@ -167,38 +166,43 @@ namespace Plugin
 	void                SetOptionOn(std::size_t a_index, bool a_on);
 	// Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods")
 	// - never its lighting picks (his word: "Relight doesn't get vanilla or enb light just relight and the added features")
-	[[nodiscard]] int  LightColors();  // 0 automatic (as drawn), 1 paler, 2 deeper
-	void               SetLightColors(int a_v);
 	[[nodiscard]] int  DimInDaylight();  // 0 off, 1 a little, 2 more
 	void               SetDimInDaylight(int a_v);
 	[[nodiscard]] int  HandLightsFor();  // 0 everyone, 1 everyone nearby, 2 player and followers, 3 player only
 	void               SetHandLightsFor(int a_v);
-	[[nodiscard]] int  ElementColor(int a_element);  // 0 the spell's own, 1..kNamedColorCount a named color
-	void               SetElementColor(int a_element, int a_v);
 	[[nodiscard]] bool AutoLightsOn();
 	void               SetAutoLightsOn(bool a_on);
 
 	// ------------------------------------------------------------------ Brightness.cpp: elements and their colors
 	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by; a projectile or explosion takes the element of the
 	// effects that fire it (none if they disagree). The named colors are Dynamic Wards' preset hues, as in Illuminated.
-	inline constexpr int         kNamedColorCount = 10;
+	inline constexpr int         kNamedColorCount = LightKit::kNamedColorCount;
 	inline constexpr const char* kElementNames[] = { "", "Fire", "Frost", "Shock" };
 	[[nodiscard]] int            ElementOf(const RE::EffectSetting* a_effect);
 	[[nodiscard]] int            ElementOfForm(const RE::TESForm* a_form);
-	[[nodiscard]] RE::NiColor    NamedColor(int a_pick);  // a_pick 1..kNamedColorCount (their names: Menu.cpp)
+	using LightKit::NamedColor;  // a_pick 1..kNamedColorCount (their names: Menu.cpp)
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
-	void                             UpdateOptionLights();                           // every frame, after the sneaking pass
-	void                             CullOptionLightsUnder(RE::NiAVObject* a_root);  // on a 3D that has just loaded
-	[[nodiscard]] bool               HeldOutForOption(const RE::NiLight* a_light);
-	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);           // the reference a scene-graph object belongs to
-	[[nodiscard]] std::size_t        EnchantOptionOf(const RE::NiLight* a_light);  // kNone unless it is an enchantment light of ours
+	// lights handed from a hook that may run on a loader thread to the main thread (an SKSE task holds them until then)
+	using LightList = std::vector<RE::NiPointer<RE::NiLight>>;
+	void UpdateOptionLights();  // every frame, after the sneaking pass (main thread)
+	// on a 3D that has just loaded (any thread): a switched-off option's lights under it are put out at once and returned,
+	// with that option in a_option, for AdoptOptionLights to take into the list on the main thread
+	[[nodiscard]] LightList          CullOptionLightsUnder(RE::NiAVObject* a_root, std::size_t& a_option);
+	void                             AdoptOptionLights(std::size_t a_option, const LightList& a_lights);  // main thread
+	[[nodiscard]] bool               HeldOutForOption(const RE::NiLight* a_light);                        // main thread
+	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);                                  // the reference a scene-graph object belongs to
+	[[nodiscard]] std::size_t        EnchantOptionOf(const RE::NiLight* a_light);                         // kNone unless it is an enchantment light of ours
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
 	// the fading module (Fade*.cpp) wrote this light's fade: taken only when it started from our value (never scaled twice)
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after);
 	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, int a_element = 0);
+	// what this pass gives every light of ours, for the lights another file scales (Held.cpp): the daylight factor (looked
+	// at every two seconds, main thread) and the color it draws (the light's own since the color picks left, 2026-10-09)
+	[[nodiscard]] float       DaylightFactor();
+	[[nodiscard]] RE::NiColor DrawnColor(int a_element, const RE::NiColor& a_base);
 
 	// ------------------------------------------------------------------ Streams.cpp: sprays, beams, breath shouts
 	void               ClaimSprayLights();  // once, after the data is read, BEFORE MakeHandLights

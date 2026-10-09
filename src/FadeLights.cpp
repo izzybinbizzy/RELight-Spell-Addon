@@ -1,23 +1,24 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// The lights on a weapon, and scaling them. This plugin makes no light: it dims the ones other mods hang on a weapon -
-// Light Placer's (Vibrant Weapons EAE - Enchantment Lights, Illuminated's own), lights inside Enchantment Art Extender
-// art or a weapon's own mesh, anything that is a NiPointLight in the scene graph under the weapon.
+// The lights on a weapon, and scaling them. This module makes no light (but our own, FadeOwnLight.cpp): it dims the ones
+// other mods hang on a weapon - Light Placer's, RE::Light's, lights inside Enchantment Art Extender art or a weapon's
+// own mesh, anything that is a NiPointLight in the scene graph under the weapon.
 //
 // Where a hand's lights hang, all of which are searched every frame:
 //   - the weapon's 3D in the actor's biped: the right hand's in its weapon-type slot, the left hand's in the shield slot
 //     (the game puts a left-hand weapon there); the player's first-person biped too;
 //   - the attach root of every enchantment effect on the weapon (WeaponEnchantmentController::attachRoot), handed over
-//     by the reference-effect hooks (LightCopies.cpp's one wrapper per hook). Light Placer hangs an enchantment art's lights under that root - and for
+//     by the reference-effect hooks (the plugin's one wrapper per hook). Light Placer hangs an enchantment art's lights
+//     under that root - and for
 //     the player in first person it moves them to the third-person weapon, which the biped search also covers.
 //
 // When: Light Placer rewrites a flickering or animated light's fade in ReferenceEffect::UpdatePosition and in the cell's
 // animation pass; a steady light it sets once. So the scaling runs twice a frame - right after each enchantment effect's
 // update (AfterReferenceEffect) and in the player's update (UpdateHands) - and each light keeps Glow::Scaled's
 // "what we wrote / what it was" pair, so running twice, or on a light nobody rewrites, never compounds. The Brightness
-// slider scales the same lights just before (LightCopies.cpp): each fade written here is reported to it
+// slider scales the same lights just before (the plugin's Brightness pass): each fade written here is reported to it
 // (Plugin::NoteFadeWrite), and it reports a slider change on a steady light back (Rebase), so neither takes the other's
 // write for a new value.
 //
@@ -138,6 +139,10 @@ namespace Fade
 		// this frame's switches, for the effect hooks, which run for every effect in the world and must not lock and copy
 		// the settings each time
 		std::atomic<bool> gEnabled{ false }, gDimShader{ false };
+		// the HUD's copy (Fade.h HudState): written at the end of each UpdateHands, read by the render thread. Its own small
+		// lock, held only while a few dozen bytes are copied - the render thread never waits on the per-frame pass (gLock)
+		std::mutex gHudLock;
+		HudState   gHud;
 
 		[[nodiscard]] std::uint64_t Key(RE::ActorHandle a_actor, bool a_left)
 		{
@@ -270,7 +275,7 @@ namespace Fade
 			}
 			RE::BSVisit::TraverseScenegraphLights(a_root, [&](RE::NiPointLight* a_light) {
 				if (a_light) {
-					if (!gLights.contains(a_light) && Config().debugLog) {
+					if (!gLights.contains(a_light) && DebugLogOn()) {
 						std::string chain;
 						for (auto* p = a_light->parent; p && chain.size() < 200; p = p->parent) {
 							chain += std::format(" < {}", p->name.empty() ? "(unnamed)" : p->name.c_str());
@@ -290,7 +295,7 @@ namespace Fade
 		}
 
 		// the colour of the brightest light another mod (or the game) hangs at this hand's magic node - a staff's spell light
-		// from Illuminated, another light mod or the game's own casting light; nullopt when there is none
+		// from a light mod or the game's own casting light; nullopt when there is none
 		std::optional<RE::NiColor> OwnLightHint(RE::Actor* a_actor, bool a_left)
 		{
 			const auto&                name = a_left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
@@ -340,20 +345,26 @@ namespace Fade
 				++a_hand.roots;
 				a_hand.lights += ApplyUnder(root.node.get(), a_hand, &a_hand.others);
 			}
-			// our own light, on the third-person model (it lights the first-person view too), when nothing else lights it
-			// only while the weapon is drawn: sheathed, its enchantment's own light is gone and the weapon must stay dark
-			const auto* state = a_actor->AsActorState();
-			const bool  drawn = state && state->IsWeaponDrawn();
-			a_hand.unlitFor = (a_hand.others || !drawn) ? 0.0f : a_hand.unlitFor + (std::max)(a_delta, 0.0f);
-			const bool want = Glow::WantsOwnLight(a_settings.ownLight, a_hand.reading.bound, a_hand.unlitFor, parts[0] != nullptr);
-			if (auto* made = KeepOwnLight(Key(a_hand.actor, a_hand.left), want ? parts[0] : nullptr, a_hand.reading.ench)) {
-				ApplyLight(made, a_hand);
-				++a_hand.lights;
-			}
-			if (want && parts[0]) {
-				if (const auto hint = OwnLightHint(a_actor, a_hand.left)) {
-					TintOwnLight(Key(a_hand.actor, a_hand.left), *hint);
+			// our own light, on the third-person model (it lights the first-person view too), when nothing else lights it,
+			// only while the weapon is drawn: sheathed, its enchantment's own light is gone and the weapon must stay dark.
+			// Only where FadeConfig.h offers it: a mod without it neither searches for a hint nor keeps a light.
+			if constexpr (Mod::kOwnLight) {
+				const auto* state = a_actor->AsActorState();
+				const bool  drawn = state && state->IsWeaponDrawn();
+				a_hand.unlitFor = (a_hand.others || !drawn) ? 0.0f : a_hand.unlitFor + (std::max)(a_delta, 0.0f);
+				const bool want = Glow::WantsOwnLight(a_settings.ownLight, a_hand.reading.bound, a_hand.unlitFor, parts[0] != nullptr);
+				if (auto* made = KeepOwnLight(Key(a_hand.actor, a_hand.left), want ? parts[0] : nullptr, a_hand.reading.ench)) {
+					ApplyLight(made, a_hand);
+					++a_hand.lights;
 				}
+				if (want && parts[0]) {
+					if (const auto hint = OwnLightHint(a_actor, a_hand.left)) {
+						TintOwnLight(Key(a_hand.actor, a_hand.left), *hint);
+					}
+				}
+			} else {
+				(void)a_settings;
+				(void)a_delta;
 			}
 		}
 
@@ -368,11 +379,11 @@ namespace Fade
 			if (player && player->Is3DLoaded()) {
 				out.emplace_back(player);
 			}
-			if (a_who == Who::kPlayerAndFollowers) {
+			if (a_who != Who::kPlayer) {
 				if (auto* lists = RE::ProcessLists::GetSingleton()) {
 					for (auto& handle : lists->highActorHandles) {
 						auto actor = handle.get();
-						if (actor && actor.get() != player && actor->IsPlayerTeammate() && actor->Is3DLoaded() && !actor->IsDead()) {
+						if (actor && actor.get() != player && (a_who == Who::kEveryone || actor->IsPlayerTeammate()) && actor->Is3DLoaded() && !actor->IsDead()) {
 							out.push_back(std::move(actor));
 						}
 					}
@@ -414,14 +425,14 @@ namespace Fade
 			std::erase_if(gHands, [](const auto& kv) { return gFrame - kv.second.frame > kForgetHand; });
 		}
 
-		// by the actor's address, not its handle: this runs on any thread (the API), and making a handle is the game's to do.
-		// A handful of hands at most, so a walk is as quick as a lookup
-		const HandTrack* ActiveHand(const RE::Actor* a_actor, bool a_left)
+		// by the actor's address, not its handle: this runs on any thread (the effect hooks, the API), and making or reading
+		// a handle is the main thread's to do. A handful of hands at most, so a walk is as quick as a lookup. Under gLock.
+		HandTrack* ActiveHand(const RE::Actor* a_actor, bool a_left)
 		{
 			if (!a_actor) {
 				return nullptr;
 			}
-			for (const auto& [key, h] : gHands) {
+			for (auto& [key, h] : gHands) {
 				if (h.active && !h.spell && h.left == a_left && h.actorSeen == a_actor) {
 					return &h;
 				}
@@ -566,6 +577,37 @@ namespace Fade
 			}
 		}
 
+		// what the HUD shows this frame: the player's hands that fade (not one left alone), the switches, and whether her
+		// weapons or spells are out (the reticle shows only then). Main thread, under gLock.
+		void PublishHud(const Settings& a_s)
+		{
+			HudState hud;
+			hud.gems = a_s.enabled && a_s.hudGems;
+			hud.reticle = a_s.enabled && a_s.reticle && !OtherReticleLoaded();  // off beside Reticle Arcs (FadeMain.cpp)
+			hud.reticleSize = a_s.reticleSize;
+			hud.reticleOpacity = a_s.reticleOpacity;
+			hud.gemSize = a_s.hudGemSize;
+			hud.gemOpacity = a_s.hudGemOpacity;
+			hud.gemPercent = a_s.hudGemPercent;
+			hud.low = a_s.tuning.sputterBelow;
+			const auto* player = RE::PlayerCharacter::GetSingleton();
+			const auto* state = player ? player->AsActorState() : nullptr;
+			hud.drawn = state && state->IsWeaponDrawn();
+			if (a_s.enabled) {
+				for (const auto& [key, h] : gHands) {
+					if (h.active && h.frame == gFrame && player && h.actorSeen == player) {
+						auto& side = hud.hands[h.left ? 0 : 1];
+						side.shown = true;
+						side.spell = h.spell;
+						side.bound = h.reading.bound;
+						side.fraction = Glow::Clamp01(h.fraction);
+					}
+				}
+			}
+			std::lock_guard lock(gHudLock);
+			gHud = hud;
+		}
+
 		void LogHand(const HandTrack& a_h, std::string_view a_what, bool a_on)
 		{
 			if (a_on) {
@@ -585,6 +627,7 @@ namespace Fade
 		gDimShader = s.dimShader;
 		if (!s.enabled) {
 			RestoreAll();
+			PublishHud(s);
 			return;
 		}
 		auto&       preview = PreviewState();
@@ -691,6 +734,7 @@ namespace Fade
 		SweepOwnLights();  // a hand that did not ask for its light this frame (put away, exempt, gone) lets it go
 		Sweep();
 		gActiveHands = static_cast<std::size_t>(std::ranges::count_if(gHands, [](const auto& kv) { return kv.second.active; }));
+		PublishHud(s);
 	}
 
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
@@ -708,11 +752,11 @@ namespace Fade
 		if (!gEnabled) {
 			return;
 		}
-		auto it = gHands.find(Key(actor->GetHandle(), left));
-		if (it == gHands.end() || !it->second.active) {
+		auto* found = ActiveHand(actor, left);
+		if (!found) {
 			return;
 		}
-		auto& hand = it->second;
+		auto& hand = *found;
 		// the root the effect hangs on (Light Placer hangs its lights there), and an art effect's own model. Not a shader
 		// effect's own 3D: that is the whole actor it glows over, torch and armour lights and all
 		std::array<RE::NiAVObject*, 2> nodes{ root, a_own3D ? a_effect->Get3D() : nullptr };
@@ -720,11 +764,11 @@ namespace Fade
 			if (!node) {
 				continue;
 			}
-			auto found = std::ranges::find_if(hand.effectRoots, [node](const Root& r) { return r.node.get() == node; });
-			if (found == hand.effectRoots.end()) {
+			auto kept = std::ranges::find_if(hand.effectRoots, [node](const Root& r) { return r.node.get() == node; });
+			if (kept == hand.effectRoots.end()) {
 				hand.effectRoots.push_back({ RE::NiPointer<RE::NiAVObject>(node), gFrame });
 			} else {
-				found->frame = gFrame;
+				kept->frame = gFrame;
 			}
 			ApplyUnder(node, hand);  // right after Light Placer wrote this frame's values for this effect
 		}
@@ -831,6 +875,12 @@ namespace Fade
 		}
 		std::ranges::sort(out, {}, [](const HandView& v) { return std::make_pair(v.actor, v.left); });
 		return out;
+	}
+
+	HudState Hud()
+	{
+		std::lock_guard lock(gHudLock);
+		return gHud;
 	}
 
 	std::vector<LightNow> LightsNow()

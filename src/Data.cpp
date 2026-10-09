@@ -22,6 +22,7 @@
 // Objects are matched as RE::Light matches them: a form first, then the bare mesh key ("Magic\RuneFire01.nif" is
 // "runefire01"), exactly, then the longest of our keys the object's key contains.
 
+#include "Fade.h"
 #include "Plugin.h"
 
 namespace Plugin
@@ -38,6 +39,7 @@ namespace Plugin
 		};
 
 		std::vector<Option>                         gOptions;
+		std::vector<std::size_t>                    gMenuOrder;  // gOptions by `menu`, made once with the data (main thread)
 		StringMap<std::size_t>                      gMeshOwner;  // key -> option (highest order wins)
 		std::unordered_map<RE::FormID, std::size_t> gBaseOwner;  // form -> option
 		StringMap<Stream>                           gStreams;    // key -> recipe (highest order wins)
@@ -291,7 +293,7 @@ namespace Plugin
 					continue;
 				}
 				if (!ParseLine(Split(line), file)) {
-					SKSE::log::warn("{} line {}: not a line this plugin reads", a_path.filename().string(), n);
+					SKSE::log::warn("{} line {}: not a line this plugin reads", Fade::PathText(a_path.filename()), n);
 					return false;
 				}
 			}
@@ -394,7 +396,7 @@ namespace Plugin
 		{
 			std::vector<std::string> keys;
 			keys.reserve(a_map.size());
-			for (const auto& [k, _v] : a_map) {
+			for (const auto& k : a_map | std::views::keys) {
 				keys.push_back(k);
 			}
 			std::ranges::sort(keys, [](const auto& a, const auto& b) { return a.size() != b.size() ? a.size() > b.size() : a < b; });
@@ -528,16 +530,23 @@ namespace Plugin
 				++gFiles;
 			} else {
 				++bad;
-				SKSE::log::warn("{} does not read - its lights stay as RE::Light makes them", f.filename().string());
+				SKSE::log::warn("{} does not read - its lights stay as RE::Light makes them", Fade::PathText(f.filename()));
 			}
 		}
 		gKeysLongestFirst = LongestFirst(gMeshOwner);
 		FindShaderOwners();
 		gStreamKeysLongestFirst = LongestFirst(gStreams);
 		gTintKeysLongestFirst = LongestFirst(gMeshTints);
-		for (auto& [_k, list] : gHands) {
+		for (auto& list : gHands | std::views::values) {
 			std::ranges::stable_sort(list, std::greater{}, &Hand::order);
 		}
+		gMenuOrder.resize(gOptions.size());
+		std::iota(gMenuOrder.begin(), gMenuOrder.end(), std::size_t{ 0 });
+		std::ranges::stable_sort(gMenuOrder, [](std::size_t a, std::size_t b) {
+			const auto& x = gOptions[a];
+			const auto& y = gOptions[b];
+			return x.menu != y.menu ? x.menu < y.menu : x.id < y.id;
+		});
 		const auto switches = std::ranges::count_if(gOptions, &Option::switchable);
 		SKSE::log::info(
 			"data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
@@ -549,20 +558,7 @@ namespace Plugin
 	std::vector<Option>& Options() { return gOptions; }
 	std::size_t          DataFiles() { return gFiles; }
 
-	const std::vector<std::size_t>& OptionsInMenuOrder()
-	{
-		static std::vector<std::size_t> order;
-		if (order.size() != gOptions.size()) {
-			order.resize(gOptions.size());
-			std::iota(order.begin(), order.end(), std::size_t{ 0 });
-			std::ranges::stable_sort(order, [](std::size_t a, std::size_t b) {
-				const auto& x = gOptions[a];
-				const auto& y = gOptions[b];
-				return x.menu != y.menu ? x.menu < y.menu : x.id < y.id;
-			});
-		}
-		return order;
-	}
+	const std::vector<std::size_t>& OptionsInMenuOrder() { return gMenuOrder; }
 
 	std::size_t OptionOf(const RE::TESForm* a_base)
 	{

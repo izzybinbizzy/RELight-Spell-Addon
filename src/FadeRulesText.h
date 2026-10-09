@@ -1,8 +1,8 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// Rule files as text, with nothing of the game in it (tests/test_glow.cpp reads them off the game): a file's rules,
+// Rule files as text, with nothing of the game in it (tests/test_fade.cpp reads them off the game): a file's rules,
 // every problem in it, and how a matching rule's settings lay over the ones before it. Rules.cpp finds the files,
 // resolves "Plugin.esp|0x123" to a form in this load order (through the Resolve it hands in), and matches weapons.
 // The format is in docs/RULES.md.
@@ -294,39 +294,28 @@ namespace Fade::RulesText
 	// a matching rule's settings, laid over what the settings and earlier rules gave: whatever it sets replaces them
 	inline void Overlay(const Rule& a_r, Verdict& a_v)
 	{
+		const auto take = [](auto& a_to, const auto& a_from) {
+			if (a_from) {
+				a_to = *a_from;
+			}
+		};
 		auto& t = a_v.tuning;
-		if (a_r.mode)
-			a_v.mode = *a_r.mode;
-		if (a_r.floor)
-			t.floor = *a_r.floor;
-		if (a_r.curve)
-			t.curve = *a_r.curve;
-		if (a_r.reachFollows)
-			t.reachFollows = *a_r.reachFollows;
-		if (a_r.sputter)
-			t.sputter = *a_r.sputter;
-		if (a_r.sputterBelow)
-			t.sputterBelow = *a_r.sputterBelow;
-		if (a_r.sputterStrength)
-			t.sputterStrength = *a_r.sputterStrength;
-		if (a_r.emptySteady)
-			t.emptySteady = *a_r.emptySteady;
-		if (a_r.pulse)
-			t.pulse = *a_r.pulse;
-		if (a_r.pulseStrength)
-			t.pulseStrength = *a_r.pulseStrength;
-		if (a_r.flare)
-			t.flare = *a_r.flare;
-		if (a_r.flareStrength)
-			t.flareStrength = *a_r.flareStrength;
-		if (a_r.cool)
-			t.cool = *a_r.cool;
-		if (a_r.coolAmount)
-			t.coolAmount = *a_r.coolAmount;
-		if (a_r.coolTint)
-			t.coolTint = *a_r.coolTint;
-		if (a_r.boundFadeSeconds)
-			a_v.boundFadeSeconds = *a_r.boundFadeSeconds;
+		take(a_v.mode, a_r.mode);
+		take(t.floor, a_r.floor);
+		take(t.curve, a_r.curve);
+		take(t.reachFollows, a_r.reachFollows);
+		take(t.sputter, a_r.sputter);
+		take(t.sputterBelow, a_r.sputterBelow);
+		take(t.sputterStrength, a_r.sputterStrength);
+		take(t.emptySteady, a_r.emptySteady);
+		take(t.pulse, a_r.pulse);
+		take(t.pulseStrength, a_r.pulseStrength);
+		take(t.flare, a_r.flare);
+		take(t.flareStrength, a_r.flareStrength);
+		take(t.cool, a_r.cool);
+		take(t.coolAmount, a_r.coolAmount);
+		take(t.coolTint, a_r.coolTint);
+		take(a_v.boundFadeSeconds, a_r.boundFadeSeconds);
 		a_v.why = a_r.name;
 	}
 }

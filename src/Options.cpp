@@ -18,6 +18,12 @@
 //
 // It never edits a config, a record or a file. A light it puts out is held in a list and given back the
 // moment the switch is turned on again.
+//
+// THREADS: the lists are the main thread's only. A 3D-load hook (a loader thread) puts a switched-off option's lights out
+// at once and hands them over (CullOptionLightsUnder -> AdoptOptionLights, an SKSE task). The per-frame walk remembers what
+// it worked out about each light (gKnown) and asks again only when that light is new to it, or is a different light at
+// the same address (its name or parent changed) - the walk up to the reference and the data lookup are not done for every
+// light every frame.
 
 #include "Plugin.h"
 
@@ -31,25 +37,21 @@ namespace Plugin
 			std::size_t  option;
 			bool         enchant{ false };
 		};
-		std::vector<Held>                                   gHeldOut;
-		std::unordered_map<const RE::NiLight*, std::size_t> gEnchant;      // this frame's enchantment lights -> option
-		std::vector<RE::NiLight*>                           gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
+		std::vector<Held>                                       gHeldOut;
+		std::unordered_set<const RE::NiLight*>                  gHeldSet;      // the same lights, to answer "is it held out" without a walk
+		std::vector<std::pair<const RE::NiLight*, std::size_t>> gEnchant;      // this frame's enchantment lights -> option
+		std::vector<RE::NiLight*>                               gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
 
-		bool IsReLightLight(RE::NiLight* a_light)
+		// what the per-frame walk worked out about a light, with what identifies it (a freed light's address can be reused)
+		struct Known
 		{
-			if (!a_light) {
-				return false;
-			}
-			const char* n = a_light->name.c_str();
-			return n && n[0] == 'R' && n[1] == 'L';
-		}
-
-		// RE::Light's own mark on an enchantment light: "RL" and a fadeAmount of 5 (its sheathe handler reads the same two)
-		bool IsEnchantLight(const RE::NiLight* a_light)
-		{
-			const char* n = a_light ? a_light->name.c_str() : nullptr;
-			return n && n[0] == 'R' && n[1] == 'L' && a_light->fadeAmount == 5.0f;
-		}
+			const void*   name{ nullptr };    // the light's name text (RE::Light's "RL..." name is set once, at creation)
+			const void*   parent{ nullptr };  // the node it hangs on
+			std::size_t   option{ kNone };    // kNone: not one of ours (or not RE::Light's)
+			std::uint32_t frame{ 0 };         // last seen; a light unseen for a while is forgotten
+		};
+		std::unordered_map<const RE::NiLight*, Known> gKnown;
+		std::uint32_t                                 gFrame = 0;
 
 		// where RE::Light attached for this effect (GetReferenceAttachRoot, then the third-person node of the same name)
 		RE::NiAVObject* EnchantRootOf(RE::ShaderReferenceEffect* a_effect)
@@ -70,6 +72,7 @@ namespace Plugin
 			return root;
 		}
 
+		// this frame's enchantment lights of ours: a handful, kept in a vector whose storage is reused from frame to frame
 		void FindEnchantLights()
 		{
 			gEnchant.clear();
@@ -83,7 +86,12 @@ namespace Plugin
 				if (root) {
 					RE::BSVisit::TraverseScenegraphLights(root, [opt](RE::NiPointLight* a_light) {
 						if (IsEnchantLight(a_light)) {
-							gEnchant.insert_or_assign(a_light, opt);
+							const auto it = std::ranges::find(gEnchant, static_cast<const RE::NiLight*>(a_light), &std::pair<const RE::NiLight*, std::size_t>::first);
+							if (it == gEnchant.end()) {
+								gEnchant.emplace_back(a_light, opt);
+							} else {
+								it->second = opt;
+							}
 						}
 						return RE::BSVisit::BSVisitControl::kContinue;
 					});
@@ -92,7 +100,7 @@ namespace Plugin
 			});
 		}
 
-		std::size_t OptionOfLight(RE::NiLight* a_light)
+		std::size_t LookUpOption(RE::NiLight* a_light)
 		{
 			if (!IsReLightLight(a_light)) {
 				return kNone;
@@ -104,7 +112,32 @@ namespace Plugin
 			return ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		}
 
+		// an enchantment light's option follows its effect each frame (an effect can start and stop); any other light's is
+		// worked out once and remembered while it is the same light
+		std::size_t OptionOfLight(RE::NiLight* a_light)
+		{
+			if (IsEnchantLight(a_light)) {
+				return EnchantOptionOf(a_light);
+			}
+			auto&       k = gKnown[a_light];
+			const void* name = a_light->name.c_str();
+			const void* parent = a_light->parent;
+			if (k.frame == 0 || k.name != name || k.parent != parent) {
+				k = { name, parent, LookUpOption(a_light), gFrame };
+			}
+			k.frame = gFrame;
+			return k.option;
+		}
+
 		bool Off(std::size_t a_option) { return a_option != kNone && !OptionLit(a_option); }
+
+		void HoldOut(RE::NiLight* a_light, std::size_t a_option, bool a_enchant)
+		{
+			if (gHeldSet.insert(a_light).second) {
+				KeepLight(a_light);
+				gHeldOut.push_back({ a_light, a_option, a_enchant });
+			}
+		}
 
 		// The sheathed net (1.5, three user reports 2026-10-05 "my enchanted weapons keep glowing even when sheathed"):
 		// RE::Light puts its enchantment light out on the sheathe animation's end and lights it again whenever the
@@ -138,10 +171,7 @@ namespace Plugin
 				}
 				// a switched-off option keeps it out: it moves to that option's list, which gives it back with the switch
 				if (const auto opt = OptionOfLight(a_light); Off(opt)) {
-					if (!HeldOutForOption(a_light)) {
-						KeepLight(a_light);
-						gHeldOut.push_back({ a_light, opt, true });
-					}
+					HoldOut(a_light, opt, true);
 				} else if (!HeldOutForOption(a_light)) {
 					a_light->SetAppCulled(false);
 				}
@@ -163,7 +193,7 @@ namespace Plugin
 
 	std::size_t EnchantOptionOf(const RE::NiLight* a_light)
 	{
-		const auto it = gEnchant.find(a_light);
+		const auto it = std::ranges::find(gEnchant, a_light, &std::pair<const RE::NiLight*, std::size_t>::first);
 		return it != gEnchant.end() ? it->second : kNone;
 	}
 
@@ -177,19 +207,19 @@ namespace Plugin
 		return nullptr;
 	}
 
-	bool HeldOutForOption(const RE::NiLight* a_light)
-	{
-		return std::ranges::any_of(gHeldOut, [a_light](const Held& h) { return h.light == a_light; });
-	}
+	bool HeldOutForOption(const RE::NiLight* a_light) { return gHeldSet.contains(a_light); }
 
 	void ForgetOptionLights(const GoneLights& a_gone)
 	{
 		std::erase_if(gHeldOut, [&](const Held& h) { return a_gone.contains(h.light); });
+		std::erase_if(gHeldSet, [&](const RE::NiLight* l) { return a_gone.contains(l); });
 		std::erase_if(gSheathedOut, [&](RE::NiLight* l) { return a_gone.contains(l); });
+		std::erase_if(gKnown, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
 	}
 
 	void UpdateOptionLights()
 	{
+		++gFrame;
 		auto& opts = Options();
 		for (auto& o : opts) {
 			o.lit = 0;
@@ -202,6 +232,7 @@ namespace Plugin
 				if (MayGiveBack(h)) {
 					h.light->SetAppCulled(false);
 				}
+				gHeldSet.erase(h.light);
 				return true;
 			}
 			return false;
@@ -225,40 +256,60 @@ namespace Plugin
 				// RE::Light unculls its enchantment light on each new equip, so one already held can come round again
 				if (!niLight->GetAppCulled()) {
 					niLight->SetAppCulled(true);
-					if (!HeldOutForOption(niLight)) {
-						KeepLight(niLight);
-						gHeldOut.push_back({ niLight, opt, IsEnchantLight(niLight) });
-					}
+					HoldOut(niLight, opt, IsEnchantLight(niLight));
 				}
 			} else if (!niLight->GetAppCulled()) {
 				++opts[opt].lit;
 			}
 		}
-		for (auto& h : gHeldOut) {
+		for (const auto& h : gHeldOut) {
 			if (h.option < opts.size()) {
 				++opts[h.option].heldOut;
 			}
 		}
+		// a light not seen for a few seconds has left the scene: what was worked out about it is let go
+		constexpr std::uint32_t kForget = 300;
+		if (gFrame % kForget == 0) {
+			std::erase_if(gKnown, [](const auto& a_kv) { return gFrame - a_kv.second.frame > kForget; });
+		}
 	}
 
-	void CullOptionLightsUnder(RE::NiAVObject* a_root)
+	LightList CullOptionLightsUnder(RE::NiAVObject* a_root, std::size_t& a_option)
 	{
+		LightList out;
+		a_option = kNone;
 		if (!a_root) {
-			return;
+			return out;
 		}
-		// done at load so a switched-off light never shows for the frame before the next player update
+		// done at load so a switched-off light never shows for the frame before the next player update (any thread: only
+		// the lights are touched here)
 		auto*      ref = ReferenceOf(a_root);
 		const auto opt = ref ? OptionOf(ref->GetBaseObject()) : kNone;
 		if (!Off(opt)) {
-			return;
+			return out;
 		}
-		RE::BSVisit::TraverseScenegraphLights(a_root, [opt](RE::NiPointLight* a_light) {
+		a_option = opt;
+		RE::BSVisit::TraverseScenegraphLights(a_root, [&out](RE::NiPointLight* a_light) {
 			if (a_light && !a_light->GetAppCulled() && IsReLightLight(a_light)) {
 				a_light->SetAppCulled(true);
-				KeepLight(a_light);
-				gHeldOut.push_back({ a_light, opt });
+				out.emplace_back(a_light);
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
+		return out;
+	}
+
+	void AdoptOptionLights(std::size_t a_option, const LightList& a_lights)
+	{
+		for (const auto& light : a_lights) {
+			if (light->GetRefCount() <= 1) {
+				continue;  // already gone from the game
+			}
+			if (Off(a_option)) {
+				HoldOut(light.get(), a_option, false);
+			} else {
+				light->SetAppCulled(false);  // the switch went back on before the main thread came round
+			}
+		}
 	}
 }

@@ -16,20 +16,27 @@
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
+//   Plugin.h        what the files share; PCH.h what they all include; LightKit.h the small helpers Illuminated carries too
+//   MenuStyle.h, Translation.h, SKSEMenuFramework.h  the shared menu look and translation (word for word in our other
+//                   plugins), and SKSE Menu Framework's own header
 //   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
-//   Fade*.cpp       the fading module (Illuminated's, ported 2026-10-08): weapon and staff lights follow their charge,
-//                   a spell's hand light your magicka - its own settings (Fading.ini), rule files and menu pages
-//   Menu.cpp       the settings page, in SKSE Menu Framework's Mod Control Panel
-//   Plugin.h        what they share      PCH.h  what they all include
+//   Fade*.cpp       the fading module (the same code as Illuminated's; FadeConfig.h is this mod's part): weapon and
+//                   staff lights follow their charge, a spell's hand light your magicka - its own settings, rules, pages
+//   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
+//
+// THREADS: every list of game lights here (and in Options.cpp, HandLights.cpp, Held.cpp) is filled and emptied on the
+// main thread only. The hooks that may run on the game's loader and job threads (the spell-light call, a 3D load) touch
+// the light itself at most (put it out, so it never shows a frame it should not) and hand the bookkeeping to the main
+// thread as an SKSE task that holds the light until then - so no lock is held across a frame, and none is needed.
 
 #include "Fade.h"
 #include "Plugin.h"
 
 namespace
 {
-	RE::BSSpinLock gLock;
 	// every spell light the game made through the hooked call sites, so sneaking can find it again; and the lights put
-	// out while sneaking. Plain pointers: Keep.cpp holds each light, and ForgetSpellLights drops it here before it is freed
+	// out while sneaking. Main thread only. Plain pointers: Keep.cpp holds each light, and ForgetSpellLights drops it here
+	// before it is freed
 	std::unordered_set<RE::NiLight*> gMagicLights;
 	std::vector<RE::NiLight*>        gCulled;
 	bool                             gWasSneaking = false;
@@ -91,7 +98,6 @@ namespace
 			return;  // the game let go of it before the main thread came round: nothing to note (freed right here)
 		}
 		Plugin::KeepLight(a_light.get());
-		RE::BSSpinLockGuard lock(gLock);
 		gMagicLights.insert(a_light.get());
 		if (!a_handKey.empty()) {
 			Plugin::NoteHandLight(a_light.get(), a_handKey);
@@ -161,19 +167,36 @@ namespace
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	void CullTree(RE::NiAVObject* a_root)
+	// every light under a just-loaded 3D put out (any thread); returned, held, for the main thread to take into gCulled
+	[[nodiscard]] Plugin::LightList CullTree(RE::NiAVObject* a_root)
 	{
-		if (!a_root) {
-			return;
-		}
-		RE::BSVisit::TraverseScenegraphLights(a_root, [](RE::NiPointLight* a_light) {
+		Plugin::LightList out;
+		RE::BSVisit::TraverseScenegraphLights(a_root, [&out](RE::NiPointLight* a_light) {
 			if (a_light && !a_light->GetAppCulled()) {
 				a_light->SetAppCulled(true);
-				Plugin::KeepLight(a_light);
-				gCulled.push_back(a_light);
+				out.emplace_back(a_light);
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
+		return out;
+	}
+
+	// main thread: the lights a 3D load put out while she was sneaking join gCulled - or, if she stood up meanwhile, come
+	// back on (unless a switch or the hand-light switch holds them out)
+	void AdoptSneakCulled(const Plugin::LightList& a_lights)
+	{
+		const bool sneaking = gWasSneaking;
+		for (const auto& light : a_lights) {
+			if (light->GetRefCount() <= 1) {
+				continue;  // already gone from the game
+			}
+			if (sneaking) {
+				Plugin::KeepLight(light.get());
+				gCulled.push_back(light.get());
+			} else if (!Plugin::HeldOutForOption(light.get()) && !Plugin::HandLightHeldOut(light.get())) {
+				light->SetAppCulled(false);
+			}
+		}
 	}
 
 	template <class T>
@@ -182,13 +205,20 @@ namespace
 		static RE::NiAVObject* thunk(T* a_this, bool a_backgroundLoading)
 		{
 			auto* root = func(a_this, a_backgroundLoading);
-			if (root) {
-				RE::BSSpinLockGuard lock(gLock);
-				if (PlayerSneaking()) {
-					CullTree(root);
-				} else {
-					// RE::Light has already hung its light here; put a switched-off option's out before its first frame
-					Plugin::CullOptionLightsUnder(root);
+			auto* tasks = root ? SKSE::GetTaskInterface() : nullptr;
+			if (!tasks) {
+				return root;
+			}
+			// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread
+			if (PlayerSneaking()) {
+				if (auto culled = CullTree(root); !culled.empty()) {
+					tasks->AddTask([lights = std::move(culled)]() { AdoptSneakCulled(lights); });
+				}
+			} else {
+				// RE::Light has already hung its light here; a switched-off option's goes out before its first frame
+				std::size_t option = Plugin::kNone;
+				if (auto culled = Plugin::CullOptionLightsUnder(root, option); !culled.empty()) {
+					tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
 				}
 			}
 			return root;
@@ -207,8 +237,7 @@ namespace
 			func(a_this, a_delta);
 			// first: every list forgets the lights that left the game since the last frame, and they are freed
 			Plugin::SweepKeptLights();
-			const bool          sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
-			RE::BSSpinLockGuard lock(gLock);
+			const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
 			if (sneaking) {
 				CullSpellLights();
 			} else if (gWasSneaking) {
@@ -256,7 +285,7 @@ namespace
 		static void                                    Install()
 		{
 			REL::Relocation<std::uintptr_t> site{ RELOCATION_ID(18458, 18889), 0x52 };
-			if (*reinterpret_cast<const std::uint8_t*>(site.address()) != 0xE8) {
+			if (!LightKit::IsCallAt(site.address())) {
 				SKSE::log::warn(
 					"cell animations: the expected call is not there (another plugin rewrote it?); fading lights may "
 					"show their full strength for part of a frame");
@@ -278,9 +307,17 @@ namespace
 			sites.push_back({ RELOCATION_ID(33403, 34185), REL::VariantOffset(0x407, 0x407, 0x407) });
 		}
 		std::uintptr_t first = 0;
+		std::size_t    hooked = 0;
 		for (auto& [id, off] : sites) {
 			REL::Relocation<std::uintptr_t> target{ id, off };
-			auto                            old = trampoline.write_call<5>(target.address(), MagicLight::thunk);
+			if (!LightKit::IsCallAt(target.address())) {
+				SKSE::log::warn(
+					"spell lights: a call site is not a call (another plugin rewrote it?); left alone - those spells keep their "
+					"own light handling");
+				continue;
+			}
+			auto old = trampoline.write_call<5>(target.address(), MagicLight::thunk);
+			++hooked;
 			if (!first) {
 				first = old;
 				MagicLight::func = old;
@@ -290,7 +327,7 @@ namespace
 		}
 		// if the call sites still lead to the game's own function, RE::Light hooked nothing here
 		const auto game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
-		SKSE::log::info("spell lights: {} call sites hooked, after every plugin loaded; they led to {}", sites.size(),
+		SKSE::log::info("spell lights: {} of {} call sites hooked, after every plugin loaded; they led to {}", hooked, sites.size(),
 			first == game ? "the game's own function (RE::Light has no hook there)" : "another plugin's hook (RE::Light's)");
 	}
 
@@ -305,8 +342,9 @@ namespace
 		Load3D<RE::BarrierProjectile>::Install();
 		Load3D<RE::Explosion>::Install();
 		Load3D<RE::Hazard>::Install();
+		constexpr std::size_t           kActorUpdate = 0xAD;  // Actor::Update's vtable slot on SE and AE (this mod has no VR build)
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
-		PlayerUpdate::func = vtbl.write_vfunc(0xAD, PlayerUpdate::thunk);
+		PlayerUpdate::func = vtbl.write_vfunc(kActorUpdate, PlayerUpdate::thunk);
 		EffectUpdate<RE::ShaderReferenceEffect>::Install();
 		EffectUpdate<RE::ModelReferenceEffect>::Install();
 		CellAnimations::Install();
@@ -316,12 +354,36 @@ namespace
 	}
 }
 
+namespace
+{
+	// the data-load work, once; an exception never leaves into the game: one thrown here (a file it cannot read, memory)
+	// is logged, and what already ran keeps its work
+	void OnDataLoaded()
+	{
+		try {
+			Plugin::LoadData();
+			Plugin::LoadSettings();
+			Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
+			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
+			Plugin::MakeHandLights();
+			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
+			InstallLate();
+			Plugin::RegisterMenu();
+			Fade::OnDataLoaded();  // after the menu: its two pages go under the Spell Addon's section, after ours
+		} catch (const std::exception& e) {
+			SKSE::log::critical(
+				"the data-load work stopped part way: {} - what ran before it keeps its work, the rest is not "
+				"done this session",
+				e.what());
+		}
+	}
+}
+
 void Plugin::ForgetSpellLights(const GoneLights& a_gone)
 {
-	RE::BSSpinLockGuard lock(gLock);
 	std::erase_if(gMagicLights, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
 	std::erase_if(gCulled, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
-	ForgetOptionLights(a_gone);  // its list lives under this lock too (the player update and the load hooks)
+	ForgetOptionLights(a_gone);
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
@@ -330,7 +392,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	// module's two charge-bar calls, 14 bytes each, room to spare): a second SKSE::AllocTrampoline would replace the buffer
 	// under live hooks
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 160 });
-	Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the plugins load
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
 		if (!a_msg) {
 			return;
@@ -338,6 +399,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame) {
 			Fade::OnGameLoading();
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+			Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the game reads its plugins (still before)
 			Fade::OnPostLoad();
 			// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
 			Install();
@@ -348,15 +410,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 				}
 			});
 		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
-			Plugin::LoadData();
-			Plugin::LoadSettings();
-			Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
-			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
-			Plugin::MakeHandLights();
-			Plugin::VaerSwirls();  // after LoadData: it needs to know whether the VAER Reborn option is installed
-			InstallLate();
-			Plugin::RegisterMenu();
-			Fade::OnDataLoaded();  // after the menu: its two pages go under the Spell Addon's section, after ours
+			OnDataLoaded();
 		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
 			if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
 				Fade::OnGameLoading();

@@ -1,8 +1,8 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// Rule files: Data\SKSE\Plugins\RelightSpellAddon\Fading\*.json, read in file-name order (case ignored), rules in the order written.
+// Rule files: Mod::kRulesDir\*.json (FadeConfig.h), read in file-name order (case ignored), rules in the order written.
 // Every rule that matches a weapon applies, and a later rule's setting replaces an earlier one's - so a mod author's
 // file can be overridden by a player's "zz_mine.json". The format is in docs/RULES.md.
 //
@@ -15,8 +15,9 @@
 //   bound, staff            true or false
 // Within one field any entry matches; every field given must match.
 //
-// Before any file: a weapon with the keyword Illuminated_NoFade (a keyword distributor can hand it out) is left alone, a
-// bound weapon follows its spell's time if Bound weapons is on, and a staff is left alone if Staves is off.
+// Before any file: a weapon with the keyword Illuminated_NoFade (a keyword distributor can hand it out; the one name in
+// both mods, so a patch written for one serves the other) is left alone, a bound weapon follows its spell's time if Bound
+// weapons is on, and a staff is left alone if Staves is off.
 
 #include "Fade.h"
 
@@ -26,7 +27,7 @@ namespace Fade
 {
 	namespace
 	{
-		constexpr const char*      kDir = "Data/SKSE/Plugins/RelightSpellAddon/Fading";
+		constexpr const char*      kDir = Mod::kRulesDir;
 		constexpr std::string_view kNoFadeKeyword = "illuminated_nofade";
 		constexpr std::string_view kNoFadeKeywordOld = "waningglow_nofade";  // the older keyword name, still honoured
 
@@ -154,9 +155,9 @@ namespace Fade
 		}
 
 		// what never changes for a (weapon, enchantment) pair after load, worked out once: keyword names are lower-cased
-		// only here, not every frame. The returned reference stays valid until the next load or reload, both on the main
-		// thread, as every caller is.
-		const Match& MatchesFor(const RE::TESObjectWEAP* a_weapon, const RE::EnchantmentItem* a_ench, bool a_log)
+		// only here, not every frame. A copy is handed out (a handful of indices): nothing points into the table once its
+		// lock is let go, whatever thread asks.
+		Match MatchesFor(const RE::TESObjectWEAP* a_weapon, const RE::EnchantmentItem* a_ench, bool a_log)
 		{
 			std::lock_guard lock(gMatchLock);
 			const PairKey   key{ a_weapon, a_ench, a_weapon ? a_weapon->GetFormID() : 0, a_ench ? a_ench->GetFormID() : 0 };
@@ -253,7 +254,7 @@ namespace Fade
 				v.why = off;
 			}
 		}
-		const auto& match = MatchesFor(a_weapon, a_ench, a_settings.debugLog);
+		const auto match = MatchesFor(a_weapon, a_ench, a_settings.debugLog);
 		if (match.noFade) {
 			v.mode = Mode::kExempt;
 			v.why = "keyword Illuminated_NoFade";
