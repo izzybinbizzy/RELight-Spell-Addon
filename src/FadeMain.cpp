@@ -128,7 +128,35 @@ namespace Fade
 	void OnDataLoaded()
 	{
 		LoadSettings();
+		// the advanced settings file (his rule 2026-10-10): the fading module's own values, then the file read and written back
+		// whole (the mod registered its own values before this - its main.cpp)
+		using namespace Tuning;
+		Register("Fading", "MinReach", 0.35f, 0.0f, 1.0f, "the least share of its reach a fading light keeps at empty", gMinReach);
+		Register("Fading", "PulseSeconds", 0.30f, 0.05f, 2.0f, "how long the flash of a hit that spends charge lasts, in seconds", gPulseSeconds);
+		Register("Fading", "FlareSeconds", 0.70f, 0.1f, 3.0f, "how long the swell of a recharge lasts, in seconds", gFlareSeconds);
+		Register("Fading", "FallSeconds", 0.15f, 0.0f, 2.0f, "how quickly the light follows a falling charge, in seconds", gFallSeconds);
+		Register("Fading", "RiseSeconds", 0.35f, 0.0f, 3.0f, "how quickly the light follows a rising charge, in seconds", gRiseSeconds);
+		Register("HUD", "GemDistance", 215.0f, 40.0f, 900.0f, "how far each charge gem sits from the middle of the screen, in pixels at 1080p", gGemDistance);
+		Register("HUD", "GemHeight", 62.0f, 0.0f, 1000.0f, "how far above the bottom of the screen the charge gems sit, in pixels at 1080p", gGemHeight);
+		Register("HUD", "ReticleGap", 30.0f, 5.0f, 300.0f, "how far each reticle bar sits from the crosshair, in pixels", gReticleGap);
+		Register("HUD", "ReticleLength", 56.0f, 10.0f, 400.0f, "how long each reticle bar is, in pixels", gReticleLength);
+		Register("HUD", "CrossfireBarWidth", 300.0f, 80.0f, 1200.0f, "how wide the Crossfire bar is, in pixels", gBarWidth);
+		Register("HUD", "CrossfireBarDrop", 70.0f, -400.0f, 600.0f, "how far below the crosshair the Crossfire bar sits, in pixels", gBarDrop);
+		Register("HUD", "EmptyPulseSpeed", 2.6f, 0.5f, 10.0f, "how fast the reticle breathes while you are out of magicka", gEmptyPulseSpeed);
+		Register("HUD", "FullPulseSeconds", 0.9f, 0.2f, 3.0f, "how long the reticle's swell lasts when your magicka is full again, in seconds", gFullPulseSeconds);
+		Tuning::Load();
+		{
+			auto s = Config();
+			s.tuning.minReach = Get(gMinReach);
+			s.tuning.pulseSeconds = Get(gPulseSeconds);
+			s.tuning.flareSeconds = Get(gFlareSeconds);
+			s.tuning.fallSeconds = Get(gFallSeconds);
+			s.tuning.riseSeconds = Get(gRiseSeconds);
+			SetConfig(s);
+		}
 		LoadRules();
+		Items::BuildCatalog();
+		Items::Load();
 		ShaderUpdate::Install();
 		InstallChargeBar();
 		SKSE::log::info("fading: hooked effect shaders; the player update, effect updates and cell animations are the plugin's wrappers");

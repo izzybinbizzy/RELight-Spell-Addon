@@ -244,6 +244,138 @@ namespace Plugin
 			}
 		}
 
+		// ------------------------------------------------------------------ the player's own presets, one set per lighting
+		// HIS WORD 2026-10-10 (Illuminated's list, synced): "any presets users make need to be version dependant so they can have
+		// presets per version if they switch to say, enb to community shaders mid save." Presets.ini beside the data files,
+		// a section per preset "[<lighting>|<name>]"; the menu shows the presets of the lighting found now (HandLights.cpp).
+		constexpr const char* kPresetsPath = "Data/SKSE/Plugins/RelightSpellAddon/Presets.ini";
+		struct UserPreset
+		{
+			std::string                              lighting, name;
+			std::vector<std::pair<std::string, int>> values;
+		};
+		std::mutex              gPresetLock;
+		std::vector<UserPreset> gPresets;
+		bool                    gPresetsRead = false;  // under gPresetLock
+
+		void ReadPresetsLocked()
+		{
+			gPresets.clear();
+			std::ifstream in(kPresetsPath);
+			std::string   line;
+			while (std::getline(in, line)) {
+				std::string_view t = line;
+				while (!t.empty() && std::isspace(static_cast<unsigned char>(t.back()))) {
+					t.remove_suffix(1);
+				}
+				while (!t.empty() && std::isspace(static_cast<unsigned char>(t.front()))) {
+					t.remove_prefix(1);
+				}
+				if (t.empty() || t.front() == ';') {
+					continue;
+				}
+				if (t.front() == '[' && t.back() == ']') {
+					const auto section = t.substr(1, t.size() - 2);
+					const auto bar = section.find('|');
+					if (bar != std::string_view::npos && bar + 1 < section.size()) {
+						gPresets.push_back({ std::string(section.substr(0, bar)), std::string(section.substr(bar + 1)), {} });
+					}
+					continue;
+				}
+				const auto eq = t.find('=');
+				int        v = 0;
+				if (eq != std::string_view::npos && !gPresets.empty()) {
+					const auto val = t.substr(eq + 1);
+					if (const auto [end, ec] = std::from_chars(val.data(), val.data() + val.size(), v); ec == std::errc{}) {
+						gPresets.back().values.emplace_back(std::string(t.substr(0, eq)), v);
+					}
+				}
+			}
+			gPresetsRead = true;
+		}
+
+		void WritePresetsLocked()
+		{
+			std::ostringstream text;
+			text << "; RELight - Spell Addon - the presets you saved in the menu, one set per lighting. Written by the menu.\n";
+			for (const auto& p : gPresets) {
+				text << "\n[" << p.lighting << "|" << p.name << "]\n";
+				for (const auto& [k, v] : p.values) {
+					text << k << "=" << v << "\n";
+				}
+			}
+			std::error_code ec;
+			std::filesystem::create_directories(std::filesystem::path(kPresetsPath).parent_path(), ec);
+			const std::string tmp = std::string(kPresetsPath) + ".tmp";
+			{
+				std::ofstream out(tmp, std::ios::trunc);
+				out << text.str();
+				if (!out.flush()) {
+					SKSE::log::warn("presets: {} could not be written", kPresetsPath);
+					return;
+				}
+			}
+			if (std::filesystem::rename(tmp, kPresetsPath, ec); ec) {
+				SKSE::log::warn("presets: {} could not be replaced ({})", kPresetsPath, ec.message());
+				std::filesystem::remove(tmp, ec);
+			}
+		}
+
+		void DrawUserPresets()
+		{
+			const std::string lighting = LightingName(LightingFound());
+			ImGuiMCP::Text("%s", T("Lighting"));
+			ImGuiMCP::SameLine();
+			ImGuiMCP::TextColored(kGold, T("Automatic - %s"), T(lighting.c_str()));
+			ImGuiMCP::SetItemTooltip("%s", T("Found by itself when the game starts. Off Community Shaders the hand lights are drawn for the "
+											 "game's own lighting and light the ground. Your presets are kept apart for each lighting."));
+			static char name[48]{};
+			ImGuiMCP::SetNextItemWidth(220.0f);
+			ImGuiMCP::InputTextWithHint("##presetName", T("Name a preset"), name, sizeof(name));
+			ImGuiMCP::SameLine();
+			std::string typed = name;
+			while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.back()))) {
+				typed.pop_back();
+			}
+			ImGuiMCP::BeginDisabled(typed.empty() || typed.find_first_of("[]|=") != std::string::npos);
+			if (ImGuiMCP::Button(T("Save as preset"))) {
+				std::lock_guard lock(gPresetLock);
+				if (!gPresetsRead) {
+					ReadPresetsLocked();
+				}
+				std::erase_if(gPresets, [&](const UserPreset& p) { return p.lighting == lighting && p.name == typed; });
+				gPresets.push_back({ lighting, typed, SettingsSnapshot() });
+				WritePresetsLocked();
+				name[0] = '\0';
+			}
+			ImGuiMCP::EndDisabled();
+			ImGuiMCP::SetItemTooltip(T("Saves every setting and switch as it is now under this name, for %s."), T(lighting.c_str()));
+			std::lock_guard lock(gPresetLock);
+			if (!gPresetsRead) {
+				ReadPresetsLocked();
+			}
+			for (std::size_t i = 0; i < gPresets.size(); ++i) {
+				if (gPresets[i].lighting != lighting) {
+					continue;
+				}
+				ImGuiMCP::PushID(static_cast<int>(2000 + i));
+				if (ImGuiMCP::Button(gPresets[i].name.c_str())) {
+					ApplySettingsSnapshot(gPresets[i].values);
+					SaveSettings();
+					RehandSoon();
+				}
+				ImGuiMCP::SetItemTooltip("%s", T("Load this preset."));
+				ImGuiMCP::SameLine();
+				const bool gone = ImGuiMCP::SmallButton(T("Delete"));
+				ImGuiMCP::PopID();
+				if (gone) {
+					gPresets.erase(gPresets.begin() + static_cast<std::ptrdiff_t>(i));
+					WritePresetsLocked();
+					break;
+				}
+			}
+		}
+
 		void __stdcall RenderSettings()
 		{
 			const GlowStyle style;
@@ -280,7 +412,9 @@ namespace Plugin
 
 			// ---- Illuminated's light settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister
 			// mods"); RE::Light lights the objects, these are what it has no setting for
-			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is)
+			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is). 🔁 HIS WORD 2026-10-10
+			// (Illuminated's list, synced here): "remove performance preset, only subtle default and cinematic(change dramatic to
+			// cinematic)", and the player's own presets kept per lighting
 			struct Preset
 			{
 				const char* name;
@@ -290,8 +424,7 @@ namespace Plugin
 			const Preset presets[] = {
 				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1 },
 				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0 },
-				{ T("Dramatic"), T("Brighter lights that reach further."), 150, 120, -1 },
-				{ T("Performance"), T("For big fights: hand lights for you and your followers only, and a shorter reach."), 100, 80, 2 },
+				{ T("Cinematic"), T("Brighter lights that reach further."), 150, 120, -1 },
 			};
 			ImGuiMCP::TextDisabled("%s", T("Presets:"));
 			for (const auto& p : presets) {
@@ -306,6 +439,7 @@ namespace Plugin
 				}
 				ImGuiMCP::SetItemTooltip("%s", p.tip);
 			}
+			DrawUserPresets();
 
 			const char* const kDaylight[] = { T("Off"), T("A little"), T("More") };
 			int               day = DimInDaylight();

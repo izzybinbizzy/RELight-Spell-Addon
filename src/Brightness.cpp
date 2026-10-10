@@ -310,7 +310,8 @@ namespace Plugin
 				// only OUR lights are remembered; the others are remembered as not ours
 				const auto* base = BaseOf(niLight);
 				if (!OursByObject(niLight, base)) {
-					if (!IsEnchantLight(niLight)) {
+					// a light whose reference has no base yet (its 3D still loading) is not cached: it may turn out ours
+					if (base && !IsEnchantLight(niLight)) {
 						gNotOurs.insert_or_assign(niLight, NotOurs{ niLight->name.c_str(), niLight->parent, gFrame });
 					}
 					continue;

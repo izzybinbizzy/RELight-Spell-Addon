@@ -19,8 +19,7 @@
 //   RechargeFlare=1
 //   RechargeFlareStrength=80  percent, 0 to 200
 //   ColorCooling=1
-//   ColorCoolingAmount=50     percent
-//   ColorCoolingTint=1        0 grey, 1 ember
+//   ColorCoolingAmount=50     percent - toward grey; a fire spell or enchantment with an orange light cools to ember
 //   Weapons=1                 enchanted weapons' lights and glow follow their charge
 //   Staves=1
 //   BoundWeapons=1
@@ -29,8 +28,9 @@
 //   Who=0                     0 the player, 1 the player and followers, 2 everyone nearby (every loaded actor)
 //   DimShader=1               the enchantment's glow (its shader and its art's swirls) follows the charge too
 //   HideChargeBar=0           the HUD's enchantment charge bar is hidden (vanilla HUD, SkyHUD, TrueHUD)
-//   HudGems=0                 a soul gem per hand beside the health bar, full with the charge or magicka (needs SKSE Menu Framework)
-//   Reticle=0                 a bar per hand beside the crosshair, draining with its charge or magicka (needs SKSE Menu Framework)
+//   HudGems=0                 a soul gem per weapon hand beside the health bar, shown while its charge is down (needs SKSE Menu Framework)
+//   Reticle=0                 the spell reticle beside the crosshair, draining with magicka (needs SKSE Menu Framework)
+//   ReticleStyle=0            0 a bar per hand beside the crosshair, 1 Crossfire's bar under it
 //   ReticleSize=100           percent, 50 to 200
 //   ReticleOpacity=85         percent, 10 to 100
 //   OwnLight=1                a weapon no other mod lights gets a simple light in its enchantment's colour - only where
@@ -91,6 +91,7 @@ namespace Fade
 		float               hudGemOpacity{ 0.9f };
 		bool                hudGemPercent{ true };  // the percent under each gem
 		bool                reticle{ false };       // FadeMenu.cpp's reticle: a bar per hand of the player beside the crosshair
+		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 Crossfire's bar under it (his pick 2026-10-10)
 		float               reticleSize{ 1.0f };
 		float               reticleOpacity{ 0.85f };
 		bool                ownLight{ Mod::kOwnLight };  // a weapon no other mod lights gets a light of our own (FadeOwnLight.cpp)
@@ -186,8 +187,6 @@ namespace Fade
 			{ "ColorCooling", [](const Settings& s) { return s.tuning.cool ? 1 : 0; }, [](Settings& s, int v) { s.tuning.cool = v != 0; } },
 			{ "ColorCoolingAmount", [](const Settings& s) { return ToPct(s.tuning.coolAmount); },
 				[](Settings& s, int v) { s.tuning.coolAmount = Pct(v, 0, 100); } },
-			{ "ColorCoolingTint", [](const Settings& s) { return static_cast<int>(s.tuning.coolTint); },
-				[](Settings& s, int v) { s.tuning.coolTint = static_cast<Glow::CoolTint>(std::clamp(v, 0, 1)); } },
 			{ "Weapons", [](const Settings& s) { return s.weapons ? 1 : 0; }, [](Settings& s, int v) { s.weapons = v != 0; } },
 			{ "Staves", [](const Settings& s) { return s.staves ? 1 : 0; }, [](Settings& s, int v) { s.staves = v != 0; } },
 			{ "BoundWeapons", [](const Settings& s) { return s.bound ? 1 : 0; }, [](Settings& s, int v) { s.bound = v != 0; } },
@@ -203,6 +202,7 @@ namespace Fade
 				[](Settings& s, int v) { s.hudGemOpacity = Pct(v, 10, 100); } },
 			{ "HudGemPercent", [](const Settings& s) { return s.hudGemPercent ? 1 : 0; }, [](Settings& s, int v) { s.hudGemPercent = v != 0; } },
 			{ "Reticle", [](const Settings& s) { return s.reticle ? 1 : 0; }, [](Settings& s, int v) { s.reticle = v != 0; } },
+			{ "ReticleStyle", [](const Settings& s) { return s.reticleStyle; }, [](Settings& s, int v) { s.reticleStyle = std::clamp(v, 0, 1); } },
 			{ "ReticleSize", [](const Settings& s) { return ToPct(s.reticleSize); }, [](Settings& s, int v) { s.reticleSize = Pct(v, 50, 200); } },
 			{ "ReticleOpacity", [](const Settings& s) { return ToPct(s.reticleOpacity); },
 				[](Settings& s, int v) { s.reticleOpacity = Pct(v, 10, 100); } },
@@ -223,8 +223,9 @@ namespace Fade
 			{ "Illusion", [](const Settings& s) { return s.schools[4] ? 1 : 0; }, [](Settings& s, int v) { s.schools[4] = v != 0; } },
 		};
 
-		// keys an older version wrote: read past without a warning, never written again
-		inline constexpr std::string_view kRetired[]{ "OwnLightReach" };
+		// keys an older version wrote: read past without a warning, never written again (ColorCoolingTint: his word 2026-10-10,
+		// "the only option will be grey, ember cooling only for fire spell types that are orange" - Glow::TintFor decides)
+		inline constexpr std::string_view kRetired[]{ "OwnLightReach", "ColorCoolingTint" };
 
 		[[nodiscard]] inline bool SameText(std::string_view a, std::string_view b) noexcept
 		{

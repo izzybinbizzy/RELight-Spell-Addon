@@ -14,7 +14,8 @@
 //   Streams.cpp     sprays, breath shouts and beams: RE::Light lights them, the menu reaches their lights
 //   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
 //   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
-//   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
+//   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script (and the lighting found)
+//   GroundLights.cpp off Community Shaders, a twin of each hand light that lights the ground (Illuminated's)
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
 //   Plugin.h        what the files share; PCH.h what they all include; LightKit.h the small helpers Illuminated carries too
 //   MenuStyle.h, Translation.h, SKSEMenuFramework.h  the shared menu look and translation (word for word in our other
@@ -121,10 +122,10 @@ namespace
 		if (!actor || actor->IsPlayerRef()) {
 			return false;
 		}
-		constexpr float kNearby = 2800.0f;  // "about forty paces"
+		const float nearby = Plugin::gNearby.load(std::memory_order_relaxed);  // "about forty paces" - [Lights] NearbyDistance
 		if (who == 1) {
 			const auto* player = RE::PlayerCharacter::GetSingleton();
-			return !player || actor->GetPosition().GetSquaredDistance(player->GetPosition()) > kNearby * kNearby;
+			return !player || actor->GetPosition().GetSquaredDistance(player->GetPosition()) > nearby * nearby;
 		}
 		return who == 3 || !actor->IsPlayerTeammate();
 	}
@@ -253,6 +254,7 @@ namespace
 			// Brightness.cpp's NoteFadeWrite)
 			Plugin::UpdateBrightness(a_delta);
 			Fade::UpdateHands(a_delta);
+			Plugin::TickGroundLights();  // last: off Community Shaders the hand lights' twins copy this frame's numbers (GroundLights.cpp)
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -361,6 +363,11 @@ namespace
 	void OnDataLoaded()
 	{
 		try {
+			// the advanced settings file's own values (his rule 2026-10-10) - read with the fading module's, in Fade::OnDataLoaded
+			Fade::Tuning::Register("Lights", "NearbyDistance", 2800.0f, 300.0f, 30000.0f, "Hand lights for - Everyone nearby: how far from you, in game units",
+				Plugin::gNearby);
+			Fade::Tuning::Register("Vanilla and ENB", "GroundLights", 1.0f, 0.0f, 1.0f,
+				"1: off Community Shaders a hand light lights the ground too (its twin, made with land lighting on); 0: off", Plugin::gGroundLightsOn);
 			Plugin::LoadData();
 			Plugin::LoadSettings();
 			Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
@@ -377,6 +384,12 @@ namespace
 				e.what());
 		}
 	}
+}
+
+bool Plugin::WantedDark(RE::NiLight* a_light)
+{
+	// the main thread's lists (GroundLights.cpp asks from the player update)
+	return (PlayerSneaking() && gMagicLights.contains(a_light)) || HeldOutForOption(a_light) || HandLightHeldOut(a_light);
 }
 
 void Plugin::ForgetSpellLights(const GoneLights& a_gone)

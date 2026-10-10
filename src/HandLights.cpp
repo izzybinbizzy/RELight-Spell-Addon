@@ -53,9 +53,10 @@ namespace Plugin
 		std::unordered_map<const RE::TESObjectLIGH*, const Hand*> gInUse;
 		std::size_t                                               gLit = 0, gAutoLit = 0;
 		bool                                                      gIsl = false;
-		std::map<std::string, Hand, std::less<>>                  gAutoHands;     // "auto r,g,b" -> its hand (stable: a map's nodes never move)
-		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;    // the same key -> its light record
-		StringMap<int>                                            gElementOfKey;  // hand key -> element, most of its effects' (0: none, or a tie)
+		Lighting                                                  gLighting = Lighting::kVanilla;  // found at data load (MakeHandLights)
+		std::map<std::string, Hand, std::less<>>                  gAutoHands;                      // "auto r,g,b" -> its hand (stable: a map's nodes never move)
+		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;                     // the same key -> its light record
+		StringMap<int>                                            gElementOfKey;                   // hand key -> element, most of its effects' (0: none, or a tie)
 
 		[[nodiscard]] bool AutoKey(std::string_view a_key) { return a_key.starts_with(kAutoPrefix); }
 
@@ -275,12 +276,32 @@ namespace Plugin
 		ApplyHandLights(true);
 	}
 
+	Lighting LightingFound() { return gLighting; }
+
+	const char* LightingName(Lighting a_lighting)
+	{
+		switch (a_lighting) {
+		case Lighting::kEnb:
+			return "ENB";
+		case Lighting::kVanilla:
+			return "Vanilla";
+		default:
+			return "Community Shaders";
+		}
+	}
+
 	void MakeHandLights()
 	{
 		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour.
-		// No lighting pick of our own (his word 2026-10-08: "relight is relight is relight") - our lights follow RE::Light's
+		// 🔁 2026-10-10 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
+		// finds it, never picked; off Community Shaders the hand lights are drawn plain (DressHandLight) and light the ground
+		// through their twins (GroundLights.cpp)
 		std::error_code ec;
 		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
+		const bool enb = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
+		gLighting = gIsl ? Lighting::kShaders : enb ? Lighting::kEnb :
+		                                              Lighting::kVanilla;
+		SKSE::log::info("lighting: {} (detected)", LightingName(gLighting));
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };
@@ -402,15 +423,27 @@ namespace Plugin
 		}
 		a_light->fadeAmount = kMovingLightMark;
 		auto& data = a_light->GetLightRuntimeData();
-		data.fade = a_hand.fade;
-		data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
 		data.diffuse = a_hand.color;
 		if (gIsl) {
+			data.fade = a_hand.fade;
+			data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
 			if (a_hand.inverseSquare) {
 				Isl::SetOn(a_light);
 			}
 			Isl::SetCutoff(a_light, a_hand.cutoff);
+			return;
 		}
+		// ENB and Vanilla (his report 2026-10-10: "relight casting light is not working"): the layer's light is made for
+		// inverse square lighting, which the game's own lighting does not draw - so it is drawn plain, as Illuminated draws
+		// its lights there (LightKit::PlainOf), with an ambient of a tenth of its color (RE::Light's rule, Truman)
+		const auto plain = a_hand.inverseSquare ? LightKit::PlainOf(a_hand.fade, a_hand.radius, a_hand.cutoff, a_hand.size) :
+		                                          LightKit::Plain{ a_hand.fade, a_hand.radius };
+		data.fade = plain.fade;
+		data.radius = { plain.radius, plain.radius, a_hand.size };
+		if (auto* point = netimmerse_cast<RE::NiPointLight*>(a_light)) {
+			point->SetLightAttenuation(plain.radius);
+		}
+		data.ambient = { a_hand.color.red * 0.1f, a_hand.color.green * 0.1f, a_hand.color.blue * 0.1f };  // after the attenuation's words
 	}
 
 	// main thread (main.cpp NoteMagicLight)

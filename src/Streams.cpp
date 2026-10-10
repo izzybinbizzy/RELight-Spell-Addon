@@ -105,6 +105,11 @@ namespace Plugin
 		data.fade = a_fade;
 		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
 		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
+		if (!IslShader()) {
+			// off Community Shaders (2026-10-10): an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
+			// hands a plain fade and reach (Held.cpp PlainScale)
+			data.ambient = { a_colour.red * 0.1f, a_colour.green * 0.1f, a_colour.blue * 0.1f };
+		}
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
 		// the peak with the reach held (at 100%/100% it equals the file's). Only when RE::Light's own test finds inverse
 		// square lighting (IslShader), as the hand lights - no lighting pick of our own (his "relight is relight is relight")

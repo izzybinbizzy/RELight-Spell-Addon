@@ -47,12 +47,14 @@ namespace Fade
 			{
 				return a.red == b.red && a.green == b.green && a.blue == b.blue;
 			}
-			RE::NiColor Apply(const RE::NiColor& a_current, Glow::CoolTint a_tint, float a_amount)
+			// a_fire: the hand's magic is fire - an orange light cools to ember, every other to grey (Glow::TintFor)
+			RE::NiColor Apply(const RE::NiColor& a_current, bool a_fire, float a_amount)
 			{
 				if (!touched || !Same(a_current, written)) {
 					base = a_current;
 				}
-				const auto c = Glow::Cool({ base.red, base.green, base.blue }, a_tint, a_amount);
+				const Glow::Rgb own{ base.red, base.green, base.blue };
+				const auto      c = Glow::Cool(own, Glow::TintFor(a_fire, own), a_amount);
 				written = { c.r, c.g, c.b };
 				touched = true;
 				return written;
@@ -101,7 +103,11 @@ namespace Fade
 			std::uint64_t    key{ 0 };              // its own place in gHands (Key, or SpellKey for a spell hand)
 			const RE::Actor* actorSeen{ nullptr };  // the actor as last read on the main thread: only compared, never used
 			bool             left{ false };
-			bool             spell{ false };  // a spell in hand (Spells.cpp): follows magicka, keyed apart (SpellKey)
+			bool             spell{ false };                  // a spell in hand (Spells.cpp): follows magicka, keyed apart (SpellKey)
+			bool             fire{ false };                   // its strongest effect is fire: an orange light cools to ember (Glow::TintFor)
+			Glow::Rgb        hudColor{ 0.32f, 0.58f, 1.0f };  // a spell hand's own light at full, for the reticle
+			int              school{ -1 };                    // a spell hand's school (Kind::school), for the Crossfire bar
+			int              element{ -1 };
 			bool             active{ false };
 			std::uint32_t    frame{ 0 };
 			const void*      weapon{ nullptr };
@@ -200,7 +206,7 @@ namespace Fade
 				data.radius.y = r;
 			}
 			if (a_hand.out.cool > 0.0f || seen.color.touched) {
-				data.diffuse = seen.color.Apply(data.diffuse, t.coolTint, a_hand.out.cool);
+				data.diffuse = seen.color.Apply(data.diffuse, a_hand.fire, a_hand.out.cool);
 			}
 			seen.shownFade = data.fade;  // for LightsNow, which must not read the game's light off the main thread
 			seen.shownRadius = data.radius.x;
@@ -523,7 +529,11 @@ namespace Fade
 			h.reading.current = sp.current;
 			h.reading.max = sp.max;
 			h.reading.fraction = sp.fraction;
-			if (const auto off = KindOff(a_s, KindOf(sp.spell)); !off.empty()) {
+			const Kind kind = KindOf(sp.spell);
+			h.fire = kind.element == Element::kFire;
+			h.element = static_cast<int>(kind.element);
+			h.school = kind.school;
+			if (const auto off = KindOff(a_s, kind); !off.empty()) {
 				if (h.active || h.weapon != sp.spell) {
 					h.weaponLabel = Label(sp.spell);
 					h.verdict.why = off;
@@ -575,6 +585,38 @@ namespace Fade
 				}
 				ApplyLight(sp.casterLight, h);
 			}
+			// the reticle's color (his ask 2026-10-10: "change color with spells"): the spell's own light as it is before any
+			// cooling - the casting light, else the brightest light at the hand; none: magicka blue
+			RE::NiPointLight* own = sp.casterLight;
+			float             best = 0.0f;
+			if (!own) {
+				for (auto* node : sp.nodes) {
+					if (!node) {
+						continue;
+					}
+					RE::BSVisit::TraverseScenegraphLights(node, [&](RE::NiPointLight* a_light) {
+						if (a_light) {
+							const auto& d = a_light->GetLightRuntimeData();
+							const float s = std::fabs(d.fade) * (std::max)({ d.diffuse.red, d.diffuse.green, d.diffuse.blue });
+							if (std::isfinite(s) && s > best) {
+								best = s;
+								own = a_light;
+							}
+						}
+						return RE::BSVisit::BSVisitControl::kContinue;
+					});
+				}
+			}
+			if (own) {
+				const auto  it = gLights.find(own);
+				const auto& c = it != gLights.end() && it->second.color.touched ? it->second.color.base : own->GetLightRuntimeData().diffuse;
+				const float top = (std::max)({ c.red, c.green, c.blue });
+				if (top > 0.02f && std::isfinite(top)) {
+					h.hudColor = { c.red / top, c.green / top, c.blue / top };
+				}
+			} else {
+				h.hudColor = { 0.32f, 0.58f, 1.0f };
+			}
 		}
 
 		// what the HUD shows this frame: the player's hands that fade (not one left alone), the switches, and whether her
@@ -584,23 +626,38 @@ namespace Fade
 			HudState hud;
 			hud.gems = a_s.enabled && a_s.hudGems;
 			hud.reticle = a_s.enabled && a_s.reticle && !OtherReticleLoaded();  // off beside Reticle Arcs (FadeMain.cpp)
+			hud.reticleStyle = a_s.reticleStyle;
 			hud.reticleSize = a_s.reticleSize;
 			hud.reticleOpacity = a_s.reticleOpacity;
 			hud.gemSize = a_s.hudGemSize;
 			hud.gemOpacity = a_s.hudGemOpacity;
 			hud.gemPercent = a_s.hudGemPercent;
 			hud.low = a_s.tuning.sputterBelow;
-			const auto* player = RE::PlayerCharacter::GetSingleton();
+			auto*       player = RE::PlayerCharacter::GetSingleton();
 			const auto* state = player ? player->AsActorState() : nullptr;
 			hud.drawn = state && state->IsWeaponDrawn();
 			if (a_s.enabled) {
 				for (const auto& [key, h] : gHands) {
 					if (h.active && h.frame == gFrame && player && h.actorSeen == player) {
 						auto& side = hud.hands[h.left ? 0 : 1];
+						// a hand holds a spell OR a weapon: a spell hand of last frame's shape must not hide this frame's weapon
+						if (side.shown && side.spell && !h.spell) {
+							continue;
+						}
 						side.shown = true;
 						side.spell = h.spell;
 						side.bound = h.reading.bound;
 						side.fraction = Glow::Clamp01(h.fraction);
+						if (h.spell) {
+							side.color = h.hudColor;
+							side.element = h.element;
+							side.school = h.school;
+							if (const auto* av = h.school >= 0 && h.school < 5 ? player->AsActorValueOwner() : nullptr) {
+								static constexpr RE::ActorValue kSkill[]{ RE::ActorValue::kDestruction, RE::ActorValue::kRestoration,
+									RE::ActorValue::kConjuration, RE::ActorValue::kAlteration, RE::ActorValue::kIllusion };
+								side.skill = static_cast<int>(av->GetActorValue(kSkill[h.school]));
+							}
+						}
 					}
 				}
 			}
@@ -628,6 +685,7 @@ namespace Fade
 		if (!s.enabled) {
 			RestoreAll();
 			PublishHud(s);
+			Items::Apply();  // Lights by Item works with Fading off too
 			return;
 		}
 		auto&       preview = PreviewState();
@@ -665,6 +723,7 @@ namespace Fade
 					h.verdictSettings = s;
 					h.weaponLabel = Label(h.reading.weapon);
 					h.enchLabel = h.reading.ench ? Label(h.reading.ench) : std::string(h.reading.bound ? "(bound weapon)" : "(none)");
+					h.fire = h.reading.ench && KindOf(h.reading.ench).element == Element::kFire;
 				}
 				if (auto* av = actor->AsActorValueOwner()) {
 					h.chargeAV = av->GetActorValue(left ? RE::ActorValue::kLeftItemCharge : RE::ActorValue::kRightItemCharge);
@@ -735,6 +794,7 @@ namespace Fade
 		Sweep();
 		gActiveHands = static_cast<std::size_t>(std::ranges::count_if(gHands, [](const auto& kv) { return kv.second.active; }));
 		PublishHud(s);
+		Items::Apply();  // last: an item's own choice wins over the fading (his order 2026-10-10, FadeItems.cpp)
 	}
 
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
@@ -841,6 +901,7 @@ namespace Fade
 	{
 		std::lock_guard lock(gLock);
 		RestoreAll();
+		Items::Release();
 		gActors.clear();
 	}
 

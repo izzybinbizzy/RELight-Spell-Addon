@@ -154,14 +154,19 @@ namespace Fade
 	// from this small copy and never waits on the per-frame pass. [0] is the player's left hand, [1] the right.
 	struct HudHand
 	{
-		bool  shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
-		bool  spell{ false }, bound{ false };
-		float fraction{ 1.0f };
+		bool      shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
+		bool      spell{ false }, bound{ false };
+		float     fraction{ 1.0f };
+		Glow::Rgb color{ 0.32f, 0.58f, 1.0f };  // a spell's own light at full (his ask 2026-10-10: the reticle in the spell's color)
+		int       element{ -1 };                // Element of a spell's strongest effect, -1 none (the Crossfire bar's sigil)
+		int       school{ -1 };                 // 0 Destruction .. 4 Illusion, -1 none
+		int       skill{ 0 };                   // the player's level in that school
 	};
 	struct HudState
 	{
 		bool                   gems{ false }, reticle{ false };  // the two switches (and the module is on)
 		bool                   drawn{ false };                   // the player's weapons or spells are out
+		int                    reticleStyle{ 0 };                // 0 the bars beside the crosshair, 1 Crossfire's bar
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
@@ -169,6 +174,9 @@ namespace Fade
 		std::array<HudHand, 2> hands{};
 	};
 	[[nodiscard]] HudState Hud();
+	// a game menu is open (inventory, map, dialogue, the console ...): the HUD elements hide, as the game's own HUD does
+	// (his report 2026-10-10). Kept by a menu open / close watcher (FadeMenu.cpp), read by the render thread
+	[[nodiscard]] bool MenusHideHud() noexcept;
 
 	// what the API hands other plugins: the charge fraction and the multiplier on this hand's lights; false if untracked
 	[[nodiscard]] bool Query(RE::Actor* a_actor, bool a_left, float& a_fraction, float& a_brightness);
@@ -185,6 +193,31 @@ namespace Fade
 	void                      DropOwnLights();   // every one of them (switched off, a load)
 	[[nodiscard]] std::size_t OwnLightCount();
 	[[nodiscard]] const char* OwnLightLighting();  // the lighting our light is drawn for: Community Shaders, ENB or Vanilla
+
+	// ------------------------------------------------------------------ FadeTuning.cpp: the all-in-one advanced settings file
+	// (his rule 2026-10-10: every value worth tuning that the menu does not show, one file, a section per category). A value is
+	// registered with its default and range before Load (data load); Load reads the file, then writes it back whole.
+	namespace Tuning
+	{
+		void Register(std::string_view a_section, std::string_view a_key, float a_default, float a_lo, float a_hi, std::string_view a_note,
+			std::atomic<float>& a_value);
+		void Load();
+		// the fading module's own: [Fading] (Glow::Tuning's values the menu does not show) and [HUD] (where the HUD sits)
+		inline std::atomic<float>  gMinReach{ 0.35f }, gPulseSeconds{ 0.30f }, gFlareSeconds{ 0.70f }, gFallSeconds{ 0.15f }, gRiseSeconds{ 0.35f };
+		inline std::atomic<float>  gGemDistance{ 215.0f }, gGemHeight{ 62.0f }, gReticleGap{ 30.0f }, gReticleLength{ 56.0f };
+		inline std::atomic<float>  gBarWidth{ 300.0f }, gBarDrop{ 70.0f }, gEmptyPulseSpeed{ 2.6f }, gFullPulseSeconds{ 0.9f };
+		[[nodiscard]] inline float Get(const std::atomic<float>& a_v) noexcept { return a_v.load(std::memory_order_relaxed); }
+	}
+
+	// ------------------------------------------------------------------ FadeItems.cpp: Lights by Item (his order 2026-10-10)
+	namespace Items
+	{
+		void           BuildCatalog();  // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
+		void           Load();          // data load: the choices in Mod::kItemsPath
+		void           Apply();         // every frame, main thread, last in the fading pass: each choice onto the lights at its hand
+		void           Release();       // every light back as its owner left it (a load)
+		void __stdcall Render();        // the page
+	}
 
 	// ------------------------------------------------------------------ FadeMenu.cpp
 	void RegisterMenu();

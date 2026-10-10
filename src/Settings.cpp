@@ -275,6 +275,38 @@ namespace Plugin
 		}
 	}
 
+	// a preset (Menu.cpp, his word 2026-10-10: presets kept per lighting): every [Settings] key, and every switch as "switch:<id>"
+	std::vector<std::pair<std::string, int>> SettingsSnapshot()
+	{
+		std::vector<std::pair<std::string, int>> out;
+		for (const auto& k : kKeys) {
+			out.emplace_back(k.name, k.get());
+		}
+		std::unordered_set<std::string> seen;
+		for (const auto& o : Options()) {
+			if (o.switchable && seen.insert(o.id).second) {
+				out.emplace_back("switch:" + o.id, o.on ? 1 : 0);
+			}
+		}
+		return out;
+	}
+
+	void ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values)
+	{
+		for (const auto& [key, v] : a_values) {
+			if (key.starts_with("switch:")) {
+				const auto id = std::string_view(key).substr(7);
+				for (std::size_t i = 0; i < Options().size(); ++i) {
+					if (Options()[i].switchable && SameText(Options()[i].id, id)) {
+						SetOptionOn(i, v != 0);
+					}
+				}
+			} else {
+				ApplySetting(key, v);
+			}
+		}
+	}
+
 	int  DimInDaylight() { return gDaylight; }
 	void SetDimInDaylight(int a_v) { gDaylight = std::clamp(a_v, 0, 2); }
 	int  HandLightsFor() { return gHandsFor; }

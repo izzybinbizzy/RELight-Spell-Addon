@@ -16,6 +16,8 @@ namespace Fade::Mod
 	inline constexpr const char* kRulesDir = "Data/SKSE/Plugins/RelightSpellAddon/Fading";          // the rule files (*.json)
 	inline constexpr const char* kRulesDirText = "Data\\SKSE\\Plugins\\RelightSpellAddon\\Fading";  // the same, as a player reads it
 	inline constexpr const char* kLogName = "RelightSpellAddon.log";
+	inline constexpr const char* kItemsPath = "Data/SKSE/Plugins/RelightSpellAddon/Lights by Item.ini";                                // FadeItems.cpp (his order 2026-10-10)
+	inline constexpr const char* kAdvancedPath = "Data/SKSE/Plugins/RelightSpellAddon/RELight - Spell Addon - Advanced Settings.ini";  // FadeTuning.cpp (his rule 2026-10-10)
 	// no light of our own on a weapon: an enchanted weapon's light is RE::Light's (RELight's rule: "ENCHANTMENTS ARE TRUMAN'S"),
 	// so FadeOwnLight.cpp makes none, the setting is not offered and nothing searches for one
 	inline constexpr bool        kOwnLight = false;

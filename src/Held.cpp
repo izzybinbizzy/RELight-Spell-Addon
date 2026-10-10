@@ -214,8 +214,12 @@ namespace Plugin
 		});
 		// the same Brightness x daylight factor and color rules the brightness pass gives every other light of ours (the
 		// re-score's P5, 2026-10-08: held lights missed Dim in daylight and the element colors)
-		const float scale = Brightness() * DaylightFactor();
-		const float reachScale = Reach();
+		// 🔁 2026-10-10 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
+		// made for inverse square lighting, is drawn plain - the house light the hand lights take (LightKit::PlainOf: fade x 1.14,
+		// the reach drawn at 178 / 133)
+		const bool  isl = IslShader();
+		const float scale = Brightness() * DaylightFactor() * (isl ? 1.0f : 1.14f);
+		const float reachScale = Reach() * (isl ? 1.0f : 178.0f / 133.0f);
 		for (const auto& w : want) {
 			const bool have = std::ranges::any_of(gLive, [&w](const Live& v) {
 				return w.actor->GetFormID() == v.actor && w.left == v.left && w.firstPerson == v.firstPerson;

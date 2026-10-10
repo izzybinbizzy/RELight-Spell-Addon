@@ -30,6 +30,10 @@ namespace Plugin
 
 	using LightKit::Relaxed;  // a value one thread writes and another reads (LightKit.h)
 
+	// the mod's own values in the advanced settings file (his rule 2026-10-10, Fade::Tuning; registered in main.cpp)
+	inline std::atomic<float> gNearby{ 2800.0f };       // [Lights] NearbyDistance: Hand lights for - Everyone nearby
+	inline std::atomic<float> gGroundLightsOn{ 1.0f };  // [Vanilla and ENB] GroundLights
+
 	struct Option
 	{
 		std::string download, name, id;  // id: "Spells - Runes", the settings file's key
@@ -105,6 +109,26 @@ namespace Plugin
 	[[nodiscard]] bool IslShader();
 	namespace Isl = LightKit::Isl;
 
+	// 🔁 HIS WORD 2026-10-10: "relight casting light is not working ... please re add the enb and cs and vanilla versions but
+	// don't make them manually selectable, just like illuminated it will auto detect" - which lighting the game draws with,
+	// found at data load (HandLights.cpp, Illuminated's rule): Community Shaders' inverse square shader, else an ENB's settings
+	// in the game folder, else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
+	// Shaders) and their ground light (GroundLights.cpp). RE::Light stays the main driver of everything else.
+	enum class Lighting : int
+	{
+		kShaders = 0,
+		kEnb = 1,
+		kVanilla = 2
+	};
+	[[nodiscard]] Lighting    LightingFound();
+	[[nodiscard]] const char* LightingName(Lighting a_lighting);
+
+	// GroundLights.cpp: a twin of each hand's casting light that lights the ground, off Community Shaders (Illuminated's)
+	void                      TickGroundLights();
+	[[nodiscard]] std::size_t GroundLightCount();
+	// main.cpp: a spell light the mod keeps dark now (sneaking, a switched-off option, a hand light held out) - its twin too
+	[[nodiscard]] bool WantedDark(RE::NiLight* a_light);
+
 	void                                                LoadData();
 	[[nodiscard]] std::vector<Option>&                  Options();
 	[[nodiscard]] const std::vector<std::size_t>&       OptionsInMenuOrder();  // by `menu`, never the alphabetical file order
@@ -172,6 +196,9 @@ namespace Plugin
 	void               SetHandLightsFor(int a_v);
 	[[nodiscard]] bool AutoLightsOn();
 	void               SetAutoLightsOn(bool a_on);
+	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)
+	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
+	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
 
 	// ------------------------------------------------------------------ Brightness.cpp: elements and their colors
 	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by; a projectile or explosion takes the element of the

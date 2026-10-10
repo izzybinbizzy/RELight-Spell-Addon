@@ -132,6 +132,26 @@ namespace LightKit
 		return std::clamp(kK * a_fade / (a_reach * a_reach + a_size * a_size), Isl::kLowestCutoff, Isl::kHighestCutoff);
 	}
 
+	// How far an inverse-square light reaches (reach² = K x fade / cutoff - size²), and the same light drawn by the game's own
+	// lighting (ENB, Vanilla): Dynamic Wards' house light - LTBG section 4's reach 133 drawn at radius 178 with fade 1.14
+	// (wardgen.plain_light), never shorter than the radius the light already states. Illuminated's Lighting.cpp does the same.
+	[[nodiscard]] inline float IslReach(float a_fade, float a_cutoff, float a_size = kLightSize) noexcept
+	{
+		if (a_cutoff <= 0.0f || a_fade <= 0.0f) {
+			return 0.0f;
+		}
+		return std::sqrt((std::max)(kK * a_fade / a_cutoff - a_size * a_size, 0.0f));
+	}
+	struct Plain
+	{
+		float fade{ 0.0f }, radius{ 0.0f };
+	};
+	[[nodiscard]] inline Plain PlainOf(float a_fade, float a_radius, float a_cutoff, float a_size = kLightSize) noexcept
+	{
+		constexpr float kPlainReach = 178.0f / 133.0f, kPlainFade = 1.14f;
+		return { a_fade * kPlainFade, (std::max)(a_radius, IslReach(a_fade, a_cutoff, a_size) * kPlainReach) };
+	}
+
 	// A new light for the scene, cloned from one master light made once: ReLight found that a freshly made light, attached
 	// straight away, crashes. nullptr when the game could not make one. Main thread.
 	[[nodiscard]] inline RE::NiPointLight* CloneLight()

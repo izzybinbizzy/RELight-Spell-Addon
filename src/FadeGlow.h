@@ -410,6 +410,24 @@ namespace Glow
 		return { a_c.r + (t.r - a_c.r) * k, a_c.g + (t.g - a_c.g) * k, a_c.b + (t.b - a_c.b) * k };
 	}
 
+	// an orange light (any scale): its hue between 10 and 50 degrees, and not washed out
+	[[nodiscard]] inline bool IsOrange(const Rgb& a_c) noexcept
+	{
+		const float top = (std::max)({ a_c.r, a_c.g, a_c.b }), low = (std::min)({ a_c.r, a_c.g, a_c.b });
+		if (!(top > 0.0f) || !std::isfinite(top + low) || (top - low) / top < 0.35f || a_c.r < top) {
+			return false;
+		}
+		const float hue = 60.0f * (a_c.g - a_c.b) / (top - low);  // red is the top channel: -60..60
+		return hue >= 10.0f && hue <= 50.0f;
+	}
+
+	// HIS WORD 2026-10-10: "remove cools toward option in color cooling, the only option will be grey, ember cooling only for
+	// fire spell types that are orange" - a light cools toward grey, unless its magic is fire AND the light itself is orange
+	[[nodiscard]] inline CoolTint TintFor(bool a_fire, const Rgb& a_light) noexcept
+	{
+		return a_fire && IsOrange(a_light) ? CoolTint::kEmber : CoolTint::kGrey;
+	}
+
 	// A scaler that multiplies a value some other code sets (Light Placer rewrites a flickering light's fade every
 	// frame, and leaves a steady one alone). Whatever the value holds that we did not write is the new base; we write
 	// base * factor. Calling it twice in one frame writes the same number: it never compounds with itself.
