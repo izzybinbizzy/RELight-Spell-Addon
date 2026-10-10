@@ -55,12 +55,6 @@ namespace Plugin
 		RE::BGSArtObject* gWornDome = nullptr;
 		RE::BGSArtObject* gWornHand = nullptr;
 
-		RE::BGSArtObject* NewArt()
-		{
-			auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::BGSArtObject>();
-			return factory ? factory->Create() : nullptr;
-		}
-
 		// the vanilla ward art, by the bare mesh name - also once we have pointed it at our own copies, which keep the names
 		bool IsVanillaWardArt(const RE::BGSArtObject* a_art)
 		{
@@ -86,11 +80,9 @@ namespace Plugin
 		RE::BGSArtObject* Empty()
 		{
 			if (!gEmpty) {
-				if (auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::BGSArtObject>(); factory) {
-					gEmpty = factory->Create();
-					if (gEmpty) {
-						gEmpty->SetModel(kEmptyModel);
-					}
+				gEmpty = LightKit::NewForm<RE::BGSArtObject>();
+				if (gEmpty) {
+					gEmpty->SetModel(kEmptyModel);
 				}
 			}
 			return gEmpty;
@@ -101,6 +93,9 @@ namespace Plugin
 		{
 			std::unordered_set<RE::EffectSetting*> extras(gSilenced.begin(), gSilenced.end());
 			auto*                                  dh = RE::TESDataHandler::GetSingleton();
+			if (!dh) {
+				return;
+			}
 			if (auto* shield = dh->LookupForm<RE::EffectSetting>(kShieldConcSelf, "Skyrim.esm"); shield && WearsWardArt(shield)) {
 				extras.insert(shield);
 			}
@@ -169,6 +164,9 @@ namespace Plugin
 		void Paint()
 		{
 			auto* dh = RE::TESDataHandler::GetSingleton();
+			if (!dh) {
+				return;
+			}
 			// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
 			const bool has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
 			const bool white = WardColour() == 1;
@@ -187,10 +185,10 @@ namespace Plugin
 			// the worn wards: their own hand always (its graph has the same fault on 360), their own dome unless 360 Ward's
 			// sphere - already on BeginLoopEnd - is the dome
 			if (!gWornDome) {
-				gWornDome = NewArt();
+				gWornDome = LightKit::NewForm<RE::BGSArtObject>();
 			}
 			if (!gWornHand) {
-				gWornHand = NewArt();
+				gWornHand = LightKit::NewForm<RE::BGSArtObject>();
 			}
 			if (gWornDome && gWornHand) {
 				gWornDome->SetModel(white ? "Magic\\Glow Wards\\White\\wardbodyfxworn.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfxworn.nif");

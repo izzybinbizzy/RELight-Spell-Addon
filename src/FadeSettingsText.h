@@ -1,8 +1,8 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
 //
-// The settings, and the settings file's text both ways, with nothing of the game in it (tests/test_glow.cpp reads and
+// The settings, and the settings file's text both ways, with nothing of the game in it (tests/test_fade.cpp reads and
 // writes it off the game). Settings.cpp only opens the file and keeps the one shared copy.
 //
 //   [Settings]
@@ -19,18 +19,22 @@
 //   RechargeFlare=1
 //   RechargeFlareStrength=80  percent, 0 to 200
 //   ColorCooling=1
-//   ColorCoolingAmount=50     percent
-//   ColorCoolingTint=1        0 grey, 1 ember
+//   ColorCoolingAmount=50     percent - toward grey; a fire spell or enchantment with an orange light cools to ember
 //   Weapons=1                 enchanted weapons' lights and glow follow their charge
 //   Staves=1
 //   BoundWeapons=1
 //   Spells=1                  a spell in hand: its hand's lights and glow follow the caster's magicka
 //   BoundFadeSeconds=10       1 to 60: the last seconds of a bound weapon's spell, over which its light fades
-//   Who=0                     0 the player, 1 the player and followers
+//   Who=0                     0 the player, 1 the player and followers, 2 everyone nearby (every loaded actor)
 //   DimShader=1               the enchantment's glow (its shader and its art's swirls) follows the charge too
 //   HideChargeBar=0           the HUD's enchantment charge bar is hidden (vanilla HUD, SkyHUD, TrueHUD)
-//   HudGems=0                 a small glowing gem per hand on the HUD, full with the charge or magicka (needs SKSE Menu Framework)
-//   OwnLight=1                a weapon no other mod lights gets a simple light in its enchantment's colour
+//   HudGems=0                 a soul gem per weapon hand beside the health bar, shown while its charge is down (needs SKSE Menu Framework)
+//   Reticle=0                 the spell reticle beside the crosshair, draining with magicka (needs SKSE Menu Framework)
+//   ReticleStyle=0            0 a bar per hand beside the crosshair, 1 Crossfire's bar under it
+//   ReticleSize=100           percent, 50 to 200
+//   ReticleOpacity=85         percent, 10 to 100
+//   OwnLight=1                a weapon no other mod lights gets a simple light in its enchantment's colour - only where
+//                             FadeConfig.h offers it (Mod::kOwnLight): elsewhere it is neither read nor written
 //   DebugLog=0
 //   Fire=1 Frost=1 Shock=1 Absorb=1 SoulTrap=1 Paralyze=1 FearTurnBanish=1 OtherEffects=1
 //                             by effect: an enchantment's or a spell's strongest effect, for weapons and spells alike
@@ -44,6 +48,7 @@
 
 #pragma once
 
+#include "FadeConfig.h"
 #include "FadeGlow.h"
 
 #include <algorithm>
@@ -62,7 +67,8 @@ namespace Fade
 	enum class Who : int
 	{
 		kPlayer = 0,
-		kPlayerAndFollowers = 1
+		kPlayerAndFollowers = 1,
+		kEveryone = 2  // his ask 2026-10-09: "can fading not work for npcs as well?"
 	};
 
 	struct Settings
@@ -81,7 +87,14 @@ namespace Fade
 		bool                dimShader{ true };  // the enchantment's glow shader and its art's swirls follow the charge too
 		bool                hideChargeBar{ false };
 		bool                hudGems{ false };  // Menu.cpp's HUD element: one charge gem per tracked hand of the player
-		bool                ownLight{ true };  // a weapon no other mod lights gets a light of our own (OwnLight.cpp)
+		float               hudGemSize{ 1.0f };
+		float               hudGemOpacity{ 0.9f };
+		bool                hudGemPercent{ true };  // the percent under each gem
+		bool                reticle{ false };       // FadeMenu.cpp's reticle: a bar per hand of the player beside the crosshair
+		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 Crossfire's bar under it (his pick 2026-10-10)
+		float               reticleSize{ 1.0f };
+		float               reticleOpacity{ 0.85f };
+		bool                ownLight{ Mod::kOwnLight };  // a weapon no other mod lights gets a light of our own (FadeOwnLight.cpp)
 		bool                debugLog{ false };
 
 		bool operator==(const Settings&) const = default;
@@ -174,18 +187,25 @@ namespace Fade
 			{ "ColorCooling", [](const Settings& s) { return s.tuning.cool ? 1 : 0; }, [](Settings& s, int v) { s.tuning.cool = v != 0; } },
 			{ "ColorCoolingAmount", [](const Settings& s) { return ToPct(s.tuning.coolAmount); },
 				[](Settings& s, int v) { s.tuning.coolAmount = Pct(v, 0, 100); } },
-			{ "ColorCoolingTint", [](const Settings& s) { return static_cast<int>(s.tuning.coolTint); },
-				[](Settings& s, int v) { s.tuning.coolTint = static_cast<Glow::CoolTint>(std::clamp(v, 0, 1)); } },
 			{ "Weapons", [](const Settings& s) { return s.weapons ? 1 : 0; }, [](Settings& s, int v) { s.weapons = v != 0; } },
 			{ "Staves", [](const Settings& s) { return s.staves ? 1 : 0; }, [](Settings& s, int v) { s.staves = v != 0; } },
 			{ "BoundWeapons", [](const Settings& s) { return s.bound ? 1 : 0; }, [](Settings& s, int v) { s.bound = v != 0; } },
 			{ "Spells", [](const Settings& s) { return s.spells ? 1 : 0; }, [](Settings& s, int v) { s.spells = v != 0; } },
 			{ "BoundFadeSeconds", [](const Settings& s) { return static_cast<int>(std::lround(s.boundFadeSeconds)); },
 				[](Settings& s, int v) { s.boundFadeSeconds = static_cast<float>(std::clamp(v, 1, 60)); } },
-			{ "Who", [](const Settings& s) { return static_cast<int>(s.who); }, [](Settings& s, int v) { s.who = static_cast<Who>(std::clamp(v, 0, 1)); } },
+			{ "Who", [](const Settings& s) { return static_cast<int>(s.who); }, [](Settings& s, int v) { s.who = static_cast<Who>(std::clamp(v, 0, 2)); } },
 			{ "DimShader", [](const Settings& s) { return s.dimShader ? 1 : 0; }, [](Settings& s, int v) { s.dimShader = v != 0; } },
 			{ "HideChargeBar", [](const Settings& s) { return s.hideChargeBar ? 1 : 0; }, [](Settings& s, int v) { s.hideChargeBar = v != 0; } },
 			{ "HudGems", [](const Settings& s) { return s.hudGems ? 1 : 0; }, [](Settings& s, int v) { s.hudGems = v != 0; } },
+			{ "HudGemSize", [](const Settings& s) { return ToPct(s.hudGemSize); }, [](Settings& s, int v) { s.hudGemSize = Pct(v, 50, 200); } },
+			{ "HudGemOpacity", [](const Settings& s) { return ToPct(s.hudGemOpacity); },
+				[](Settings& s, int v) { s.hudGemOpacity = Pct(v, 10, 100); } },
+			{ "HudGemPercent", [](const Settings& s) { return s.hudGemPercent ? 1 : 0; }, [](Settings& s, int v) { s.hudGemPercent = v != 0; } },
+			{ "Reticle", [](const Settings& s) { return s.reticle ? 1 : 0; }, [](Settings& s, int v) { s.reticle = v != 0; } },
+			{ "ReticleStyle", [](const Settings& s) { return s.reticleStyle; }, [](Settings& s, int v) { s.reticleStyle = std::clamp(v, 0, 1); } },
+			{ "ReticleSize", [](const Settings& s) { return ToPct(s.reticleSize); }, [](Settings& s, int v) { s.reticleSize = Pct(v, 50, 200); } },
+			{ "ReticleOpacity", [](const Settings& s) { return ToPct(s.reticleOpacity); },
+				[](Settings& s, int v) { s.reticleOpacity = Pct(v, 10, 100); } },
 			{ "OwnLight", [](const Settings& s) { return s.ownLight ? 1 : 0; }, [](Settings& s, int v) { s.ownLight = v != 0; } },
 			{ "DebugLog", [](const Settings& s) { return s.debugLog ? 1 : 0; }, [](Settings& s, int v) { s.debugLog = v != 0; } },
 			{ "Fire", [](const Settings& s) { return s.elements[0] ? 1 : 0; }, [](Settings& s, int v) { s.elements[0] = v != 0; } },
@@ -203,8 +223,9 @@ namespace Fade
 			{ "Illusion", [](const Settings& s) { return s.schools[4] ? 1 : 0; }, [](Settings& s, int v) { s.schools[4] = v != 0; } },
 		};
 
-		// keys an older version wrote: read past without a warning, never written again
-		inline constexpr std::string_view kRetired[]{ "OwnLightReach" };
+		// keys an older version wrote: read past without a warning, never written again (ColorCoolingTint: his word 2026-10-10,
+		// "the only option will be grey, ember cooling only for fire spell types that are orange" - Glow::TintFor decides)
+		inline constexpr std::string_view kRetired[]{ "OwnLightReach", "ColorCoolingTint" };
 
 		[[nodiscard]] inline bool SameText(std::string_view a, std::string_view b) noexcept
 		{
@@ -213,10 +234,13 @@ namespace Fade
 			});
 		}
 
+		// a key this mod offers: OwnLight only where FadeConfig.h offers our own light
+		[[nodiscard]] inline bool Offered(std::string_view a_name) noexcept { return Mod::kOwnLight || !SameText(a_name, "OwnLight"); }
+
 		[[nodiscard]] inline const Key* Find(std::string_view a_name) noexcept
 		{
 			for (const auto& k : kKeys) {
-				if (SameText(a_name, k.name)) {
+				if (SameText(a_name, k.name) && Offered(k.name)) {
 					return &k;
 				}
 			}
@@ -292,7 +316,7 @@ namespace Fade
 				const auto key = Trim(l.substr(0, eq));
 				const auto val = Trim(l.substr(eq + 1));
 				int        v = 0;
-				if (std::ranges::any_of(kRetired, [key](std::string_view k) { return SameText(key, k); })) {
+				if (!Offered(key) || std::ranges::any_of(kRetired, [key](std::string_view k) { return SameText(key, k); })) {
 					continue;
 				}
 				if (!Find(key)) {
@@ -309,9 +333,11 @@ namespace Fade
 
 		inline void Write(std::ostream& a_out, const Settings& a_s)
 		{
-			a_out << "; RELight - Spell Addon - fading - written by its menu (SKSE Menu Framework). Percent values are whole numbers.\n[Settings]\n";
+			a_out << "; " << Mod::kName << " - fading - written by its menu (SKSE Menu Framework). Percent values are whole numbers.\n[Settings]\n";
 			for (const auto& k : kKeys) {
-				a_out << k.name << '=' << k.get(a_s) << '\n';
+				if (Offered(k.name)) {
+					a_out << k.name << '=' << k.get(a_s) << '\n';
+				}
 			}
 		}
 	}

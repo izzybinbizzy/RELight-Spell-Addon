@@ -1,8 +1,8 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// How a rule file names a form, as plain text (no game types, so tests/test_glow.cpp checks it):
+// How a rule file names a form, as plain text (no game types, so tests/test_fade.cpp checks it):
 //   "Skyrim.esm|0x04E4EE"   plugin, bar, hexadecimal form ID (0x optional) - Light Placer's and Base Object Swapper's way
 //   "0x04E4EE~Skyrim.esm"   the same, SPID's and KID's way
 //   "DA09Dawnbreaker"       an editor ID

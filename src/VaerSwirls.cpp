@@ -111,6 +111,24 @@ namespace Plugin
 			return dh && (dh->LookupLoadedModByName(a_name) || dh->LookupLoadedLightModByName(a_name));
 		}
 
+		// The plugin that changed this effect last, when it knows VAER (VAEReborn.esp is one of its masters) - its change is
+		// deliberate and stays. Measured 2026-10-10 (his Precision magic trails report, Illuminated's same pass): VAER's own Vibrant
+		// Weapons patch (VAER_EAE.esp) takes the swirl off six fire / frost / shock effects and gives them the vanilla shader so
+		// Enchantment Art Extender dresses the weapon, and this pass was putting VAER's swirl back over it.
+		[[nodiscard]] const RE::TESFile* VaerAwareChange(const RE::EffectSetting* a_effect)
+		{
+			const auto* last = a_effect ? a_effect->GetFile(-1) : nullptr;
+			if (!last || _stricmp(last->fileName, "VAEReborn.esp") == 0) {
+				return nullptr;
+			}
+			for (std::uint32_t i = 0; last->masterPtrs && i < last->masterCount; ++i) {
+				if (const auto* master = last->masterPtrs[i]; master && _stricmp(master->fileName, "VAEReborn.esp") == 0) {
+					return last;
+				}
+			}
+			return nullptr;
+		}
+
 		// the VAER Reborn option's data file is there only when the player ticked the option in the installer
 		[[nodiscard]] bool VaerOptionInstalled()
 		{
@@ -134,8 +152,11 @@ namespace Plugin
 			return;
 		}
 		auto* dh = RE::TESDataHandler::GetSingleton();
+		if (!dh) {
+			return;
+		}
 		// 1. VAER's own effects: a plugin that is not loaded (a Creation Club file he does not have) is simply skipped
-		std::size_t back = 0, already = 0, absent = 0;
+		std::size_t back = 0, already = 0, absent = 0, patched = 0;
 		for (const auto& c : kVaerOwn) {
 			auto* effect = dh->LookupForm<RE::EffectSetting>(c.effect, c.effectPlugin);
 			auto* art = c.artPlugin.empty() ? nullptr : dh->LookupForm<RE::BGSArtObject>(c.art, c.artPlugin);
@@ -148,6 +169,11 @@ namespace Plugin
 				++already;
 				continue;
 			}
+			if (const auto* patch = VaerAwareChange(effect)) {
+				++patched;
+				SKSE::log::info("[VAER] {} was changed by {}, a patch made for VAER: left as it set it", c.name, patch->fileName);
+				continue;
+			}
 			if (!c.artPlugin.empty()) {
 				effect->data.enchantEffectArt = art;
 			}
@@ -155,8 +181,10 @@ namespace Plugin
 			++back;
 			SKSE::log::info("[VAER] {} had lost VAER's swirl; given back", c.name);
 		}
-		SKSE::log::info("VAER: {} of VAER's effect(s) given their swirl back, {} still had it, {} not in this load order", back, already,
-			absent);
+		SKSE::log::info(
+			"VAER: {} of VAER's effect(s) given their swirl back, {} still had it, {} left to a VAER patch, {} not in this load "
+			"order",
+			back, already, patched, absent);
 		// his call 2026-09-28 late night: two of VAER's shaders (Stendarr's Hammer, Dawnfang's Bloodthirst) name their fill
 		// texture "....dds.dds", a file that does not exist, so they draw nothing - point any such name at the real file
 		std::size_t typos = 0;
@@ -190,11 +218,9 @@ namespace Plugin
 			}
 			effect->data.enchantEffectArt = art;
 			effect->data.enchantShader = shader;
-			if (effect->data.enchantEffectArt == art && effect->data.enchantShader == shader) {
-				++set;
-				SKSE::log::info("[VAER] {} now wears VAER's swirl {:08X} and shader {:08X}", c.name, art->GetFormID(),
-					shader->GetFormID());
-			}
+			++set;
+			SKSE::log::info("[VAER] {} now wears VAER's swirl {:08X} and shader {:08X}", c.name, art->GetFormID(),
+				shader->GetFormID());
 		}
 		SKSE::log::info("VAER on Thaumaturgy: {} of {} effect(s) given VAER's swirl, {} not found", set, std::size(kSwirlCopies),
 			missing);

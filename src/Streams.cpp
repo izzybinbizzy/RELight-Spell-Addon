@@ -20,26 +20,7 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr float       kFieldOfView = 90.0f;  // what a light that casts no shadow is given (from ReLight)
 		constexpr const char* kLightName = "RSAStream";
-
-		RE::NiPointer<RE::NiPointLight> gMaster;
-
-		RE::NiPointLight* CloneMaster()
-		{
-			if (!gMaster) {
-				const RE::NiPointer<RE::NiPointLight> fresh(RE::NiPointLight::Create());  // let go once cloned
-				if (!fresh) {
-					return nullptr;
-				}
-				auto* clone = netimmerse_cast<RE::NiPointLight*>(fresh->Clone());
-				if (!clone) {
-					return nullptr;
-				}
-				gMaster.reset(clone);
-			}
-			return netimmerse_cast<RE::NiPointLight*>(gMaster->Clone());
-		}
 
 		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
 	}
@@ -58,7 +39,10 @@ namespace Plugin
 		if (gSpraySet.empty()) {
 			return;
 		}
-		auto*       dh = RE::TESDataHandler::GetSingleton();
+		auto* dh = RE::TESDataHandler::GetSingleton();
+		if (!dh) {
+			return;
+		}
 		std::size_t proj = 0, muzzle = 0, effects = 0, expl = 0, hazards = 0;
 		for (auto* p : dh->GetFormArray<RE::BGSProjectile>()) {
 			if (!p) {
@@ -110,7 +94,7 @@ namespace Plugin
 	RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade, float a_reach,
 		RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
 	{
-		auto* light = CloneMaster();
+		auto* light = LightKit::CloneLight();
 		if (!light) {
 			return nullptr;
 		}
@@ -121,6 +105,11 @@ namespace Plugin
 		data.fade = a_fade;
 		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
 		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
+		if (!IslShader()) {
+			// off Community Shaders (2026-10-10): an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
+			// hands a plain fade and reach (Held.cpp PlainScale)
+			data.ambient = { a_colour.red * 0.1f, a_colour.green * 0.1f, a_colour.blue * 0.1f };
+		}
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
 		// the peak with the reach held (at 100%/100% it equals the file's). Only when RE::Light's own test finds inverse
 		// square lighting (IslShader), as the hand lights - no lighting pick of our own (his "relight is relight is relight")
@@ -134,21 +123,7 @@ namespace Plugin
 		a_parent->AttachChild(light, true);
 		RE::NiUpdateData update{};
 		light->Update(update);
-		RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
-		params.dynamic = true;
-		params.shadowLight = false;
-		params.portalStrict = true;
-		params.affectLand = true;
-		params.affectWater = true;
-		params.neverFades = true;
-		params.fov = kFieldOfView;
-		params.falloff = 1.0f;
-		params.nearDistance = 5.0f;
-		params.depthBias = 1.0f;
-		params.sceneGraphIndex = 0;
-		params.restrictedNode = nullptr;
-		params.lensFlareData = nullptr;
-		auto* bs = a_scene->AddLight(light, params);
+		auto* bs = LightKit::AddToScene(a_scene, light);
 		if (!bs) {
 			a_parent->DetachChild(light);
 			return nullptr;

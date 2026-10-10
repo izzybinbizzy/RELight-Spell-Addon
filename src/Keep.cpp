@@ -49,7 +49,7 @@ namespace Plugin
 		for (const auto& light : gone) {
 			set.insert(light.get());
 		}
-		ForgetSpellLights(set);  // main.cpp's lists and, under the same lock, the switches' (Options.cpp)
+		ForgetSpellLights(set);  // main.cpp's lists, then the switches' (Options.cpp) - all on the main thread
 		ForgetHandLights(set);
 		ForgetSliderLights(set);
 	}

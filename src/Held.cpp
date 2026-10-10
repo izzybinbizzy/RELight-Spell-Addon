@@ -26,7 +26,9 @@ namespace Plugin
 			RE::NiPointer<RE::NiNode>       node;  // what it hangs on - held, so taking the light off never reaches a freed node
 			RE::NiPointer<RE::BSLight>      bs;
 			RE::NiPointer<RE::NiPointLight> light;
+			int                             element{ 0 };  // its enchantment's element: Fire / Frost / Shock color picks
 			float                           written{ -1.0f }, wroteReach{ -1.0f };
+			RE::NiColor                     wroteColor{ -1.0f, -1.0f, -1.0f };
 		};
 
 		std::vector<Live> gLive;
@@ -38,6 +40,7 @@ namespace Plugin
 			bool          left, firstPerson;
 			const Stream* held;
 			RE::NiNode*   node;
+			int           element;
 		};
 
 		void TakeOff(Live& a_v, RE::ShadowSceneNode* a_scene)
@@ -74,6 +77,28 @@ namespace Plugin
 			});
 		}
 
+		// the element of the weapon's enchantment: what its effects are resisted by, 0 when there is none or they disagree
+		[[nodiscard]] int EnchantElement(RE::Actor* a_actor, bool a_left, const RE::TESObjectWEAP* a_weapon)
+		{
+			const auto* entry = a_actor->GetEquippedEntryData(a_left);
+			const auto* ench = entry ? entry->GetEnchantment() : nullptr;
+			if (!ench) {
+				ench = a_weapon->formEnchanting;
+			}
+			int element = 0;
+			if (!ench) {
+				return 0;
+			}
+			for (const auto* e : ench->effects) {
+				const int one = e ? ElementOf(e->baseEffect) : 0;
+				if (one && element && one != element) {
+					return 0;
+				}
+				element = one ? one : element;
+			}
+			return element;
+		}
+
 		// ...and has it? Measured 2026-09-30 on a Bound Sword: some games it does (its "RL" light, fadeAmount 5, on the weapon),
 		// others none at all (after a load, in a long session) - so the held line lights the weapon whenever that light is not
 		// there, in this view, and steps aside the frame it is
@@ -81,8 +106,7 @@ namespace Plugin
 		{
 			bool found = false;
 			RE::BSVisit::TraverseScenegraphLights(a_node, [&found](RE::NiPointLight* a_light) {
-				const char* n = a_light ? a_light->name.c_str() : nullptr;
-				if (n && n[0] == 'R' && n[1] == 'L' && a_light->fadeAmount == 5.0f) {
+				if (IsEnchantLight(a_light)) {  // RE::Light's enchantment light (Plugin.h)
 					found = true;
 					return RE::BSVisit::BSVisitControl::kStop;
 				}
@@ -142,6 +166,7 @@ namespace Plugin
 					continue;
 				}
 				const bool enchanted = EnchantmentLit(a_actor, left, weapon);
+				const int  element = EnchantElement(a_actor, left, weapon);
 				for (const bool fp : { false, true }) {
 					if (fp && !isPlayer) {
 						break;
@@ -151,7 +176,7 @@ namespace Plugin
 						continue;
 					}
 					if (auto* node = NodeFor(a_actor, left, fp, weapon); node && !(enchanted && ReLightOn(node))) {
-						a_out.push_back({ a_actor, left, fp, held, node });
+						a_out.push_back({ a_actor, left, fp, held, node, element });
 					}
 				}
 			}
@@ -165,8 +190,9 @@ namespace Plugin
 		if (!scene || !player) {
 			return;
 		}
-		const bool        hidden = SneakOn() && player->IsSneaking();
-		std::vector<Want> want;
+		const bool               hidden = SneakOn() && player->IsSneaking();
+		static std::vector<Want> want;  // main thread; kept between frames so its storage is not made again each one
+		want.clear();
 		WantsOf(player, hidden, want);
 		if (auto* lists = RE::ProcessLists::GetSingleton()) {
 			for (auto& handle : lists->highActorHandles) {
@@ -186,8 +212,14 @@ namespace Plugin
 			}
 			return !keep;
 		});
-		const float scale = Brightness();
-		const float reachScale = Reach();
+		// the same Brightness x daylight factor and color rules the brightness pass gives every other light of ours (the
+		// re-score's P5, 2026-10-08: held lights missed Dim in daylight and the element colors)
+		// 🔁 2026-10-10 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
+		// made for inverse square lighting, is drawn plain - the house light the hand lights take (LightKit::PlainOf: fade x 1.14,
+		// the reach drawn at 178 / 133)
+		const bool  isl = IslShader();
+		const float scale = Brightness() * DaylightFactor() * (isl ? 1.0f : 1.14f);
+		const float reachScale = Reach() * (isl ? 1.0f : 178.0f / 133.0f);
 		for (const auto& w : want) {
 			const bool have = std::ranges::any_of(gLive, [&w](const Live& v) {
 				return w.actor->GetFormID() == v.actor && w.left == v.left && w.firstPerson == v.firstPerson;
@@ -195,32 +227,39 @@ namespace Plugin
 			if (have || gLive.size() >= kMaxLive) {
 				continue;
 			}
-			const float       fade = w.held->fade * scale;
-			const float       reach = w.held->radius * reachScale;
-			RE::NiPointLight* light = nullptr;
-			auto*             bs = MakeOurLight(*w.held, w.held->color, w.held->positions.front(), fade, reach, w.node, scene, light);
+			const float        fade = w.held->fade * scale;
+			const float        reach = w.held->radius * reachScale;
+			const RE::NiPoint3 at = w.held->positions.empty() ? RE::NiPoint3{} : w.held->positions.front();  // the mesh's own origin
+			RE::NiPointLight*  light = nullptr;
+			const RE::NiColor  color = DrawnColor(w.element, w.held->color);
+			auto*              bs = MakeOurLight(*w.held, color, at, fade, reach, w.node, scene, light);
 			if (!bs) {
 				SKSE::log::warn("[HELD] {}: the light could not be made or registered", w.held->key);
 				continue;
 			}
 			gLive.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held, RE::NiPointer<RE::NiNode>(w.node),
-				RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), fade, reach });
+				RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), w.element, fade, reach, color });
 			if (gTold < 16) {
 				++gTold;
 				SKSE::log::info("[HELD] {} | {:08X} {} hand, {} person | fade {:.2f} | radius {:.0f}", w.held->key, w.actor->GetFormID(),
 					w.left ? "left" : "right", w.firstPerson ? "first" : "third", fade, reach);
 			}
 		}
-		// the sliders reach a light already hung
+		// the sliders, the daylight and the color picks reach a light already hung
 		for (auto& v : gLive) {
-			const float fade = v.held->fade * scale;
-			const float reach = v.held->radius * reachScale;
+			const float       fade = v.held->fade * scale;
+			const float       reach = v.held->radius * reachScale;
+			const RE::NiColor color = DrawnColor(v.element, v.held->color);
+			auto&             d = v.light->GetLightRuntimeData();
+			if (color.red != v.wroteColor.red || color.green != v.wroteColor.green || color.blue != v.wroteColor.blue) {
+				d.diffuse = color;
+				v.wroteColor = color;
+			}
 			if (fade != v.written || reach != v.wroteReach) {
-				auto& d = v.light->GetLightRuntimeData();
 				d.fade = fade;
 				d.radius.x = reach;
 				d.radius.y = reach;
-				if (IslShader()) {  // without it these words are ambient colour (Plugin.h)
+				if (IslShader()) {  // without it these words are ambient color (Plugin.h)
 					Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
 				}
 				v.written = fade;

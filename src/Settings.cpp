@@ -11,15 +11,17 @@
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
-//   Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods"):
-//   LightColors=0               0 automatic (as drawn), 1 paler, 2 deeper (Brightness.cpp)
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
-//   FireColor=0 FrostColor=0 ShockColor=0   0 the spell's own, 1-10 a named color (Brightness.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on
-// (A [Brightness] section from the old per-option sliders is ignored - his call 2026-09-28 late night, the sliders are gone.)
+// Keys match case-insensitively. A value that is not a whole number keeps its default and is named in the log. An old [Brightness] section (the per-option
+// sliders, retired) is passed over.
+//
+// Threads: the menu changes a setting on the render thread while the hooks read it on the main thread and on the game's
+// loader threads, so each one is an atomic (relaxed: no setting depends on another being written first). The file is written
+// beside itself and moved over it, so a crash or a full disk mid-write leaves the old settings, never half a file.
 
 #include "Plugin.h"
 
@@ -31,123 +33,186 @@ namespace Plugin
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
-		int                   gBrightness = 100;
-		int                   gReach = 100;
-		bool                  gSneak = false;
-		bool                  gHands = true;
-		bool                  gWeapons = true;
-		int                   gWard = 0;
-		int                   gLightColors = 0;
-		int                   gDaylight = 1;
-		int                   gHandsFor = 0;
-		int                   gElement[4]{};  // [1] fire, [2] frost, [3] shock
-		bool                  gAuto = true;
-		constexpr const char* kElementKeys[] = { "", "FireColor", "FrostColor", "ShockColor" };
+		std::atomic<int>  gBrightness{ 100 };
+		std::atomic<int>  gReach{ 100 };
+		std::atomic<bool> gSneak{ false };
+		std::atomic<bool> gHands{ true };
+		std::atomic<bool> gWeapons{ true };
+		std::atomic<int>  gWard{ 0 };
+		std::atomic<int>  gDaylight{ 1 };
+		std::atomic<int>  gHandsFor{ 0 };
+		std::atomic<bool> gAuto{ true };
 
-		std::string Trim(std::string s)
+		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{
-			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
-				s.pop_back();
+			while (!a_s.empty() && std::isspace(static_cast<unsigned char>(a_s.front()))) {
+				a_s.remove_prefix(1);
 			}
-			std::size_t i = 0;
-			while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
-				++i;
+			while (!a_s.empty() && std::isspace(static_cast<unsigned char>(a_s.back()))) {
+				a_s.remove_suffix(1);
 			}
-			return s.substr(i);
+			return a_s;
+		}
+
+		// a whole number and nothing else ("15abc" and "1.5" are not)
+		[[nodiscard]] std::optional<int> WholeNumber(std::string_view a_v) noexcept
+		{
+			int v = 0;
+			const auto [end, ec] = std::from_chars(a_v.data(), a_v.data() + a_v.size(), v);
+			if (a_v.empty() || ec != std::errc{} || end != a_v.data() + a_v.size()) {
+				return std::nullopt;
+			}
+			return v;
+		}
+
+		[[nodiscard]] bool SameText(std::string_view a, std::string_view b) noexcept
+		{
+			return a.size() == b.size() && std::ranges::equal(a, b, [](char x, char y) {
+				return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+			});
+		}
+
+		// Every [Settings] key: its name in the file, how it reads back as a whole number, and how a whole number sets it
+		// (clamped to what the menu allows). ONE table, so the reader, the writer and the log can never disagree - the
+		// fading module's way (FadeSettingsText.h kKeys; the re-score's RELight issue 3). Keys match case-insensitively.
+		struct Key
+		{
+			const char* name;
+			int (*get)();
+			void (*set)(int);
+		};
+
+		inline constexpr Key kKeys[]{
+			{ "Brightness", [] { return gBrightness.load(); }, [](int v) { gBrightness = std::clamp(v, kMin, kMax); } },
+			{ "Reach", [] { return gReach.load(); }, [](int v) { gReach = std::clamp(v, kReachMin, kReachMax); } },
+			{ "LightsOffWhileSneaking", [] { return gSneak ? 1 : 0; }, [](int v) { gSneak = v != 0; } },
+			{ "HandLights", [] { return gHands ? 1 : 0; }, [](int v) { gHands = v != 0; } },
+			{ "WeaponLights", [] { return gWeapons ? 1 : 0; }, [](int v) { gWeapons = v != 0; } },
+			{ "WardColour", [] { return gWard.load(); }, [](int v) { gWard = std::clamp(v, 0, 1); } },
+			{ "DimInDaylight", [] { return gDaylight.load(); }, [](int v) { gDaylight = std::clamp(v, 0, 2); } },
+			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
+			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
+		};
+
+		// one [Settings] line; false when the key is not one of ours
+		bool ApplySetting(std::string_view a_key, int a_v)
+		{
+			for (const auto& k : kKeys) {
+				if (SameText(a_key, k.name)) {
+					k.set(a_v);
+					return true;
+				}
+			}
+			return false;
+		}
+
+		// the file itself: written beside itself and moved over, on the thread that calls it (the main thread - SaveSettings)
+		void WriteSettingsFile()
+		{
+			std::ostringstream text;
+			text << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n[Settings]\n";
+			for (const auto& k : kKeys) {
+				text << k.name << "=" << k.get() << "\n";
+			}
+			text << "[Switches]\n";
+			std::unordered_set<std::string> written;  // a pack's files share one switch, so one line
+			for (const auto& o : Options()) {
+				if (o.switchable && written.insert(o.id).second) {
+					text << o.id << "=" << (o.on ? 1 : 0) << "\n";
+				}
+			}
+			const std::string tmp = std::string(kPath) + ".tmp";
+			std::error_code   ec;
+			std::ofstream     out(tmp, std::ios::trunc);
+			if (!out) {
+				SKSE::log::warn("settings: {} could not be written", kPath);
+				return;
+			}
+			out << text.str();
+			out.close();
+			if (!out) {
+				SKSE::log::warn("settings: {} could not be written", kPath);
+			} else if (std::filesystem::rename(tmp, kPath, ec); ec) {
+				SKSE::log::warn("settings: {} could not be replaced ({})", kPath, ec.message());
+			}
+			std::filesystem::remove(tmp, ec);  // nothing left behind when the move failed
 		}
 	}
 
 	void LoadSettings()
 	{
-		std::ifstream in(kPath);
-		std::string   line, section;
-		std::size_t   read = 0;
+		std::ifstream            in(kPath);
+		std::string              line;
+		std::string              section;
+		std::size_t              read = 0;
+		std::vector<std::string> problems;
 		while (in && std::getline(in, line)) {
-			line = Trim(line);
-			if (line.empty() || line[0] == ';' || line[0] == '#') {
+			const auto l = Trim(line);
+			if (l.empty() || l.front() == ';' || l.front() == '#') {
 				continue;
 			}
-			if (line.front() == '[' && line.back() == ']') {
-				section = line.substr(1, line.size() - 2);
+			if (l.front() == '[' && l.back() == ']') {
+				section = Trim(l.substr(1, l.size() - 2));
 				continue;
 			}
-			const auto eq = line.find('=');
-			if (eq == std::string::npos) {
+			const auto eq = l.find('=');
+			if (eq == std::string_view::npos) {
 				continue;
 			}
-			const auto key = Trim(line.substr(0, eq));
-			const auto val = Trim(line.substr(eq + 1));
-			int        v = 0;
-			std::from_chars(val.data(), val.data() + val.size(), v);
+			const auto key = Trim(l.substr(0, eq));
+			const auto val = Trim(l.substr(eq + 1));
+			if (section != "Settings" && section != "Switches") {
+				continue;  // the retired [Brightness] section, or a section of someone else's
+			}
+			const auto v = WholeNumber(val);
+			if (!v) {
+				problems.push_back(std::format("{}={}: not a whole number; the default stays", key, val));
+				continue;
+			}
 			++read;
-			if (section == "Settings" && key == "Brightness") {
-				gBrightness = std::clamp(v, kMin, kMax);
-			} else if (section == "Settings" && key == "Reach") {
-				gReach = std::clamp(v, kReachMin, kReachMax);
-			} else if (section == "Settings" && key == "LightsOffWhileSneaking") {
-				gSneak = v != 0;
-			} else if (section == "Settings" && key == "HandLights") {
-				gHands = v != 0;
-			} else if (section == "Settings" && key == "WeaponLights") {
-				gWeapons = v != 0;
-			} else if (section == "Settings" && key == "WardColour") {
-				gWard = std::clamp(v, 0, 1);
-			} else if (section == "Settings" && key == "LightColors") {
-				gLightColors = std::clamp(v, 0, 2);
-			} else if (section == "Settings" && key == "DimInDaylight") {
-				gDaylight = std::clamp(v, 0, 2);
-			} else if (section == "Settings" && key == "HandLightsFor") {
-				gHandsFor = std::clamp(v, 0, 3);
-			} else if (section == "Settings" && key == "AutoLights") {
-				gAuto = v != 0;
-			} else if (section == "Settings" && (key == kElementKeys[1] || key == kElementKeys[2] || key == kElementKeys[3])) {
-				for (int e = 1; e <= 3; ++e) {
-					if (key == kElementKeys[e]) {
-						gElement[e] = std::clamp(v, 0, kNamedColorCount);
-					}
+			if (section == "Settings") {
+				if (!ApplySetting(key, *v)) {
+					problems.push_back(std::format("{}: not a setting", key));
 				}
-			} else if (section == "Switches") {
+			} else {
 				for (auto& o : Options()) {
-					if (o.switchable && o.id == key) {
-						o.on = v != 0;
+					if (o.switchable && SameText(o.id, key)) {
+						o.on = *v != 0;
 					}
 				}
 			}
 		}
+		for (const auto& p : problems) {
+			SKSE::log::warn("settings: {}", p);
+		}
 		std::size_t off = 0;
-		for (auto& o : Options()) {
+		for (const auto& o : Options()) {
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
 		SKSE::log::info(
 			"settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
-			"({} line(s) read)",
-			gBrightness, gReach, gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read);
+			"({} line(s) read, {} problem(s))",
+			gBrightness.load(), gReach.load(), gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read,
+			problems.size());
 	}
 
+	// The menu calls this on the RENDER thread, often many times while a slider is dragged: the file is written once, by an
+	// SKSE task on the main thread (the re-score: no file work on the render thread). The values are atomics, so the task
+	// writes whatever they hold when it runs.
 	void SaveSettings()
 	{
-		std::ofstream out(kPath, std::ios::trunc);
-		if (!out) {
-			SKSE::log::warn("settings: {} could not be written", kPath);
+		static std::atomic<bool> queued{ false };
+		if (queued.exchange(true)) {
 			return;
 		}
-		out << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n";
-		out << "[Settings]\nBrightness=" << gBrightness << "\nReach=" << gReach
-			<< "\nLightsOffWhileSneaking=" << (gSneak ? 1 : 0) << "\nHandLights=" << (gHands ? 1 : 0)
-			<< "\nWeaponLights=" << (gWeapons ? 1 : 0) << "\nWardColour=" << gWard
-			<< "\nLightColors=" << gLightColors << "\nDimInDaylight=" << gDaylight << "\nHandLightsFor=" << gHandsFor
-			<< "\nAutoLights=" << (gAuto ? 1 : 0);
-		for (int e = 1; e <= 3; ++e) {
-			out << "\n"
-				<< kElementKeys[e] << "=" << gElement[e];
-		}
-		out << "\n";
-		out << "[Switches]\n";
-		std::unordered_set<std::string> written;  // a pack's files share one switch, so one line
-		for (const auto& o : Options()) {
-			if (o.switchable && written.insert(o.id).second) {
-				out << o.id << "=" << (o.on ? 1 : 0) << "\n";
-			}
+		const auto write = [] {
+			queued = false;
+			WriteSettingsFile();
+		};
+		if (auto* tasks = SKSE::GetTaskInterface()) {
+			tasks->AddTask(write);
+		} else {
+			write();
 		}
 	}
 
@@ -157,9 +222,8 @@ namespace Plugin
 	void SetBrightnessPercent(int a_percent)
 	{
 		a_percent = std::clamp(a_percent, kMin, kMax);
-		if (a_percent != gBrightness) {
-			gBrightness = a_percent;
-			SKSE::log::info("brightness set to {}%", gBrightness);
+		if (gBrightness.exchange(a_percent) != a_percent) {
+			SKSE::log::info("brightness set to {}%", a_percent);
 		}
 	}
 
@@ -169,9 +233,8 @@ namespace Plugin
 	void SetReachPercent(int a_percent)
 	{
 		a_percent = std::clamp(a_percent, kReachMin, kReachMax);
-		if (a_percent != gReach) {
-			gReach = a_percent;
-			SKSE::log::info("reach set to {}%", gReach);
+		if (gReach.exchange(a_percent) != a_percent) {
+			SKSE::log::info("reach set to {}%", a_percent);
 		}
 	}
 
@@ -179,8 +242,7 @@ namespace Plugin
 
 	void SetSneakOn(bool a_on)
 	{
-		if (gSneak != a_on) {
-			gSneak = a_on;
+		if (gSneak.exchange(a_on) != a_on) {
 			SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
 		}
 	}
@@ -189,8 +251,7 @@ namespace Plugin
 
 	void SetHandLightsOn(bool a_on)
 	{
-		if (gHands != a_on) {
-			gHands = a_on;
+		if (gHands.exchange(a_on) != a_on) {
 			SKSE::log::info("hand lights turned {}", a_on ? "on" : "off");
 		}
 	}
@@ -199,8 +260,7 @@ namespace Plugin
 
 	void SetWeaponLightsOn(bool a_on)
 	{
-		if (gWeapons != a_on) {
-			gWeapons = a_on;
+		if (gWeapons.exchange(a_on) != a_on) {
 			SKSE::log::info("weapon lights turned {}", a_on ? "on" : "off");
 		}
 	}
@@ -210,26 +270,47 @@ namespace Plugin
 	void SetWardColour(int a_colour)
 	{
 		a_colour = std::clamp(a_colour, 0, 1);
-		if (a_colour != gWard) {
-			gWard = a_colour;
-			SKSE::log::info("ward colour set to {}", gWard == 1 ? "white" : "vanilla blue");
+		if (gWard.exchange(a_colour) != a_colour) {
+			SKSE::log::info("ward color set to {}", a_colour == 1 ? "white" : "vanilla blue");
 		}
 	}
 
-	// ---- Illuminated's settings, ported 2026-10-08 (each read where the file map at the top says)
-	int  LightColors() { return gLightColors; }
-	void SetLightColors(int a_v) { gLightColors = std::clamp(a_v, 0, 2); }
+	// a preset (Menu.cpp, his word 2026-10-10: presets kept per lighting): every [Settings] key, and every switch as "switch:<id>"
+	std::vector<std::pair<std::string, int>> SettingsSnapshot()
+	{
+		std::vector<std::pair<std::string, int>> out;
+		for (const auto& k : kKeys) {
+			out.emplace_back(k.name, k.get());
+		}
+		std::unordered_set<std::string> seen;
+		for (const auto& o : Options()) {
+			if (o.switchable && seen.insert(o.id).second) {
+				out.emplace_back("switch:" + o.id, o.on ? 1 : 0);
+			}
+		}
+		return out;
+	}
+
+	void ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values)
+	{
+		for (const auto& [key, v] : a_values) {
+			if (key.starts_with("switch:")) {
+				const auto id = std::string_view(key).substr(7);
+				for (std::size_t i = 0; i < Options().size(); ++i) {
+					if (Options()[i].switchable && SameText(Options()[i].id, id)) {
+						SetOptionOn(i, v != 0);
+					}
+				}
+			} else {
+				ApplySetting(key, v);
+			}
+		}
+	}
+
 	int  DimInDaylight() { return gDaylight; }
 	void SetDimInDaylight(int a_v) { gDaylight = std::clamp(a_v, 0, 2); }
 	int  HandLightsFor() { return gHandsFor; }
 	void SetHandLightsFor(int a_v) { gHandsFor = std::clamp(a_v, 0, 3); }
-	int  ElementColor(int a_element) { return a_element >= 1 && a_element <= 3 ? gElement[a_element] : 0; }
-	void SetElementColor(int a_element, int a_v)
-	{
-		if (a_element >= 1 && a_element <= 3) {
-			gElement[a_element] = std::clamp(a_v, 0, kNamedColorCount);
-		}
-	}
 	bool AutoLightsOn() { return gAuto; }
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 

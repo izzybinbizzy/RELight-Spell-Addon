@@ -8,17 +8,16 @@
 //     Brightness  scales fade and cutoff by one ratio  -> the peak moves, the reach is held
 //     Reach       scales the radius, cutoff re-derived -> the reach moves, the peak is held
 // RE::Light rewrites fade every frame on a light that flickers or pulses, so each light remembers the fade we last
-// wrote; anything else it carries is a new base, so no slider ever scales a value we wrote. A hand light with Dynamic Lighting breathes or crackles here (Oscillate),
-// and a light on an object an art pick recolours (`tint`) takes that colour. Runs last in the player update.
+// wrote; anything else it carries is a new base, so no slider ever scales a value we wrote. A hand light with Dynamic
+// Lighting breathes or crackles here (Oscillate), and a light on an object an art pick recolors (`tint`) takes that
+// color. Runs last in the player update.
 //
 // Illuminated's light settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods" -
 // RE::Light lights the objects; what it has no setting for is done here, on the lights this pass already looks after):
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
-//   Light colors      Automatic draws each color as RE::Light gives it; Paler turns it from linear light to the screen's,
-//                     Deeper the other way (never a lighting pick: his "relight is relight is relight", 2026-10-08)
-//   Fire / Frost / Shock colors   a named color on every light of that element (a hand light by its effect, an object's
-//                     light by the effect that fires it); the spell's own otherwise
+//   (Light colors and the Fire / Frost / Shock color picks were here until his order of 2026-10-09 took the color
+//   variations out of the menu - ColorFor keeps each light's own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
 // and after each enchantment effect's update; it reports each fade it writes (NoteFadeWrite), so its write is never taken
@@ -52,57 +51,11 @@ namespace Plugin
 			return a.red == b.red && a.green == b.green && a.blue == b.blue;
 		}
 
-		// linear light <-> the screen's color, per channel (Dynamic Wards' wardgen.srgb, as Illuminated's Paler colors)
-		[[nodiscard]] float ToScreen(float x) noexcept
-		{
-			x = std::clamp(x, 0.0f, 1.0f);
-			return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.0f / 2.4f) - 0.055f;
-		}
-		[[nodiscard]] float ToLinear(float x) noexcept
-		{
-			x = std::clamp(x, 0.0f, 1.0f);
-			return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f);
-		}
+		// ✂ HIS ORDER 2026-10-09: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
+		// (Paler / Deeper) and the Fire / Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art
+		// pick's tint) gives it. One place, so the lights that are scaled elsewhere (Held.cpp) draw the same.
+		[[nodiscard]] RE::NiColor ColorFor(const Seen&, const RE::NiColor& a_base) { return a_base; }
 
-		[[nodiscard]] RE::NiColor ColorFor(const Seen& a_s, const RE::NiColor& a_base)
-		{
-			if (const int pick = ElementColor(a_s.element); a_s.element > 0 && pick > 0) {
-				return NamedColor(pick);
-			}
-			switch (LightColors()) {
-			case 1:
-				return { ToScreen(a_base.red), ToScreen(a_base.green), ToScreen(a_base.blue) };
-			case 2:
-				return { ToLinear(a_base.red), ToLinear(a_base.green), ToLinear(a_base.blue) };
-			default:
-				return a_base;
-			}
-		}
-
-		// how much dimmer the lights are now (Dim in daylight): 1 at night and in the dark
-		[[nodiscard]] float DaylightFactor()
-		{
-			const int pick = DimInDaylight();
-			auto*     player = RE::PlayerCharacter::GetSingleton();
-			auto*     cell = player ? player->GetParentCell() : nullptr;
-			if (pick <= 0 || !cell) {
-				return 1.0f;
-			}
-			const float most = pick == 1 ? 0.25f : 0.5f;
-			float       bright = 0.0f;
-			if (cell->IsInteriorCell()) {
-				if (const auto* l = cell->GetLighting()) {
-					const auto lum = [](const RE::Color& c) { return (0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue) / 255.0f; };
-					bright = std::clamp(((std::max)(lum(l->ambient), lum(l->directional)) - 0.15f) / 0.3f, 0.0f, 1.0f);
-				}
-			} else if (const auto* calendar = RE::Calendar::GetSingleton()) {
-				const float h = calendar->GetHour();
-				bright = h < 5.0f || h >= 20.0f ? 0.0f : h < 8.0f ? (h - 5.0f) / 3.0f :
-				                                     h < 17.0f    ? 1.0f :
-				                                                    (20.0f - h) / 3.0f;
-			}
-			return 1.0f - most * bright;
-		}
 		float gDaylight = 1.0f, gDaylightClock = 2.0f;  // main thread only (UpdateBrightness)
 
 		// Dynamic Lighting on a hand light, as Let There Be Glow's Light Placer curves look:
@@ -144,6 +97,29 @@ namespace Plugin
 		};
 		std::vector<Made> gNew;  // lights made since the last frame
 
+		// The lights that are NOT ours, so the walk up to the reference and the data lookup are not repeated for each of them
+		// every frame (main thread). A freed light's address can come back as another light, so each is remembered with its
+		// name text and its parent, and asked again when either differs; RE::Light's enchantment lights are never cached here
+		// (one becomes ours when its effect starts - Options.cpp finds those each frame).
+		struct NotOurs
+		{
+			const void*   name{ nullptr };
+			const void*   parent{ nullptr };
+			std::uint32_t frame{ 0 };
+		};
+		std::unordered_map<const RE::NiLight*, NotOurs> gNotOurs;
+		std::uint32_t                                   gFrame = 0;
+
+		[[nodiscard]] bool KnownNotOurs(const RE::NiLight* a_light)
+		{
+			const auto it = gNotOurs.find(a_light);
+			if (it == gNotOurs.end() || it->second.name != a_light->name.c_str() || it->second.parent != a_light->parent) {
+				return false;
+			}
+			it->second.frame = gFrame;
+			return true;
+		}
+
 		[[nodiscard]] const RE::TESBoundObject* BaseOf(RE::NiLight* a_light)
 		{
 			const auto* ref = ReferenceOf(a_light);
@@ -165,8 +141,7 @@ namespace Plugin
 			if (IsSprayProjectileLight(a_base)) {
 				return true;
 			}
-			const char* n = a_light->name.c_str();
-			return n && n[0] == 'R' && n[1] == 'L' && (OptionOf(a_base) != kNone || EnchantOptionOf(a_light) != kNone);
+			return IsReLightLight(a_light) && (OptionOf(a_base) != kNone || EnchantOptionOf(a_light) != kNone);
 		}
 
 		void Apply(RE::NiLight* a_light, Seen& a_s, float a_scale, float a_reach, float a_dt)
@@ -192,8 +167,10 @@ namespace Plugin
 			data.diffuse = color;
 			a_s.wroteDiffuse = color;
 			// the cutoff follows the same rule, so an edit in RE::Light's editor sticks: a cutoff we did not write is the
-			// new base, both sliders at 100% leave it alone, otherwise the reach it implies is scaled by Reach only
-			if (!Isl::On(a_light)) {
+			// new base, both sliders at 100% leave it alone, otherwise the reach it implies is scaled by Reach only.
+			// Without Community Shaders' inverse square lighting these words are the ambient color (Plugin.h), so they are
+			// neither read nor written - as Held.cpp and Streams.cpp
+			if (!IslShader() || !Isl::On(a_light)) {
 				return;
 			}
 			const float current = Isl::Cutoff(a_light);
@@ -222,6 +199,10 @@ namespace Plugin
 		}
 	}
 
+	float DaylightFactor() { return gDaylight; }
+
+	RE::NiColor DrawnColor(int, const RE::NiColor& a_base) { return ColorFor(Seen{}, a_base); }
+
 	// ------------------------------------------------------------------ elements and their colors
 	int ElementOf(const RE::EffectSetting* a_effect)
 	{
@@ -241,7 +222,7 @@ namespace Plugin
 	{
 		static const auto map = [] {
 			std::unordered_map<const RE::TESForm*, int> m;
-			for (const auto* effect : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::EffectSetting>()) {
+			for (const auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
 				const int e = ElementOf(effect);
 				if (!e) {
 					continue;
@@ -262,15 +243,6 @@ namespace Plugin
 		return it == map.end() ? 0 : it->second;
 	}
 
-	RE::NiColor NamedColor(int a_pick)
-	{
-		// Dynamic Wards' preset hues (Illuminated's kNamedColors, the same order)
-		constexpr std::uint32_t kColors[kNamedColorCount] = { 0xD0102E, 0xFF6A10, 0xFFC420, 0x2ED452, 0x00D2B0, 0x40DCFF, 0x2468FF, 0x7A3CFF,
-			0xFF2EC4, 0xFFFFFF };
-		const auto              c = kColors[std::clamp(a_pick, 1, kNamedColorCount) - 1];
-		return { ((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f };
-	}
-
 	void ForgetSliderLights(const GoneLights& a_gone)
 	{
 		{
@@ -279,6 +251,7 @@ namespace Plugin
 		}
 		std::lock_guard l{ gSeenLock };
 		std::erase_if(gSeen, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
+		std::erase_if(gNotOurs, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
 	}
 
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after)
@@ -293,25 +266,30 @@ namespace Plugin
 
 	void UpdateBrightness(float a_delta)
 	{
-		std::vector<Made> made;
+		static std::vector<Made> made;  // main thread; its storage and gNew's are swapped back and forth, never reallocated
+		made.clear();
 		{
 			std::lock_guard l{ gNewLock };
 			made.swap(gNew);
 		}
-		std::lock_guard l{ gSeenLock };
-		for (const auto& m : made) {
-			auto& s = gSeen[m.light];
-			s.fx = m.fx;
-			s.element = m.element;
+		++gFrame;
+		{
+			std::lock_guard l{ gSeenLock };
+			for (const auto& m : made) {
+				auto& s = gSeen[m.light];
+				s.fx = m.fx;
+				s.element = m.element;
+			}
 		}
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		if (!ssn) {
 			return;
 		}
 		const float dt = std::clamp(a_delta, 0.0f, 0.25f);
-		if ((gDaylightClock += dt) >= 2.0f) {
+		gDaylightClock += dt;
+		if (gDaylightClock >= 2.0f) {
 			gDaylightClock = 0.0f;
-			gDaylight = DaylightFactor();
+			gDaylight = LightKit::Daylight(DimInDaylight());
 		}
 		const float scale = Brightness() * gDaylight;
 		const float reach = Reach();
@@ -320,17 +298,34 @@ namespace Plugin
 				continue;
 			}
 			auto* niLight = bsLight->light.get();
-			auto  it = gSeen.find(niLight);
+			// gNotOurs is the main thread's alone (this pass and the Keep sweep), so it is read with no lock
+			if (KnownNotOurs(niLight)) {
+				continue;
+			}
+			// gSeenLock is taken per light, not across the walk: the fading module's NoteFadeWrite (the effect updates)
+			// never waits for the whole pass (the re-score's RELight issue 2)
+			std::lock_guard l{ gSeenLock };
+			auto            it = gSeen.find(niLight);
 			if (it == gSeen.end()) {
-				// only OUR lights are remembered
+				// only OUR lights are remembered; the others are remembered as not ours
 				const auto* base = BaseOf(niLight);
 				if (!OursByObject(niLight, base)) {
+					// a light whose reference has no base yet (its 3D still loading) is not cached: it may turn out ours
+					if (base && !IsEnchantLight(niLight)) {
+						gNotOurs.insert_or_assign(niLight, NotOurs{ niLight->name.c_str(), niLight->parent, gFrame });
+					}
 					continue;
 				}
+				gNotOurs.erase(niLight);
 				KeepLight(niLight);
 				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base), .element = ElementOfForm(base) }).first;
 			}
 			Apply(niLight, it->second, scale, reach, dt);
+		}
+		// a light not seen for a few seconds has left the scene: let it go from the cache
+		constexpr std::uint32_t kForget = 300;
+		if (gFrame % kForget == 0) {
+			std::erase_if(gNotOurs, [](const auto& a_kv) { return gFrame - a_kv.second.frame > kForget; });
 		}
 	}
 }

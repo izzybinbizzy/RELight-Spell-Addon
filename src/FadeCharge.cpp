@@ -1,6 +1,6 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
 // Copyright (C) 2026 izzydoingit
-// GPL-3.0-or-later; see LICENSE.txt and the notice at the top of main.cpp.
+// GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
 // What a hand holds, and how full it is.
 //

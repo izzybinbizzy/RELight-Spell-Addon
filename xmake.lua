@@ -23,6 +23,11 @@ target("RelightSpellAddon", function()
     add_deps("commonlibsse-ng")
     add_packages("nlohmann_json")
     add_defines("NOMINMAX")  -- windows.h min/max macros break std::min/max and numeric_limits::max
+    -- GLOW_FADE_DEBUG=1 (PC Runner\pluginbuild.py, debug=True) builds the TESTING DLL with the fading module's Debug page:
+    -- it ships only in the PDB and Source download (his call 2026-10-09), never in the main one
+    if os.getenv("GLOW_FADE_DEBUG") == "1" then
+        add_defines("FADE_DEBUG_PAGE")
+    end
     add_rules("commonlibsse-ng.plugin", {
         name = "RelightSpellAddon",
         author = "izzydoingit",
@@ -33,5 +38,8 @@ target("RelightSpellAddon", function()
     add_headerfiles("src/*.h")
     add_includedirs("src")
     set_pcxxheader("src/PCH.h")
-    set_warnings("allextra")
+    -- every warning in OUR files is an error (his C++ standard, 2026-10-07: "/W4 /WX ... fix all warnings"); the
+    -- headers included with <...> (CommonLib, the standard library) are external and quiet
+    set_warnings("allextra", "error")
+    add_cxflags("/external:anglebrackets", "/external:W0")
 end)
