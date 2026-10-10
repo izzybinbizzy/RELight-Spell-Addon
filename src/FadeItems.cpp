@@ -65,6 +65,16 @@ namespace Fade::Items
 		std::unordered_map<RE::FormID, Choice> gChoices;
 		std::atomic<std::uint32_t>             gGeneration{ 0 };  // bumped on every change; the main thread copies on a change
 		std::array<std::atomic<RE::FormID>, 2> gInHands{};        // the player's left / right item now, for "in my hands now"
+		// the file is written by the main thread once the changes settle, never by the menu while it holds gLock (CodeRabbit,
+		// Illuminated #6 / RELight #8: a color drag changes the choice every frame)
+		std::atomic<bool>         gDirty{ false };
+		std::atomic<std::int64_t> gChangedAt{ 0 };  // steady clock, milliseconds
+		constexpr std::int64_t    kSaveQuietMs = 500;
+
+		[[nodiscard]] std::int64_t NowMs() noexcept
+		{
+			return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		}
 
 		// main thread only: this frame's copy of the choices, and every light a choice is on now
 		std::unordered_map<RE::FormID, Choice> gApplied;
@@ -76,6 +86,7 @@ namespace Fade::Items
 			RE::NiColor                     ownColor{}, wroteColor{ -1.0f, -1.0f, -1.0f };
 			bool                            faded{ false }, colored{ false };
 			std::uint32_t                   frame{ 0 };
+			Choice                          choice{};  // what this frame put on it, for Reapply
 		};
 		std::unordered_map<RE::NiPointLight*, Held> gHeld;
 		std::uint32_t                               gFrame = 0;
@@ -114,15 +125,16 @@ namespace Fade::Items
 			return a_text;
 		}
 
-		void SaveLocked()
+		// a copy of the choices, written outside every lock (main thread)
+		void Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
 		{
 			std::ostringstream text;
 			text << "; " << Mod::kName << " - Lights by Item, written by its menu. One line per item that is not Auto:\n"
 				 << ";   Plugin.esp|0x00ABCD=off           its light is off\n"
 				 << ";   Plugin.esp|0x00ABCD=255,128,0     its light in this color\n[Items]\n";
 			for (const auto& item : gCatalog) {
-				const auto it = gChoices.find(item.id);
-				if (it == gChoices.end() || it->second.Auto()) {
+				const auto it = a_choices.find(item.id);
+				if (it == a_choices.end() || it->second.Auto()) {
 					continue;
 				}
 				const auto& c = it->second;
@@ -150,16 +162,39 @@ namespace Fade::Items
 			}
 		}
 
+		void MarkChanged()
+		{
+			gGeneration.fetch_add(1, std::memory_order_relaxed);
+			gChangedAt.store(NowMs(), std::memory_order_relaxed);
+			gDirty.store(true, std::memory_order_release);
+		}
+
 		void Set(RE::FormID a_id, const Choice& a_choice)
 		{
-			std::lock_guard lock(gLock);
-			if (a_choice.Auto()) {
-				gChoices.erase(a_id);
-			} else {
-				gChoices[a_id] = a_choice;
+			{
+				std::lock_guard lock(gLock);
+				if (a_choice.Auto()) {
+					gChoices.erase(a_id);
+				} else {
+					gChoices[a_id] = a_choice;
+				}
 			}
-			gGeneration.fetch_add(1, std::memory_order_relaxed);
-			SaveLocked();
+			MarkChanged();
+		}
+
+		// main thread: the file, once the choices have not moved for kSaveQuietMs (or at once, a_now)
+		void SaveIfSettled(bool a_now)
+		{
+			if (!gDirty.load(std::memory_order_acquire) || (!a_now && NowMs() - gChangedAt.load(std::memory_order_relaxed) < kSaveQuietMs)) {
+				return;
+			}
+			gDirty.store(false, std::memory_order_relaxed);
+			std::unordered_map<RE::FormID, Choice> copy;
+			{
+				std::lock_guard lock(gLock);
+				copy = gChoices;
+			}
+			Save(copy);
 		}
 
 		// ------------------------------------------------------------------ applying, main thread
@@ -194,7 +229,10 @@ namespace Fade::Items
 				h.light.reset(a_light);
 			}
 			h.frame = gFrame;
-			auto& d = a_light->GetLightRuntimeData();
+			h.choice = a_choice;
+			auto&             d = a_light->GetLightRuntimeData();
+			const float       fadeBefore = d.fade;
+			const RE::NiColor colorBefore = d.diffuse;
 			if (a_choice.off) {
 				if (!h.faded || d.fade != h.wroteFade) {
 					h.ownFade = d.fade;  // what its owner gave it: given back when the item is Auto again
@@ -223,6 +261,9 @@ namespace Fade::Items
 				}
 				h.colored = false;
 			}
+			// what was written here is reported to the fading pass and to Brightness, so neither takes an item's 0 or its color
+			// for the light's own next frame (CodeRabbit, RELight #8: an item off, then back to Auto, compounded the fade)
+			NoteItemWrite(a_light, fadeBefore, d.fade, colorBefore, d.diffuse);
 		}
 
 		void TouchUnder(RE::NiAVObject* a_root, const Choice& a_choice)
@@ -371,6 +412,7 @@ namespace Fade::Items
 	void Apply()
 	{
 		++gFrame;
+		SaveIfSettled(false);
 		if (const auto gen = gGeneration.load(std::memory_order_relaxed); gen != gAppliedGen) {
 			std::lock_guard lock(gLock);
 			gApplied = gChoices;
@@ -407,8 +449,41 @@ namespace Fade::Items
 		}
 	}
 
+	bool SetFromText(RE::FormID a_id, std::string_view a_choice)
+	{
+		Choice     c;
+		const auto t = SettingsText::Trim(a_choice);
+		if (SettingsText::SameText(t, "off")) {
+			c.off = true;
+		} else if (!SettingsText::SameText(t, "auto")) {
+			int  rgb[3]{};
+			auto rest = t;
+			for (int& v : rgb) {
+				const auto comma = rest.find(',');
+				if (!SettingsText::ReadInt(SettingsText::Trim(rest.substr(0, comma)), v)) {
+					return false;
+				}
+				rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+			}
+			c.colored = true;
+			c.color = { std::clamp(rgb[0], 0, 255) / 255.0f, std::clamp(rgb[1], 0, 255) / 255.0f, std::clamp(rgb[2], 0, 255) / 255.0f };
+		}
+		Set(a_id, c);
+		return true;
+	}
+
+	void Reapply()
+	{
+		for (auto& [light, h] : gHeld) {
+			if (h.light && h.frame == gFrame && h.light->GetRefCount() > 1) {
+				Touch(h.light.get(), h.choice);
+			}
+		}
+	}
+
 	void Release()
 	{
+		SaveIfSettled(true);
 		for (auto& [light, h] : gHeld) {
 			if (h.light && h.light->GetRefCount() > 1) {
 				Touch(h.light.get(), Choice{});
@@ -439,10 +514,11 @@ namespace Fade::Items
 		SetItemTooltip("%s", T("Shows the spells and weapons in your hands right now."));
 		SameLine();
 		if (Button(T("Reset all"))) {
-			std::lock_guard lock(gLock);
-			gChoices.clear();
-			gGeneration.fetch_add(1, std::memory_order_relaxed);
-			SaveLocked();
+			{
+				std::lock_guard lock(gLock);
+				gChoices.clear();
+			}
+			MarkChanged();
 		}
 		SetItemTooltip("%s", T("Every item back to Auto: its light as the mod and your other lighting mods made it."));
 		std::unordered_map<RE::FormID, Choice> choices;
@@ -462,7 +538,7 @@ namespace Fade::Items
 				continue;  // with no search, the list shows the items you changed
 			}
 			if (++shown > kMaxShown) {
-				TextDisabled(T("... and more - type more of the name to narrow the list"));
+				TextDisabled("%s", T("... and more - type more of the name to narrow the list"));
 				break;
 			}
 			if (item.group != group) {

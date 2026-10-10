@@ -128,6 +128,9 @@ namespace Fade
 	void ReapplyAll();                                                       // after the cell's light animation: this frame's numbers again
 	void Rebase(RE::NiPointLight* a_light, float a_ratio, float a_now);      // the plugin's Brightness moved a steady light
 	void ReleaseAll();                                                       // every light back as we found it
+	// Lights by Item wrote this light (FadeItems.cpp, under gLock): the fading pass and Brightness keep their own base
+	void NoteItemWrite(RE::NiPointLight* a_light, float a_fadeBefore, float a_fadeAfter, const RE::NiColor& a_colorBefore,
+		const RE::NiColor& a_colorAfter);
 
 	struct HandView
 	{
@@ -212,11 +215,13 @@ namespace Fade
 	// ------------------------------------------------------------------ FadeItems.cpp: Lights by Item (his order 2026-10-10)
 	namespace Items
 	{
-		void           BuildCatalog();  // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
-		void           Load();          // data load: the choices in Mod::kItemsPath
-		void           Apply();         // every frame, main thread, last in the fading pass: each choice onto the lights at its hand
-		void           Release();       // every light back as its owner left it (a load)
-		void __stdcall Render();        // the page
+		void           BuildCatalog();                                           // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
+		void           Load();                                                   // data load: the choices in Mod::kItemsPath
+		void           Apply();                                                  // every frame, main thread, last in the fading pass: each choice onto the lights at its hand
+		void           Reapply();                                                // under gLock, after ReapplyAll wrote the lights again: this frame's choices once more
+		bool           SetFromText(RE::FormID a_id, std::string_view a_choice);  // "auto", "off" or "r,g,b", as the menu would
+		void           Release();                                                // every light back as its owner left it (a load)
+		void __stdcall Render();                                                 // the page
 	}
 
 	// ------------------------------------------------------------------ FadeMenu.cpp

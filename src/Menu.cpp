@@ -33,6 +33,19 @@ namespace Plugin
 			}
 		}
 
+		// a preset may change the ward color too: the wards and the hand lights take the new settings together (CodeRabbit,
+		// RELight #8)
+		void RepresetSoon()
+		{
+			if (auto* tasks = SKSE::GetTaskInterface()) {
+				tasks->AddTask([]() {
+					ApplyWards("a preset");
+					RefindHandLights();
+					ApplyHandLights(true);
+				});
+			}
+		}
+
 		constexpr std::string_view kPatches = "Patch Collection";
 		constexpr std::string_view kWeapons = "Weapons";
 
@@ -362,7 +375,7 @@ namespace Plugin
 				if (ImGuiMCP::Button(gPresets[i].name.c_str())) {
 					ApplySettingsSnapshot(gPresets[i].values);
 					SaveSettings();
-					RehandSoon();
+					RepresetSoon();
 				}
 				ImGuiMCP::SetItemTooltip("%s", T("Load this preset."));
 				ImGuiMCP::SameLine();

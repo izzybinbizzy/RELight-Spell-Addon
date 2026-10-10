@@ -870,17 +870,35 @@ namespace Fade
 	void ReapplyAll()
 	{
 		std::lock_guard lock(gLock);
-		if (!gEnabled) {
+		if (gEnabled) {
+			for (auto& [light, seen] : gLights) {
+				if (!seen.light || gFrame - seen.frame > 1) {
+					continue;
+				}
+				const auto it = gHands.find(seen.hand);
+				if (it != gHands.end() && it->second.active) {
+					ApplyLight(light, it->second, false);
+				}
+			}
+		}
+		Items::Reapply();  // an item's own choice still wins after the lights were written again (fading on or off)
+	}
+
+	void NoteItemWrite(RE::NiPointLight* a_light, float a_fadeBefore, float a_fadeAfter, const RE::NiColor& a_colorBefore,
+		const RE::NiColor& a_colorAfter)
+	{
+		Plugin::NoteFadeWrite(a_light, a_fadeBefore, a_fadeAfter);
+		const auto it = gLights.find(a_light);
+		if (it == gLights.end()) {
 			return;
 		}
-		for (auto& [light, seen] : gLights) {
-			if (!seen.light || gFrame - seen.frame > 1) {
-				continue;
-			}
-			const auto it = gHands.find(seen.hand);
-			if (it != gHands.end() && it->second.active) {
-				ApplyLight(light, it->second, false);
-			}
+		auto& seen = it->second;
+		if (seen.fade.touched && seen.fade.written == a_fadeBefore) {
+			seen.fade.written = a_fadeAfter;  // its base stays the light's own: the next pass scales that, not the item's write
+			seen.shownFade = a_fadeAfter;
+		}
+		if (seen.color.touched && ColorKeep::Same(seen.color.written, a_colorBefore)) {
+			seen.color.written = a_colorAfter;
 		}
 	}
 
