@@ -1,4 +1,4 @@
-// RELight - Spell Addon - the fading module (Illuminated's, ported 2026-10-08)
+// RELight - Spell Addon - the fading module (Illuminated's, ported)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //

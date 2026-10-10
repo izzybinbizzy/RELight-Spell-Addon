@@ -4,7 +4,7 @@
 //
 // Sprays, breath shouts and beams. RE::Light lights them - the projectile's own light record, and a spray's record
 // through our `isPluginLight` config; this mod only takes that light into its menu (Brightness, Reach, the switch).
-// ⚠ 2026-09-29, Truman's call after the Lightning Bolt freeze: this file used to hang travelling lights of its own
+// ⚠ Truman's call after the Lightning Bolt freeze: this file used to hang travelling lights of its own
 // on the projectile's 3D (from the load hook, which also runs on the game's loader threads, under a lock). All of that
 // is gone; a `stream` line in the data now only says "this projectile is ours for the menu".
 //
@@ -106,7 +106,7 @@ namespace Plugin
 		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
 		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
 		if (!IslShader()) {
-			// off Community Shaders (2026-10-10): an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
+			// off Community Shaders: an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
 			// hands a plain fade and reach (Held.cpp PlainScale)
 			data.ambient = { a_colour.red * 0.1f, a_colour.green * 0.1f, a_colour.blue * 0.1f };
 		}

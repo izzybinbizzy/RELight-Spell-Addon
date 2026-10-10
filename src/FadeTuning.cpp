@@ -2,7 +2,7 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// THE ALL-IN-ONE ADVANCED SETTINGS FILE - HIS RULE 2026-10-10: "illuminated and relight should also both be dumping inis for all
+// THE ALL-IN-ONE ADVANCED SETTINGS FILE - HIS RULE: "illuminated and relight should also both be dumping inis for all
 // settings that can be changed that make sense like illuminated does for fading. nothing that the skse menu already handles
 // though. make them aio and seperated by category such as fading." So: ONE file per mod (Mod::kAdvancedPath), a section per
 // category ([Fading], [HUD], and the mod's own), holding the values worth tuning that the menu does NOT show - the menu's

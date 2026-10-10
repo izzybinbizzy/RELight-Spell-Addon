@@ -6,7 +6,7 @@
 // Weapons download is installed (its enchantment lights are keyed by VAER's shaders, so without it a swap would leave the
 // weapon unlit):
 //
-// 1. VAER's own effects put back (his report 2026-09-28 late night, "vaer swirls are still not working for relight"). A plugin
+// 1. VAER's own effects put back (his report, "vaer swirls are still not working for relight"). A plugin
 // loaded after VAEReborn.esp that edits the same vanilla effect (Thaumaturgy, Artificer, ...) carries the effect's old art, so
 // VAER's swirl is lost: 21 of VAER's 46 in his game, measured. Each gets VAER's Enchant Art and Enchant Shader back. The table
 // is relightgen.VAER_VANILLA_FORMS, read off VAEReborn.esp's own records; relightgen's selftest refuses one that differs.
@@ -112,7 +112,7 @@ namespace Plugin
 		}
 
 		// The plugin that changed this effect last, when it knows VAER (VAEReborn.esp is one of its masters) - its change is
-		// deliberate and stays. Measured 2026-10-10 (his Precision magic trails report, Illuminated's same pass): VAER's own Vibrant
+		// deliberate and stays. Measured (his Precision magic trails report, Illuminated's same pass): VAER's own Vibrant
 		// Weapons patch (VAER_EAE.esp) takes the swirl off six fire / frost / shock effects and gives them the vanilla shader so
 		// Enchantment Art Extender dresses the weapon, and this pass was putting VAER's swirl back over it.
 		[[nodiscard]] const RE::TESFile* VaerAwareChange(const RE::EffectSetting* a_effect)
@@ -185,7 +185,7 @@ namespace Plugin
 			"VAER: {} of VAER's effect(s) given their swirl back, {} still had it, {} left to a VAER patch, {} not in this load "
 			"order",
 			back, already, patched, absent);
-		// his call 2026-09-28 late night: two of VAER's shaders (Stendarr's Hammer, Dawnfang's Bloodthirst) name their fill
+		// his call: two of VAER's shaders (Stendarr's Hammer, Dawnfang's Bloodthirst) name their fill
 		// texture "....dds.dds", a file that does not exist, so they draw nothing - point any such name at the real file
 		std::size_t typos = 0;
 		for (const auto& c : kVaerOwn) {

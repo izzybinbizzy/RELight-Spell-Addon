@@ -2,7 +2,7 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// LIGHTS BY ITEM - HIS ORDER 2026-10-10: "completely remove own light for unlit weapons option. put that as an entirely new main
+// LIGHTS BY ITEM - HIS ORDER: "completely remove own light for unlit weapons option. put that as an entirely new main
 // menu and make it work for spells and weapons. have it be to where the user can search for the weapon/spell and change it's
 // lights. so basically dynamic wards feature." His picks the same morning: a search over every spell, staff and weapon, an on /
 // off switch per item, a color per item (Auto = the light's own, or one the player picks), "in my hands now", reset one / reset

@@ -15,7 +15,7 @@
 
 namespace Fade
 {
-	// 2026-10-03, found testing every enchantment kind in game: Skyrim's own soul trap effects (SoulTrapFFActor,
+	// found testing every enchantment kind in game: Skyrim's own soul trap effects (SoulTrapFFActor,
 	// EnchSoulTrapFFContact) are SCRIPT effects, not the Soul Trap archetype, so the archetype alone missed every vanilla one
 	bool IsSoulTrap(const RE::EffectSetting* a_effect)
 	{

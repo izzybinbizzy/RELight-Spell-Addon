@@ -10,7 +10,7 @@
 // and an in-memory record can have none, so main.cpp's hook makes these lights itself and never hands them on.
 // Nothing is saved; take the mod out and every effect keeps its own light.
 //
-// AUTOMATIC HAND LIGHTS (Illuminated's, ported 2026-10-08 - his "add everything from illuminated into relight"): a spell
+// AUTOMATIC HAND LIGHTS (Illuminated's, ported - his "add everything from illuminated into relight"): a spell
 // whose casting art no layer lights (another mod's spell this mod has no patch for) would be dark - RE::Light switches its
 // casting light off, having no config for it. Behind the setting "Light spells this mod has no patch for" it gets a hand
 // light of ours instead: in the color of its own casting light when it has one, else its element's (the color most of the
@@ -37,7 +37,7 @@ namespace Plugin
 
 		constexpr std::uint32_t kLighInverseSquare = LightKit::kRecordInverseSquare;  // on a LIGH record (LightKit.h)
 
-		// a hand light already lit: a menu change reaches it at once instead of on the next cast (his report, 2026-09-23:
+		// a hand light already lit: a menu change reaches it at once instead of on the next cast (his report:
 		// "i have to dispel the spell then re-cast")
 		struct Live
 		{
@@ -158,7 +158,7 @@ namespace Plugin
 				return mine;
 			};
 			// a key's element: the one most of the effects wearing it carry (fire, frost or shock); an effect of no element
-			// does not count - measured 2026-10-08: Flames' hand art is shared with effects of none, and "all must agree" left
+			// does not count - measured: Flames' hand art is shared with effects of none, and "all must agree" left
 			// the Fire color off Flames' own hand. A tie gives none.
 			StringMap<std::array<std::size_t, 4>> votes;
 			const auto                            noteElement = [&](const std::string& a_key, int a_element) {
@@ -292,7 +292,7 @@ namespace Plugin
 	void MakeHandLights()
 	{
 		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour.
-		// 🔁 2026-10-10 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
+		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
 		// finds it, never picked; off Community Shaders the hand lights are drawn plain (DressHandLight) and light the ground
 		// through their twins (GroundLights.cpp)
 		std::error_code ec;
@@ -432,7 +432,7 @@ namespace Plugin
 			Isl::SetCutoff(a_light, a_hand.cutoff);
 			return;
 		}
-		// ENB and Vanilla (his report 2026-10-10: "relight casting light is not working"): the layer's light is made for
+		// ENB and Vanilla (his report: "relight casting light is not working"): the layer's light is made for
 		// inverse square lighting, which the game's own lighting does not draw - so it is drawn plain, as Illuminated draws
 		// its lights there (LightKit::PlainOf), with an ambient of a tenth of its color (RE::Light's rule, Truman)
 		const auto plain = a_hand.inverseSquare ? LightKit::PlainOf(a_hand.fade, a_hand.radius, a_hand.cutoff, a_hand.size) :

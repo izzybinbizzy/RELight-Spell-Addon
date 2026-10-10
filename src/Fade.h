@@ -161,7 +161,7 @@ namespace Fade
 		bool      shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
 		bool      spell{ false }, bound{ false };
 		float     fraction{ 1.0f };
-		Glow::Rgb color{ 0.32f, 0.58f, 1.0f };  // a spell's own light at full (his ask 2026-10-10: the reticle in the spell's color)
+		Glow::Rgb color{ 0.32f, 0.58f, 1.0f };  // a spell's own light at full (his ask: the reticle in the spell's color)
 		int       element{ -1 };                // Element of a spell's strongest effect, -1 none (the Crossfire bar's sigil)
 		int       school{ -1 };                 // 0 Destruction .. 4 Illusion, -1 none
 		int       skill{ 0 };                   // the player's level in that school
@@ -179,7 +179,7 @@ namespace Fade
 	};
 	[[nodiscard]] HudState Hud();
 	// a game menu is open (inventory, map, dialogue, the console ...): the HUD elements hide, as the game's own HUD does
-	// (his report 2026-10-10). Kept by a menu open / close watcher (FadeMenu.cpp), read by the render thread
+	// (his report). Kept by a menu open / close watcher (FadeMenu.cpp), read by the render thread
 	[[nodiscard]] bool MenusHideHud() noexcept;
 
 	// what the API hands other plugins: the charge fraction and the multiplier on this hand's lights; false if untracked
@@ -199,7 +199,7 @@ namespace Fade
 	[[nodiscard]] const char* OwnLightLighting();  // the lighting our light is drawn for: Community Shaders, ENB or Vanilla
 
 	// ------------------------------------------------------------------ FadeTuning.cpp: the all-in-one advanced settings file
-	// (his rule 2026-10-10: every value worth tuning that the menu does not show, one file, a section per category). A value is
+	// (his rule: every value worth tuning that the menu does not show, one file, a section per category). A value is
 	// registered with its default and range before Load (data load); Load reads the file, then writes it back whole.
 	namespace Tuning
 	{
@@ -213,7 +213,7 @@ namespace Fade
 		[[nodiscard]] inline float Get(const std::atomic<float>& a_v) noexcept { return a_v.load(std::memory_order_relaxed); }
 	}
 
-	// ------------------------------------------------------------------ FadeItems.cpp: Lights by Item (his order 2026-10-10)
+	// FadeItems.cpp: Lights by Item (his order)
 	namespace Items
 	{
 		void           BuildCatalog();                                           // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
@@ -235,7 +235,7 @@ namespace Fade
 	// ------------------------------------------------------------------ FadeMain.cpp: called by the plugin's main.cpp
 	void OnPluginLoad();  // SKSE's post-load (every plugin loaded, the game's data not read yet)
 	void OnPostLoad();
-	// Reticle Arcs is loaded: our reticle stays off beside it, everything else works (his order 2026-10-08 ~22:50).
+	// Reticle Arcs is loaded: our reticle stays off beside it, everything else works (his order).
 	// Read once at OnPluginLoad; any thread may ask
 	[[nodiscard]] bool OtherReticleLoaded();
 	void               OnDataLoaded();

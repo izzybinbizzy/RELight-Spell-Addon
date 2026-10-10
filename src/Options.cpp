@@ -12,7 +12,7 @@
 //   - the reference's base form is what the data files name, by form or by mesh key (Data.cpp);
 //   - an ENCHANTMENT light is the exception: RE::Light hangs it on the weapon node of the ACTOR holding the weapon
 //     (ShaderReferenceEffect::Init, LightAttachmentHooks.cpp) and marks it `fadeAmount = 5`, so the walk up finds the
-//     actor, whose base no data file names - his report, 2026-09-26: "vibrant weapons and vaer are saying 0 lit". Each
+// actor, whose base no data file names - his report: "vibrant weapons and vaer are saying 0 lit". Each
 //     frame every live effect shader of ours is walked the way RE::Light attached to it, and the marked lights under
 //     its root belong to the option whose data names that shader's editor ID.
 //
@@ -139,7 +139,7 @@ namespace Plugin
 			}
 		}
 
-		// The sheathed net (1.5, three user reports 2026-10-05 "my enchanted weapons keep glowing even when sheathed"):
+		// The sheathed net (1.5, three user reports "my enchanted weapons keep glowing even when sheathed"):
 		// RE::Light puts its enchantment light out on the sheathe animation's end and lights it again whenever the
 		// enchantment effect starts, so a weapon put away some other way, or an effect that restarts on a put-away
 		// weapon, could keep it lit. Here an enchantment light on an actor whose weapon is fully SHEATHED is put out every

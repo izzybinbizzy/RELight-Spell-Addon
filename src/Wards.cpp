@@ -3,15 +3,15 @@
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // The wards: one dome per ward, and the colour pick. Everything here steps down when DynamicWards.dll is loaded, which
-// dresses every ward itself (his call, 2026-09-24: "have the whole ward system step down if dynamic wards is present").
+// dresses every ward itself (his call: "have the whole ward system step down if dynamic wards is present").
 //
 // ONE DOME. A ward spell's rank is the effect that accumulates Ward Power; every OTHER effect on the same spell that wears
 // the vanilla ward art draws a second dome and a second hand light - vanilla's ShieldConcSelf, Mysticism's Dummy rows,
-// Odin's Ward Regeneration (his capture 2026-09-24: an orange 360 dome with a second dome inside, measured in his game:
+// Odin's Ward Regeneration (his capture: an orange 360 dome with a second dome inside, measured in his game:
 // Lesser Ward fires Ward - Lesser and Odin's Ward Regeneration, both on WardBodyFX). Those lose their art and their light.
 // An effect on a mod's own ward art (Better Vampires' blood ward) is never touched.
 //
-// THE COLOUR (his call, 2026-09-24, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
+// THE COLOUR (his call, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
 // pointed at our meshes (`meshes\magic\Glow Wards\`, Dynamic Wards' own looks under our names): the dome (with 360 Ward
 // the 360 sphere, in place of its orange), the hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand,
 // and gives the 360 sphere and flash the vanilla blue. The hand light follows in HandLights.cpp. Nothing is saved.
@@ -38,7 +38,7 @@ namespace Plugin
 
 		bool DynamicWardsLoaded() { return REX::W32::GetModuleHandleA("DynamicWards.dll") != nullptr; }
 
-		// HIS REPORT 2026-09-27 (Spellbreaker - the old fix, lost in a handoff purge): a WORN ward - Spellbreaker, the Divine
+		// HIS REPORT (Spellbreaker - the old fix, lost in a handoff purge): a WORN ward - Spellbreaker, the Divine
 		// Crusader shield, the Shield of Reman - never drives a cast ward's transitions, so the vanilla meshes sit idle: only
 		// the swirl, and the dome flashes as the ward ends. They wear copies of our dome and hand on Magic\\BeginLoopEnd.hkx
 		// (`wardgen.py warddomes`), in art forms of their own, so the cast wards keep theirs.
@@ -177,7 +177,7 @@ namespace Plugin
 				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx360.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx360.nif");
 				Point(flash, white ? "Magic\\Glow Wards\\White\\wardshieldhitfx.nif" : "Magic\\Glow Wards\\Blue\\wardshieldhitfx.nif");
 			} else {
-				// his call 2026-09-27: Vanilla blue wears OUR dome too - the vanilla look, reading our own copies of its
+				// his call: Vanilla blue wears OUR dome too - the vanilla look, reading our own copies of its
 				// textures, so no other mod's loose textures reach it
 				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx.nif");
 			}

@@ -22,6 +22,7 @@
 // Objects are matched as RE::Light matches them: a form first, then the bare mesh key ("Magic\RuneFire01.nif" is
 // "runefire01"), exactly, then the longest of our keys the object's key contains.
 
+#include "DataText.h"
 #include "Fade.h"
 #include "Plugin.h"
 
@@ -63,40 +64,6 @@ namespace Plugin
 		std::unordered_map<RE::FormID, const RE::NiColor*> gTintCache;
 		std::unordered_map<RE::FormID, const Stream*>      gHeldCache[2];  // [first person]: asked every frame per drawn weapon
 
-		[[nodiscard]] std::vector<std::string_view> Split(std::string_view a_line)
-		{
-			std::vector<std::string_view> out;
-			for (std::size_t start = 0;;) {
-				const auto tab = a_line.find('\t', start);
-				out.push_back(a_line.substr(start, tab == std::string_view::npos ? std::string_view::npos : tab - start));
-				if (tab == std::string_view::npos) {
-					return out;
-				}
-				start = tab + 1;
-			}
-		}
-
-		// a whole field as a number: "12abc" is not 12 (the code pass's P4)
-		template <class T>
-		[[nodiscard]] bool Number(std::string_view a_text, T& a_out)
-		{
-			const auto end = a_text.data() + a_text.size();
-			const auto r = std::from_chars(a_text.data(), end, a_out);
-			return !a_text.empty() && r.ec == std::errc{} && r.ptr == end;
-		}
-
-		// n numbers from a_fields[a_first..]; false when any does not read
-		template <std::size_t N>
-		[[nodiscard]] bool Numbers(const std::vector<std::string_view>& a_fields, std::size_t a_first, std::array<float, N>& a_out)
-		{
-			for (std::size_t i = 0; i < N; ++i) {
-				if (!Number(a_fields[a_first + i], a_out[i])) {
-					return false;
-				}
-			}
-			return true;
-		}
-
 		[[nodiscard]] RE::NiColor Colour(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
 
 		[[nodiscard]] RE::FormID ResolveBase(std::string_view a_text)
@@ -118,159 +85,6 @@ namespace Plugin
 			return dh ? dh->LookupFormID(local, a_text.substr(tilde + 1)) : 0;
 		}
 
-		// everything one file holds, applied to the tables only when the whole file has read
-		struct File
-		{
-			Option                                      option;
-			std::vector<std::string>                    meshes;
-			std::vector<RE::FormID>                     bases;
-			std::vector<Stream>                         streams;
-			std::vector<Stream>                         helds;
-			std::vector<RE::FormID>                     sprays;
-			std::vector<Hand>                           hands;
-			std::vector<std::pair<std::string, HandFx>> fx;
-			std::vector<std::pair<std::string, Tint>>   tints;
-			bool                                        sawVersion{ false }, sawFile{ false }, sawMenu{ false }, sawDownload{ false };
-		};
-
-		// one line into `a_file`; false when it does not read
-		[[nodiscard]] bool ParseLine(const std::vector<std::string_view>& p, File& a_file)
-		{
-			const auto kind = p[0];
-			auto&      opt = a_file.option;
-			if (kind == "version" && p.size() >= 2) {
-				int v = 0;
-				a_file.sawVersion = Number(p[1], v) && v == 1;
-				return a_file.sawVersion;
-			}
-			if (kind == "file" && p.size() >= 3) {
-				opt.download = std::string(p[1]);
-				opt.name = std::string(p[2]);
-				opt.id = opt.download + " - " + opt.name;
-				a_file.sawFile = true;
-				return true;
-			}
-			if (kind == "order" && p.size() >= 2) {
-				if (!Number(p[1], opt.order)) {
-					return false;
-				}
-				if (!a_file.sawMenu) {
-					opt.menu = opt.order;  // a file written before `menu` existed sorts by its order
-				}
-				return true;
-			}
-			if (kind == "menu" && p.size() >= 2) {
-				a_file.sawMenu = true;
-				return Number(p[1], opt.menu);  // menu position, separate from `order` (which decides mesh ownership)
-			}
-			if (kind == "switch" && p.size() >= 2) {
-				opt.switchable = p[1] == "1";
-				return true;
-			}
-			if (kind == "menugroup" && p.size() == 3) {
-				opt.category = std::string(p[1]);
-				opt.author = p[2] == "-" ? std::string() : std::string(p[2]);
-				return true;
-			}
-			if (kind == "desc" && p.size() == 2 && !p[1].empty()) {
-				opt.desc = std::string(p[1]);
-				return true;
-			}
-			if (kind == "download" && p.size() == 2 && (p[1] == "Spells" || p[1] == "Weapons")) {
-				opt.weapons = p[1] == "Weapons";
-				a_file.sawDownload = true;
-				return true;
-			}
-			if (kind == "mesh" && p.size() >= 2) {
-				a_file.meshes.emplace_back(p[1]);
-				return true;
-			}
-			if (kind == "base" && p.size() >= 2) {
-				if (const auto id = ResolveBase(p[1])) {
-					a_file.bases.push_back(id);
-				}
-				return true;
-			}
-			if (kind == "spraylight" && p.size() >= 2) {
-				if (const auto id = ResolveBase(p[1])) {
-					a_file.sprays.push_back(id);
-				}
-				return true;
-			}
-			if (kind == "stream" && p.size() == 13) {
-				std::array<float, 10> v{};
-				if (!Numbers(p, 3, v)) {
-					return false;
-				}
-				Stream s;
-				s.key = std::string(p[1]);
-				s.node = std::string(p[2]);
-				s.color = Colour(v[0], v[1], v[2]);
-				s.fade = v[3];
-				s.radius = v[4];
-				s.size = v[5];
-				s.cutoff = v[6];
-				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
-				a_file.streams.push_back(std::move(s));
-				return true;
-			}
-			if (kind == "held" && p.size() == 12) {
-				std::array<float, 10> v{};
-				if (!Numbers(p, 2, v)) {
-					return false;
-				}
-				Stream s;
-				s.key = std::string(p[1]);
-				s.node = "-";
-				s.color = Colour(v[0], v[1], v[2]);
-				s.fade = v[3];
-				s.radius = v[4];
-				s.size = v[5];
-				s.cutoff = v[6];
-				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
-				a_file.helds.push_back(std::move(s));
-				return true;
-			}
-			if (kind == "hand" && p.size() == 11) {
-				std::array<float, 9> v{};
-				if (!Numbers(p, 2, v)) {
-					return false;
-				}
-				Hand h;
-				h.key = std::string(p[1]);
-				for (std::size_t i = 0; i < 3; ++i) {
-					h.rgb[i] = static_cast<std::uint8_t>(std::clamp(v[i], 0.0f, 255.0f));
-				}
-				h.color = Colour(v[0], v[1], v[2]);
-				h.fade = v[3];
-				h.radius = v[4];
-				h.size = v[5];
-				h.cutoff = v[6];
-				h.inverseSquare = v[7] != 0.0f;
-				h.portalStrict = v[8] != 0.0f;
-				a_file.hands.push_back(std::move(h));
-				return true;
-			}
-			if (kind == "handfx" && p.size() == 5 && (p[2] == "pulse" || p[2] == "flicker")) {
-				HandFx f;
-				f.flicker = p[2] == "flicker";
-				if (!Number(p[3], f.perSecond) || !Number(p[4], f.intensity)) {
-					return false;
-				}
-				a_file.fx.emplace_back(std::string(p[1]), f);
-				return true;
-			}
-			if (kind == "tint" && p.size() == 5) {
-				std::array<float, 3> v{};
-				if (!Numbers(p, 2, v)) {
-					return false;
-				}
-				a_file.tints.emplace_back(std::string(p[1]), Tint{ Colour(v[0], v[1], v[2]) });
-				return true;
-			}
-			return false;
-		}
-
 		template <class Map, class Value>
 		void KeepHighest(Map& a_map, const typename Map::key_type& a_key, Value&& a_value, int a_order)
 		{
@@ -279,38 +93,69 @@ namespace Plugin
 			}
 		}
 
-		// one file -> one option; false when it does not read, and nothing of it is kept
+		// one file -> one option; false when it does not read, and nothing of it is kept. The text is read by DataText.h
+		// (game-free, tested off the game); here its forms are resolved and its lights become the game's values
 		[[nodiscard]] bool ReadFile(const fs::path& a_path)
 		{
 			std::ifstream in(a_path, std::ios::binary);
 			if (!in) {
 				return false;
 			}
-			File        file;
-			std::string line;
-			for (std::size_t n = 1; std::getline(in, line); ++n) {
-				if (!line.empty() && line.back() == '\r') {
-					line.pop_back();
-				}
-				if (line.empty() || line[0] == '#') {
-					continue;
-				}
-				if (!ParseLine(Split(line), file)) {
-					SKSE::log::warn("{} line {}: not a line this plugin reads", Fade::PathText(a_path.filename()), n);
-					return false;
-				}
+			const std::string text{ std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>() };
+			const auto        read = DataText::ReadText(text);
+			if (read.badLine) {
+				SKSE::log::warn("{} line {}: not a line this plugin reads", Fade::PathText(a_path.filename()), read.badLine);
 			}
-			if (!file.sawVersion || !file.sawFile) {
+			if (!read.ok) {
 				return false;
 			}
-			auto& opt = file.option;
-			if (!file.sawDownload) {
-				opt.weapons = opt.download == "Weapons";  // written before `download`: the menu heading was the download
+			const auto& file = read.file;
+			Option      opt;
+			opt.download = file.option.download;
+			opt.name = file.option.name;
+			opt.id = file.option.id;
+			opt.category = file.option.category;
+			opt.author = file.option.author;
+			opt.desc = file.option.desc;
+			opt.order = file.option.order;
+			opt.menu = file.option.menu;
+			opt.switchable = file.option.switchable;
+			opt.weapons = file.sawDownload ? file.option.weapons : opt.download == "Weapons";  // no `download` line: the heading was the download
+			std::vector<RE::FormID> bases, sprays;
+			for (const auto& b : file.bases) {
+				if (const auto id = ResolveBase(b)) {
+					bases.push_back(id);
+				}
+			}
+			for (const auto& s : file.sprays) {
+				if (const auto id = ResolveBase(s)) {
+					sprays.push_back(id);
+				}
+			}
+			const auto light = [](const DataText::LightText& a_text) {
+				const auto& v = a_text.v;
+				Stream      s;
+				s.key = a_text.key;
+				s.node = a_text.node;
+				s.color = Colour(v[0], v[1], v[2]);
+				s.fade = v[3];
+				s.radius = v[4];
+				s.size = v[5];
+				s.cutoff = v[6];
+				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
+				return s;
+			};
+			std::vector<Stream> streams, helds;
+			for (const auto& s : file.streams) {
+				streams.push_back(light(s));
+			}
+			for (const auto& s : file.helds) {
+				helds.push_back(light(s));
 			}
 			const auto idx = gOptions.size();
 			opt.meshes = file.meshes.size();
-			opt.bases = file.bases.size();
-			opt.streams = file.streams.size();
+			opt.bases = bases.size();
+			opt.streams = streams.size();
 			gOptions.push_back(opt);
 			const auto wins = [&](std::size_t a_current) { return gOptions[a_current].order <= opt.order; };
 			const auto own = [&](auto& a_map, const auto& a_key) {
@@ -321,12 +166,12 @@ namespace Plugin
 			for (const auto& m : file.meshes) {
 				own(gMeshOwner, m);
 			}
-			for (const auto id : file.bases) {
+			for (const auto id : bases) {
 				own(gBaseOwner, id);
 			}
 			// lines for one mesh in one file are one ladder; a later layer replaces an earlier layer's whole ladder
 			std::unordered_set<std::string> fresh;
-			for (auto& s : file.streams) {
+			for (auto& s : streams) {
 				s.order = opt.order;
 				s.option = idx;
 				own(gMeshOwner, s.key);  // a stream's object is ours too, for the slider and the switch
@@ -338,11 +183,11 @@ namespace Plugin
 					gStreams.insert_or_assign(s.key, std::move(s));
 				}
 			}
-			for (const auto id : file.sprays) {
+			for (const auto id : sprays) {
 				gSprayLights.insert(id);
 				own(gSprayOwner, id);
 			}
-			for (auto& s : file.helds) {
+			for (auto& s : helds) {
 				s.order = opt.order;
 				s.option = idx;
 				const auto key = s.key;
@@ -352,19 +197,32 @@ namespace Plugin
 					KeepHighest(gHeldBase, id, std::move(s), opt.order);
 				}
 			}
-			for (auto& [key, f] : file.fx) {
-				f.order = opt.order;
-				KeepHighest(gHandFx, key, f, opt.order);
+			for (const auto& fx : file.fx) {
+				KeepHighest(gHandFx, fx.key, HandFx{ fx.flicker, fx.perSecond, fx.intensity, opt.order }, opt.order);
 			}
-			for (auto& [key, t] : file.tints) {
-				t.order = opt.order;
+			for (const auto& tint : file.tints) {
+				const auto& key = tint.key;
+				const Tint  t{ Colour(tint.rgb[0], tint.rgb[1], tint.rgb[2]), opt.order };
 				if (const auto id = key.find('~') != std::string::npos ? ResolveBase(key) : 0) {
 					KeepHighest(gBaseTints, id, t, opt.order);
 				} else {
 					KeepHighest(gMeshTints, key, t, opt.order);
 				}
 			}
-			for (auto& h : file.hands) {
+			for (const auto& hand : file.hands) {
+				const auto& v = hand.v;
+				Hand        h;
+				h.key = hand.key;
+				for (std::size_t i = 0; i < 3; ++i) {
+					h.rgb[i] = static_cast<std::uint8_t>(std::clamp(v[i], 0.0f, 255.0f));
+				}
+				h.color = Colour(v[0], v[1], v[2]);
+				h.fade = v[3];
+				h.radius = v[4];
+				h.size = v[5];
+				h.cutoff = v[6];
+				h.inverseSquare = v[7] != 0.0f;
+				h.portalStrict = v[8] != 0.0f;
 				h.order = opt.order;
 				h.option = idx;
 				gHands[h.key].push_back(std::move(h));

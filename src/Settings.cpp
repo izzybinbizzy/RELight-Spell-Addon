@@ -268,7 +268,7 @@ namespace Plugin
 		}
 	}
 
-	// a preset (Menu.cpp, his word 2026-10-10: presets kept per lighting): every [Settings] key, and every switch as "switch:<id>"
+	// a preset (Menu.cpp, his word: presets kept per lighting): every [Settings] key, and every switch as "switch:<id>"
 	std::vector<std::pair<std::string, int>> SettingsSnapshot()
 	{
 		std::vector<std::pair<std::string, int>> out;
@@ -307,7 +307,7 @@ namespace Plugin
 	bool AutoLightsOn() { return gAuto; }
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 
-	// his call, 2026-09-26: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
+	// his call: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together
 	void SetOptionOn(std::size_t a_index, bool a_on)
 	{

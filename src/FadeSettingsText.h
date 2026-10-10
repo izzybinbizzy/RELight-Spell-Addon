@@ -69,7 +69,7 @@ namespace Fade
 	{
 		kPlayer = 0,
 		kPlayerAndFollowers = 1,
-		kEveryone = 2  // his ask 2026-10-09: "can fading not work for npcs as well?"
+		kEveryone = 2  // his ask: "can fading not work for npcs as well?"
 	};
 
 	struct Settings
@@ -92,7 +92,7 @@ namespace Fade
 		float               hudGemOpacity{ 0.9f };
 		bool                hudGemPercent{ true };  // the percent under each gem
 		bool                reticle{ false };       // FadeMenu.cpp's reticle: a bar per hand of the player beside the crosshair
-		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 Crossfire's bar under it (his pick 2026-10-10)
+		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 Crossfire's bar under it (his pick)
 		float               reticleSize{ 1.0f };
 		float               reticleOpacity{ 0.85f };
 		bool                ownLight{ Mod::kOwnLight };  // a weapon no other mod lights gets a light of our own (FadeOwnLight.cpp)
@@ -224,7 +224,7 @@ namespace Fade
 			{ "Illusion", [](const Settings& s) { return s.schools[4] ? 1 : 0; }, [](Settings& s, int v) { s.schools[4] = v != 0; } },
 		};
 
-		// keys an older version wrote: read past without a warning, never written again (ColorCoolingTint: his word 2026-10-10,
+		// keys an older version wrote: read past without a warning, never written again (ColorCoolingTint: his word,
 		// "the only option will be grey, ember cooling only for fire spell types that are orange" - Glow::TintFor decides)
 		inline constexpr std::string_view kRetired[]{ "OwnLightReach", "ColorCoolingTint" };
 

@@ -105,7 +105,7 @@ namespace Fade
 {
 	namespace
 	{
-		// HIS ORDER 2026-10-08 ~22:50: "take off the guard against reticle arcs, and stand down our reticle if theirs is
+		// HIS ORDER: "take off the guard against reticle arcs, and stand down our reticle if theirs is
 		// detected." Written once on the main thread at SKSE's post-load; the HUD's render thread reads it
 		std::atomic<bool> gOtherReticle{ false };
 	}
@@ -128,7 +128,7 @@ namespace Fade
 	void OnDataLoaded()
 	{
 		LoadSettings();
-		// the advanced settings file (his rule 2026-10-10): the fading module's own values, then the file read and written back
+		// the advanced settings file (his rule): the fading module's own values, then the file read and written back
 		// whole (the mod registered its own values before this - its main.cpp)
 		using namespace Tuning;
 		Register("Fading", "MinReach", 0.35f, 0.0f, 1.0f, "the least share of its reach a fading light keeps at empty", gMinReach);

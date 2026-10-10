@@ -12,11 +12,11 @@
 // Lighting breathes or crackles here (Oscillate), and a light on an object an art pick recolors (`tint`) takes that
 // color. Runs last in the player update.
 //
-// Illuminated's light settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods" -
+// Illuminated's light settings, ported (his "add everything from illuminated into relight ... sister mods" -
 // RE::Light lights the objects; what it has no setting for is done here, on the lights this pass already looks after):
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
-//   (Light colors and the Fire / Frost / Shock color picks were here until his order of 2026-10-09 took the color
+// (Light colors and the Fire / Frost / Shock color picks were here until his order took the color
 //   variations out of the menu - ColorFor keeps each light's own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
@@ -51,7 +51,7 @@ namespace Plugin
 			return a.red == b.red && a.green == b.green && a.blue == b.blue;
 		}
 
-		// ✂ HIS ORDER 2026-10-09: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
+		// ✂ HIS ORDER: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
 		// (Paler / Deeper) and the Fire / Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art
 		// pick's tint) gives it. One place, so the lights that are scaled elsewhere (Held.cpp) draw the same.
 		[[nodiscard]] RE::NiColor ColorFor(const Seen&, const RE::NiColor& a_base) { return a_base; }
@@ -62,7 +62,7 @@ namespace Plugin
 		//   Pulse (a breathe): RE::Light's pulse - one phase advancing perSecond * dt * 5, a smooth swing of `intensity`.
 		//   Flicker (a crackle): Light Placer's stepped fade - the light JUMPS between a high and a low level, twice a cycle,
 		//   `intensity` deep. A random walk of smooth sines (RE::Light's flicker, the first version here) averaged out to about
-		//   8% and read as static (his report, 2026-09-23, measured).
+		// 8% and read as static (his report, measured).
 		[[nodiscard]] float Oscillate(Seen& a_s, float a_dt)
 		{
 			static std::minstd_rand                      rng{ 20260923 };
@@ -134,7 +134,7 @@ namespace Plugin
 		}
 
 		// RE::Light names every light it makes from a config "RL" + the node it hung it on. An enchantment light hangs on
-		// the actor holding the weapon, so it is found by its shader instead (Options.cpp) - his report, 2026-09-26: "the
+		// the actor holding the weapon, so it is found by its shader instead (Options.cpp) - his report: "the
 		// sliders don't work for enchantments"
 		[[nodiscard]] bool OursByObject(RE::NiLight* a_light, const RE::TESBoundObject* a_base)
 		{
@@ -257,7 +257,7 @@ namespace Plugin
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after)
 	{
 		std::lock_guard l{ gSeenLock };
-		// only when the fading module started from the fade this pass wrote (Illuminated measured why, 2026-10-08: noting
+		// only when the fading module started from the fade this pass wrote (Illuminated measured why: noting
 		// every write froze steady lights this pass had never scaled at full strength)
 		if (const auto it = gSeen.find(a_light); it != gSeen.end() && it->second.written == a_before) {
 			it->second.written = a_after;
