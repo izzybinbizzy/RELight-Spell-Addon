@@ -50,6 +50,7 @@
 
 #include "FadeConfig.h"
 #include "FadeGlow.h"
+#include "LightMath.h"
 
 #include <algorithm>
 #include <array>
@@ -227,12 +228,7 @@ namespace Fade
 		// "the only option will be grey, ember cooling only for fire spell types that are orange" - Glow::TintFor decides)
 		inline constexpr std::string_view kRetired[]{ "OwnLightReach", "ColorCoolingTint" };
 
-		[[nodiscard]] inline bool SameText(std::string_view a, std::string_view b) noexcept
-		{
-			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
-				return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-			});
-		}
+		using LightKit::SameText;  // LightMath.h: the one case-blind compare
 
 		// a key this mod offers: OwnLight only where FadeConfig.h offers our own light
 		[[nodiscard]] inline bool Offered(std::string_view a_name) noexcept { return Mod::kOwnLight || !SameText(a_name, "OwnLight"); }

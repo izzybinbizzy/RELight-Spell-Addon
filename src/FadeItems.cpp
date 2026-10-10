@@ -119,12 +119,6 @@ namespace Fade::Items
 			return form ? form->GetFormID() : 0;
 		}
 
-		[[nodiscard]] std::string LowerText(std::string a_text)
-		{
-			std::ranges::transform(a_text, a_text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return a_text;
-		}
-
 		// a copy of the choices, written outside every lock (main thread)
 		void Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
 		{
@@ -385,7 +379,7 @@ namespace Fade::Items
 			if (key.empty()) {
 				continue;
 			}
-			gCatalog.push_back({ spell->GetFormID(), key, name, LowerText(name), kind.school >= 0 ? kSchools[kind.school] : "Other spells", true });
+			gCatalog.push_back({ spell->GetFormID(), key, name, Lower(name), kind.school >= 0 ? kSchools[kind.school] : "Other spells", true });
 		}
 		for (auto* weapon : dh->GetFormArray<RE::TESObjectWEAP>()) {
 			if (!weapon || !weapon->GetPlayable()) {
@@ -401,8 +395,8 @@ namespace Fade::Items
 			if (key.empty()) {
 				continue;
 			}
-			gCatalog.push_back({ weapon->GetFormID(), key, name, LowerText(name), staff ? "Staves" : bound ? "Bound weapons" :
-																											 "Enchanted weapons",
+			gCatalog.push_back({ weapon->GetFormID(), key, name, Lower(name), staff ? "Staves" : bound ? "Bound weapons" :
+																										 "Enchanted weapons",
 				false });
 		}
 		std::ranges::sort(gCatalog, [](const Item& a, const Item& b) { return std::make_tuple(!a.spell, a.group, a.lower) < std::make_tuple(!b.spell, b.group, b.lower); });
@@ -526,7 +520,7 @@ namespace Fade::Items
 			std::lock_guard lock(gLock);
 			choices = gChoices;
 		}
-		const std::string     needle = LowerText(search);
+		const std::string     needle = Lower(search);
 		const RE::FormID      hands[2]{ gInHands[0].load(std::memory_order_relaxed), gInHands[1].load(std::memory_order_relaxed) };
 		std::string           group;
 		std::size_t           shown = 0;

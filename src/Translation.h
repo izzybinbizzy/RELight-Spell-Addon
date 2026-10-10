@@ -219,10 +219,17 @@ namespace Translation
 							if (!Hex4(cp)) {
 								return false;
 							}
-							if (cp >= 0xD800 && cp <= 0xDBFF && i + 6 <= s.size() && s[i] == '\\' && s[i + 1] == 'u') {
+							if (cp >= 0xDC00 && cp <= 0xDFFF) {
+								return false;  // a low surrogate with no high one before it
+							}
+							if (cp >= 0xD800 && cp <= 0xDBFF) {
+								// a high surrogate is only half a character: a low one must follow
+								if (i + 6 > s.size() || s[i] != '\\' || s[i + 1] != 'u') {
+									return false;
+								}
 								i += 2;
 								std::uint32_t lo = 0;
-								if (!Hex4(lo)) {
+								if (!Hex4(lo) || lo < 0xDC00 || lo > 0xDFFF) {
 									return false;
 								}
 								cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
@@ -249,7 +256,9 @@ namespace Translation
 		map.clear();
 		std::ifstream in(a_file, std::ios::binary);
 		if (!in) {
-			return "no translation file (" + a_file.filename().string() + "): the pages are in English";
+			// the name as UTF-8: path::string() throws for a name the ANSI code page cannot show
+			const auto name = a_file.filename().generic_u8string();
+			return "no translation file (" + std::string(name.begin(), name.end()) + "): the pages are in English";
 		}
 		std::stringstream ss;
 		ss << in.rdbuf();

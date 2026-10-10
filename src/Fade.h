@@ -8,6 +8,7 @@
 
 #include "FadeGlow.h"
 #include "FadeSettingsText.h"
+#include "LightMath.h"
 
 namespace Fade
 {
@@ -20,7 +21,7 @@ namespace Fade
 	template <class T>
 	using StringMap = std::unordered_map<std::string, T, StringHash, std::equal_to<>>;
 
-	[[nodiscard]] std::string Lower(std::string_view a_text);
+	using LightKit::Lower;  // LightMath.h: the one lower-casing helper
 
 	// A path as UTF-8 text. path::string() converts to the ANSI code page on Windows and THROWS for a name that code
 	// page cannot show (a Japanese file name on a Western system); this cannot.
