@@ -25,9 +25,7 @@ namespace Fade
 		if (a_effect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kSoulTrap) {
 			return true;
 		}
-		auto id = EditorID(a_effect);
-		std::ranges::transform(id, id.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-		return id.find("soultrap") != std::string::npos;
+		return Lower(EditorID(a_effect)).find("soultrap") != std::string::npos;
 	}
 
 	Kind KindOf(const RE::MagicItem* a_item)

@@ -15,7 +15,12 @@
 
 namespace MenuStyle
 {
-	using namespace ImGuiMCP;
+	// the ImGui types the declarations below name; each drawing function takes `using namespace ImGuiMCP` in its own body,
+	// so including this header never pulls the whole of ImGuiMCP into the includer's namespace
+	using ImGuiMCP::ImDrawList;
+	using ImGuiMCP::ImU32;
+	using ImGuiMCP::ImVec2;
+	using ImGuiMCP::ImVec4;
 
 	// Font Awesome 6 (solid) icons the pages use - each one seen drawn in SKSE Menu Framework 3.8 (its font has no sword)
 	namespace Icon
@@ -49,6 +54,7 @@ namespace MenuStyle
 
 	inline ImU32 U32(const ImVec4& a_c, float a_alpha = 1.0f)
 	{
+		using namespace ImGuiMCP;
 		auto ch = [](float v) { return static_cast<int>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
 		return IM_COL32(ch(a_c.x), ch(a_c.y), ch(a_c.z), ch(a_c.w * a_alpha));
 	}
@@ -59,6 +65,7 @@ namespace MenuStyle
 	public:
 		Page()
 		{
+			using namespace ImGuiMCP;
 			const auto&  t = gTheme;
 			const ImVec4 hover{ t.accentDim.x * 1.25f, t.accentDim.y * 1.25f, t.accentDim.z * 1.25f, 1.0f };
 			PushStyleColor(ImGuiCol_CheckMark, t.accent);
@@ -76,6 +83,7 @@ namespace MenuStyle
 		}
 		~Page()
 		{
+			using namespace ImGuiMCP;
 			PopStyleVar(2);
 			PopStyleColor(10);
 		}
@@ -86,6 +94,7 @@ namespace MenuStyle
 	// an icon and a title in the accent, then a rule
 	inline void Header(unsigned a_icon, const char* a_text)
 	{
+		using namespace ImGuiMCP;
 		Spacing();
 		FontAwesome::PushSolid();
 		TextColored(gTheme.accent, "%s", FontAwesome::UnicodeToUtf8(a_icon).c_str());
@@ -98,6 +107,7 @@ namespace MenuStyle
 	// a quiet line of explanation under a header
 	inline void Note(const char* a_text)
 	{
+		using namespace ImGuiMCP;
 		PushTextWrapPos(0.0f);
 		TextColored(kMuted, "%s", a_text);
 		PopTextWrapPos();
@@ -106,12 +116,14 @@ namespace MenuStyle
 	// a hover tooltip on the item just drawn
 	inline void Tip(const char* a_text)
 	{
+		using namespace ImGuiMCP;
 		SetItemTooltip("%s", a_text);
 	}
 
 	// a small round dot and a label: on (accent) or off (muted)
 	inline void Status(bool a_on, const char* a_text)
 	{
+		using namespace ImGuiMCP;
 		const auto  pos = GetCursorScreenPos();
 		const float h = GetTextLineHeight();
 		ImDrawListManager::AddCircleFilled(GetWindowDrawList(), ImVec2(pos.x + h * 0.5f, pos.y + h * 0.5f), h * 0.3f,
@@ -124,6 +136,7 @@ namespace MenuStyle
 	// the full spectrum as a bar: click or drag picks the hue at full colour; true when the mouse is let go
 	inline bool SpectrumBar(const char* a_id, float a_rgb[3])
 	{
+		using namespace ImGuiMCP;
 		const auto      pos = GetCursorScreenPos();
 		const float     w = (std::max)(120.0f, GetContentRegionAvail().x), h = 16.0f;
 		auto*           dl = GetWindowDrawList();
@@ -152,6 +165,7 @@ namespace MenuStyle
 	// true once an edit is finished (picker let go, a quick pick, the bar let go) - save and apply then.
 	inline bool ColorRow(const char* a_id, float a_rgb[3], std::span<const Swatch> a_quick = {})
 	{
+		using namespace ImGuiMCP;
 		PushID(a_id);
 		bool done = false;
 		SetNextItemWidth(220.0f);
@@ -171,11 +185,12 @@ namespace MenuStyle
 	}
 
 	// a slider that reports true once let go (the drag shows live through a_value; save and apply on true)
-	inline bool SliderDone() { return IsItemDeactivatedAfterEdit(); }
+	inline bool SliderDone() { return ImGuiMCP::IsItemDeactivatedAfterEdit(); }
 
 	// the HUD panel every mod's HUD element draws in: a dark rounded plate with an accent edge
 	inline void HudPlate(ImDrawList* a_dl, ImVec2 a_min, ImVec2 a_max)
 	{
+		using namespace ImGuiMCP;
 		ImDrawListManager::AddRectFilled(a_dl, a_min, a_max, IM_COL32(10, 9, 16, 150), 6.0f, 0);
 		ImDrawListManager::AddRect(a_dl, a_min, a_max, U32(gTheme.accent, 0.45f), 6.0f, 0, 1.0f);
 	}

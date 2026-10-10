@@ -28,15 +28,6 @@ namespace Fade
 		}
 	}
 
-	std::string Lower(std::string_view a_text)
-	{
-		std::string out(a_text);
-		for (auto& c : out) {
-			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		}
-		return out;
-	}
-
 	Settings Config()
 	{
 		std::lock_guard lock(gLock);

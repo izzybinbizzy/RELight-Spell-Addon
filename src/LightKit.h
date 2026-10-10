@@ -8,16 +8,17 @@
 //
 //   Relaxed      a value one thread writes and another reads, with nothing else depending on it
 //   NewForm      a form made in memory by the game's own factory; IsCallAt, a call site's check before it is hooked
-//   CutoffFor    the cutoff of an inverse-square light (the build's K, as gen.py and relightgen.py write every config)
 //   Isl          the two words Community Shaders' inverse-square lighting reads off a light
 //   CloneLight   a new light for the scene, and AddToScene to register it (ReLight's method, Truman's permission)
-//   NamedColor   the ten named colors of the element color settings (Dynamic Wards' preset hues, the same order)
-//   ToScreen     linear light <-> the screen's color (Dynamic Wards' wardgen.srgb): the "Light colors" setting
+//   NamedColor   one of the ten named colors as the game's color
 //   Daylight     how much dimmer the lights are by day and in bright rooms: the "Dim in daylight" setting
+// The plain-number helpers (Lower, CutoffFor, the named colors, ToScreen, KeyAt ...) are in LightMath.h, tested off the game.
 
 #pragma once
 
 #include "PCH.h"
+
+#include "LightMath.h"
 
 namespace LightKit
 {
@@ -85,20 +86,12 @@ namespace LightKit
 	// Community Shaders' inverse-square flag on a light RECORD (TESObjectLIGH): its falloff is then the cutoff
 	inline constexpr std::uint32_t kRecordInverseSquare = 1u << 14;
 
-	// The build's cutoff constant (0.8 * 69.99², as gen.py and relightgen.py write every config's cutoff) and the size a
-	// light made here carries in its radius' z
-	inline constexpr float kK = 3918.88f;
-	inline constexpr float kLightSize = 1.414f;
-
 	// Community Shaders' inverse-square lighting reads a flag and the cutoff from the first eight bytes of a light's runtime
 	// data (its ambient color's red and green, as the game lays them out); without Community Shaders those words are plain
 	// ambient color. They are read and written as bytes (memcpy), never through a pointer of another type, and always AFTER
 	// SetLightAttenuation, which writes the same two words.
 	namespace Isl
 	{
-		inline constexpr std::uint32_t kFlag = 1u << 10;
-		inline constexpr float         kLowestCutoff = 0.01f, kHighestCutoff = 0.99f;
-
 		[[nodiscard]] inline std::array<std::uint32_t, 2> Read(RE::NiLight* a_light) noexcept
 		{
 			std::array<std::uint32_t, 2> w{};
@@ -124,32 +117,6 @@ namespace LightKit
 			w[1] = std::bit_cast<std::uint32_t>(std::clamp(a_cutoff, a_lowest, a_highest));
 			Write(a_light, w);
 		}
-	}
-
-	// cutoff = K * fade / (reach² + size²), kept where Community Shaders reads a cutoff
-	[[nodiscard]] inline float CutoffFor(float a_fade, float a_reach, float a_size = kLightSize) noexcept
-	{
-		return std::clamp(kK * a_fade / (a_reach * a_reach + a_size * a_size), Isl::kLowestCutoff, Isl::kHighestCutoff);
-	}
-
-	// How far an inverse-square light reaches (reach² = K x fade / cutoff - size²), and the same light drawn by the game's own
-	// lighting (ENB, Vanilla): Dynamic Wards' house light - LTBG section 4's reach 133 drawn at radius 178 with fade 1.14
-	// (wardgen.plain_light), never shorter than the radius the light already states. Illuminated's Lighting.cpp does the same.
-	[[nodiscard]] inline float IslReach(float a_fade, float a_cutoff, float a_size = kLightSize) noexcept
-	{
-		if (a_cutoff <= 0.0f || a_fade <= 0.0f) {
-			return 0.0f;
-		}
-		return std::sqrt((std::max)(kK * a_fade / a_cutoff - a_size * a_size, 0.0f));
-	}
-	struct Plain
-	{
-		float fade{ 0.0f }, radius{ 0.0f };
-	};
-	[[nodiscard]] inline Plain PlainOf(float a_fade, float a_radius, float a_cutoff, float a_size = kLightSize) noexcept
-	{
-		constexpr float kPlainReach = 178.0f / 133.0f, kPlainFade = 1.14f;
-		return { a_fade * kPlainFade, (std::max)(a_radius, IslReach(a_fade, a_cutoff, a_size) * kPlainReach) };
 	}
 
 	// A new light for the scene, cloned from one master light made once: ReLight found that a freshly made light, attached
@@ -190,17 +157,6 @@ namespace LightKit
 		return a_scene && a_light ? a_scene->AddLight(a_light, params) : nullptr;
 	}
 
-	// the element color settings' ten colors, 1 to kNamedColorCount (their names are each menu's)
-	inline constexpr std::array<std::uint32_t, 10> kNamedColors = { 0xD0102E, 0xFF6A10, 0xFFC420, 0x2ED452, 0x00D2B0, 0x40DCFF,
-		0x2468FF, 0x7A3CFF, 0xFF2EC4, 0xFFFFFF };
-	inline constexpr int                           kNamedColorCount = static_cast<int>(kNamedColors.size());
-
-	// one named color as 0xRRGGBB; a pick outside 1..kNamedColorCount takes the nearest end
-	[[nodiscard]] constexpr std::uint32_t NamedColorRgb(int a_pick) noexcept
-	{
-		return kNamedColors[static_cast<std::size_t>(std::clamp(a_pick, 1, kNamedColorCount) - 1)];
-	}
-
 	[[nodiscard]] inline RE::NiColor NamedColor(int a_pick) noexcept
 	{
 		const auto c = NamedColorRgb(a_pick);
@@ -208,27 +164,8 @@ namespace LightKit
 			static_cast<float>(c & 0xFF) / 255.0f };
 	}
 
-	// linear light <-> the screen's color, per channel (0..1)
-	[[nodiscard]] inline float ToScreen(float a_x) noexcept
-	{
-		const float x = std::clamp(a_x, 0.0f, 1.0f);
-		return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.0f / 2.4f) - 0.055f;
-	}
-	[[nodiscard]] inline float ToLinear(float a_x) noexcept
-	{
-		const float x = std::clamp(a_x, 0.0f, 1.0f);
-		return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f);
-	}
-	// the same for one 0..255 channel
-	[[nodiscard]] inline std::uint8_t ScreenChannel(std::uint8_t a_linear) noexcept
-	{
-		const float v = ToScreen(static_cast<float>(a_linear) / 255.0f);
-		return static_cast<std::uint8_t>(std::clamp(std::lround(v * 255.0f), 0L, 255L));
-	}
-
-	// "Dim in daylight": 1 at night and in the dark; a_pick 0 off, 1 a little (at most a quarter dimmer), 2 more (at most
-	// half). Outdoors it follows the hour (full day 8 to 17, a three-hour dawn and dusk); indoors the room's own light
-	// (its ambient or directional color, whichever is brighter). Main thread: it reads the player's cell.
+	// "Dim in daylight" (LightMath.h's DaylightShare): 1 at night and in the dark; a_pick 0 off, 1 a little, 2 more. Main thread:
+	// it reads the player's cell (an interior by its own light, outdoors by the hour).
 	[[nodiscard]] inline float Daylight(int a_pick)
 	{
 		auto* player = a_pick > 0 ? RE::PlayerCharacter::GetSingleton() : nullptr;
@@ -236,27 +173,17 @@ namespace LightKit
 		if (!cell) {
 			return 1.0f;
 		}
-		const float most = a_pick == 1 ? 0.25f : 0.5f;
-		float       bright = 0.0f;
+		float bright = 0.0f;
 		if (cell->IsInteriorCell()) {
 			if (const auto* l = cell->GetLighting()) {
 				const auto lum = [](const RE::Color& a_c) {
 					return (0.2126f * a_c.red + 0.7152f * a_c.green + 0.0722f * a_c.blue) / 255.0f;
 				};
-				bright = std::clamp(((std::max)(lum(l->ambient), lum(l->directional)) - 0.15f) / 0.3f, 0.0f, 1.0f);
+				bright = DaylightOfRoom((std::max)(lum(l->ambient), lum(l->directional)));
 			}
 		} else if (const auto* calendar = RE::Calendar::GetSingleton()) {
-			const float h = calendar->GetHour();
-			if (h < 5.0f || h >= 20.0f) {
-				bright = 0.0f;
-			} else if (h < 8.0f) {
-				bright = (h - 5.0f) / 3.0f;
-			} else if (h < 17.0f) {
-				bright = 1.0f;
-			} else {
-				bright = (20.0f - h) / 3.0f;
-			}
+			bright = DaylightOfHour(calendar->GetHour());
 		}
-		return 1.0f - most * bright;
+		return DaylightShare(a_pick, bright);
 	}
 }

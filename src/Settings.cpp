@@ -65,13 +65,6 @@ namespace Plugin
 			return v;
 		}
 
-		[[nodiscard]] bool SameText(std::string_view a, std::string_view b) noexcept
-		{
-			return a.size() == b.size() && std::ranges::equal(a, b, [](char x, char y) {
-				return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-			});
-		}
-
 		// Every [Settings] key: its name in the file, how it reads back as a whole number, and how a whole number sets it
 		// (clamped to what the menu allows). ONE table, so the reader, the writer and the log can never disagree - the
 		// fading module's way (FadeSettingsText.h kKeys; the re-score's RELight issue 3). Keys match case-insensitively.

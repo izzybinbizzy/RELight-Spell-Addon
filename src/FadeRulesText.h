@@ -14,6 +14,7 @@
 #include "FadeFormText.h"
 #include "FadeGlow.h"
 #include "FadeSettingsText.h"
+#include "LightMath.h"
 
 #include <nlohmann/json.hpp>
 
@@ -60,14 +61,7 @@ namespace Fade::RulesText
 		std::vector<std::string> notes;     // what is fine but worth a log line (a form from a plugin not installed)
 	};
 
-	[[nodiscard]] inline std::string Lower(std::string_view a_text)
-	{
-		std::string out(a_text);
-		for (auto& c : out) {
-			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		}
-		return out;
-	}
+	using LightKit::Lower;  // LightMath.h: the one lower-casing helper
 
 	namespace detail
 	{

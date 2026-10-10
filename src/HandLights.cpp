@@ -63,8 +63,7 @@ namespace Plugin
 		[[nodiscard]] bool SkippedPrefix(const RE::EffectSetting* a_effect)
 		{
 			// the fading module keeps every magic effect's editor ID (the game drops them), so no other plugin is needed
-			std::string low = Fade::EditorID(a_effect);
-			std::ranges::transform(low, low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			std::string low = Lower(Fade::EditorID(a_effect));
 			if (low.size() > 4 && low.starts_with("dlc")) {
 				low = low.substr(4);
 			}

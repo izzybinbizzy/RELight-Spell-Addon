@@ -28,7 +28,9 @@ namespace Plugin
 	template <class T>
 	using StringMap = std::unordered_map<std::string, T, StringHash, std::equal_to<>>;
 
-	using LightKit::Relaxed;  // a value one thread writes and another reads (LightKit.h)
+	using LightKit::Lower;     // LightMath.h: the one lower-casing helper
+	using LightKit::Relaxed;   // a value one thread writes and another reads (LightKit.h)
+	using LightKit::SameText;  // and the one case-blind compare
 
 	// the mod's own values in the advanced settings file (his rule 2026-10-10, Fade::Tuning; registered in main.cpp)
 	inline std::atomic<float> gNearby{ 2800.0f };       // [Lights] NearbyDistance: Hand lights for - Everyone nearby

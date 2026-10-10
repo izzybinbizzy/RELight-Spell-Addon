@@ -76,10 +76,13 @@ namespace Plugin
 			}
 		}
 
+		// a whole field as a number: "12abc" is not 12 (the code pass's P4)
 		template <class T>
 		[[nodiscard]] bool Number(std::string_view a_text, T& a_out)
 		{
-			return std::from_chars(a_text.data(), a_text.data() + a_text.size(), a_out).ec == std::errc{};
+			const auto end = a_text.data() + a_text.size();
+			const auto r = std::from_chars(a_text.data(), end, a_out);
+			return !a_text.empty() && r.ec == std::errc{} && r.ptr == end;
 		}
 
 		// n numbers from a_fields[a_first..]; false when any does not read
@@ -433,9 +436,8 @@ namespace Plugin
 					gShaderOwner.emplace(shader->GetFormID(), it->second);
 					continue;
 				}
-				auto id = EditorIdOf(shader);
+				const auto id = Lower(EditorIdOf(shader));
 				named += id.empty() ? 0 : 1;
-				std::ranges::transform(id, id.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 				if (auto it = id.empty() ? gMeshOwner.end() : gMeshOwner.find(id); it != gMeshOwner.end()) {
 					gShaderOwner.emplace(shader->GetFormID(), it->second);
 				}
@@ -467,8 +469,7 @@ namespace Plugin
 		if (const auto slash = a_path.find_last_of("\\/"); slash != std::string_view::npos) {
 			a_path.remove_prefix(slash + 1);
 		}
-		std::string out{ a_path };
-		std::ranges::transform(out, out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		std::string out = Lower(a_path);
 		if (out.size() > 4 && out.ends_with(".nif")) {
 			out.resize(out.size() - 4);
 		}
@@ -479,8 +480,8 @@ namespace Plugin
 	// bare name. Same rule as relightgen.path_key: lowercase, backslashes, no leading `meshes\`, no `.nif`.
 	std::string PathKey(std::string_view a_path)
 	{
-		std::string out{ a_path };
-		std::ranges::transform(out, out.begin(), [](unsigned char c) { return c == '/' ? '\\' : static_cast<char>(std::tolower(c)); });
+		std::string out = Lower(a_path);
+		std::ranges::replace(out, '/', '\\');
 		const auto first = out.find_first_not_of('\\');
 		out.erase(0, first == std::string::npos ? out.size() : first);
 		if (out.starts_with("meshes\\")) {
