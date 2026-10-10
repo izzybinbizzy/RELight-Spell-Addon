@@ -377,6 +377,7 @@ namespace
 			InstallLate();
 			Plugin::RegisterMenu();
 			Fade::OnDataLoaded();  // after the menu: its two pages go under the Spell Addon's section, after ours
+			Plugin::RegisterMenuTail();
 		} catch (const std::exception& e) {
 			SKSE::log::critical(
 				"the data-load work stopped part way: {} - what ran before it keeps its work, the rest is not "

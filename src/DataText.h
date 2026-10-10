@@ -10,7 +10,9 @@
 
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
+#include <type_traits>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -37,9 +39,19 @@ namespace DataText
 	template <class T>
 	[[nodiscard]] bool Number(std::string_view a_text, T& a_out)
 	{
+		T          v{};
 		const auto end = a_text.data() + a_text.size();
-		const auto r = std::from_chars(a_text.data(), end, a_out);
-		return !a_text.empty() && r.ec == std::errc{} && r.ptr == end;
+		const auto r = std::from_chars(a_text.data(), end, v);
+		if (a_text.empty() || r.ec != std::errc{} || r.ptr != end) {
+			return false;
+		}
+		if constexpr (std::is_floating_point_v<T>) {
+			if (!std::isfinite(v)) {
+				return false;  // "nan" / "inf" read as whole fields: the line does not read
+			}
+		}
+		a_out = v;
+		return true;
 	}
 
 	// n numbers from a_fields[a_first..]; false when any does not read

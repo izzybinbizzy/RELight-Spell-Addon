@@ -255,4 +255,5 @@ namespace Plugin
 
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
+	void RegisterMenuTail();  // after the fading module's pages: the testing DLL's Diagnostics page last (nothing in the main DLL)
 }

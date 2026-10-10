@@ -72,13 +72,15 @@ namespace Plugin
 
 		// his call: as Illuminated does - when CS Light is loaded, say which of its options light the same
 		// things a second time (the option names are CS Light's own installer's, spelling included)
-		// a printf line with three counts, for a widget that takes plain text
+#ifdef FADE_DEBUG_PAGE
+		// a printf line with three counts, for a widget that takes plain text (the testing DLL's status card)
 		[[nodiscard]] std::string Fill3(const char* a_format, std::size_t a_a, std::size_t a_b, std::size_t a_c)
 		{
 			char buf[256];
 			std::snprintf(buf, sizeof(buf), a_format, a_a, a_b, a_c);
 			return buf;
 		}
+#endif
 
 		[[nodiscard]] const char* CSLightLoaded()
 		{
@@ -392,9 +394,12 @@ namespace Plugin
 		void __stdcall RenderSettings()
 		{
 			const GlowStyle style;
+#ifdef FADE_DEBUG_PAGE
+			// the status card: only in the TESTING DLL (his word: "only in testing dll")
 			MenuStyle::Status(true, Fill3(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"), DataFiles(),
 										LiveHeldLights(), HandEffects())
 										.c_str());
+#endif
 			if (const auto* cs = CSLightLoaded()) {
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
 				ImGuiMCP::TextWrapped("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
@@ -558,6 +563,26 @@ namespace Plugin
 			MenuStyle::Status(WeaponLightsOn(), WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.") : T("Weapon lights is off on the Settings page, so every light here is out."));
 			DrawSwitches(Page::kWeapons);
 		}
+
+#ifdef FADE_DEBUG_PAGE
+		// THE DIAGNOSTICS PAGE - only in the TESTING DLL (his word: "only in testing dll"; built with FADE_DEBUG_PAGE, shipped in
+		// the PDB and Source download): what the plugin found and made, for a bug report
+		void __stdcall RenderDiagnostics()
+		{
+			const GlowStyle style;
+			GlowHeading("Found", Icon::kBulb);
+			ImGuiMCP::Text(T("Lighting: %s (the inverse square shader: %s)"), T(LightingName(LightingFound())), IslShader() ? T("yes") : T("no"));
+			const auto* cs = CSLightLoaded();
+			ImGuiMCP::Text(T("CS Light: %s"), cs ? cs : T("not loaded"));
+			ImGuiMCP::Text(T("Data files: %zu, options: %zu, hand keys: %zu, spray light records: %zu"), DataFiles(), Options().size(), Hands().size(),
+				SprayLightRecords().size());
+			GlowHeading("Made", Icon::kBulb);
+			ImGuiMCP::Text(T("Hand lights made: %zu, for %zu spell(s); %zu of them by an automatic light"), HandLightsMade(), HandEffects(), AutoHandEffects());
+			ImGuiMCP::Text(T("Held weapon lights now: %zu; ground lights now: %zu; game lights kept: %zu"), LiveHeldLights(), GroundLightCount(), KeptLights());
+			GlowHeading("Hands and the log", Icon::kBulb);
+			ImGuiMCP::TextWrapped("%s", T("Each hand's lights right now and the debug log switch are on the Fading - debug page."));
+		}
+#endif
 	}
 
 	void RegisterMenu()
@@ -573,5 +598,15 @@ namespace Plugin
 		SKSEMenuFramework::AddSectionItem(T("Patches"), RenderPatches);
 		SKSEMenuFramework::AddSectionItem(T("Weapons"), RenderWeapons);
 		SKSE::log::info("settings page added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
+	}
+
+	void RegisterMenuTail()
+	{
+#ifdef FADE_DEBUG_PAGE
+		if (SKSEMenuFramework::IsInstalled()) {
+			SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
+			SKSEMenuFramework::AddSectionItem(T("Diagnostics"), RenderDiagnostics);
+		}
+#endif
 	}
 }
