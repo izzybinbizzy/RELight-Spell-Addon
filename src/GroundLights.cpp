@@ -3,11 +3,11 @@
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // The hand light that lights the GROUND, off Community Shaders (ENB and Vanilla) - Illuminated's GroundLights.cpp, copied
-// (the two mods never run together; code is copied across, never shared at run time). HIS WORD 2026-10-10: "relight casting
+// (the two mods never run together; code is copied across, never shared at run time). HIS WORD: "relight casting
 // light is not working ... re add the enb and cs and vanilla versions ... relight only uses illuminated vanilla, cs and enb
 // configs where absolutely neccesary to make lights work, but relight is the main driver."
-// The game makes a casting light so that it lights the caster but not the land (Dynamic Wards measured it 2026-10-05,
-// Illuminated 2026-10-09: -0.09 on the ground before, +35 after its twin). So the casting light - ours or RE::Light's - is kept
+// The game makes a casting light so that it lights the caster but not the land (Dynamic Wards measured it,
+// Illuminated: -0.09 on the ground before, +35 after its twin). So the casting light - ours or RE::Light's - is kept
 // (Brightness, the fading module, sneaking and the switches all keep writing to it) but hidden, and a twin made the way
 // Dynamic Wards makes its hand light (land and water lighting on) copies it every frame. The twin hangs beside the hand's
 // magic node, not under it (the fading module scales every light under the magic node; the twin copies a light it scaled).

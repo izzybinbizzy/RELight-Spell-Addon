@@ -113,7 +113,7 @@ namespace
 		// before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
 	}
 
-	// "Hand lights for" (Illuminated's light budget for big fights, ported 2026-10-08): a caster the setting leaves out gets
+	// "Hand lights for" (Illuminated's light budget for big fights, ported): a caster the setting leaves out gets
 	// no casting light at all - this is the call that would make it, ours or RE::Light's, so nothing is made and put out
 	[[nodiscard]] bool LeftOutCaster(const RE::TESObjectREFR* a_ref)
 	{
@@ -149,7 +149,7 @@ namespace
 			} else {
 				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 			}
-			// ⚠ 2026-09-29, the Lightning Bolt freeze (found with Truman, by switching hooks off one at a time): this hook
+			// ⚠ the Lightning Bolt freeze (found with Truman, by switching hooks off one at a time): this hook
 			// also runs on the game's loader and job threads. It used to keep the light in our lists right here and, every
 			// 64th light, let go of lights nothing else held - so a light could be FREED on a loader thread while the game's
 			// threads walked the scene. RE::Light's own hook keeps nothing (it marks the light and returns); ours now hands
@@ -363,7 +363,7 @@ namespace
 	void OnDataLoaded()
 	{
 		try {
-			// the advanced settings file's own values (his rule 2026-10-10) - read with the fading module's, in Fade::OnDataLoaded
+			// the advanced settings file's own values (his rule) - read with the fading module's, in Fade::OnDataLoaded
 			Fade::Tuning::Register("Lights", "NearbyDistance", 2800.0f, 300.0f, 30000.0f, "Hand lights for - Everyone nearby: how far from you, in game units",
 				Plugin::gNearby);
 			Fade::Tuning::Register("Vanilla and ENB", "GroundLights", 1.0f, 0.0f, 1.0f,

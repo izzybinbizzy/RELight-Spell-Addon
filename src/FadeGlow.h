@@ -342,7 +342,7 @@ namespace Glow
 
 	// its color: the element; else the most colourful of its shader's and light's colours (0-255) - a vanilla weapon
 	// shader keeps a GREY fill (31,31,31) and its colour in the edge, and a grey scaled to full brightness is white
-	// (2026-10-03, his "white from the start"); else what it drains; else a soft white
+	// (his "white from the start"); else what it drains; else a soft white
 	[[nodiscard]] inline Rgb OwnLightColor(LightKind a_kind, std::span<const Rgb> a_colors) noexcept
 	{
 		switch (a_kind) {
@@ -421,7 +421,7 @@ namespace Glow
 		return hue >= 10.0f && hue <= 50.0f;
 	}
 
-	// HIS WORD 2026-10-10: "remove cools toward option in color cooling, the only option will be grey, ember cooling only for
+	// HIS WORD: "remove cools toward option in color cooling, the only option will be grey, ember cooling only for
 	// fire spell types that are orange" - a light cools toward grey, unless its magic is fire AND the light itself is orange
 	[[nodiscard]] inline CoolTint TintFor(bool a_fire, const Rgb& a_light) noexcept
 	{

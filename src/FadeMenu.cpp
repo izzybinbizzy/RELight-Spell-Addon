@@ -2,10 +2,10 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section. HUD (since 2026-10-09, his order): the
+// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section. HUD (his order): the
 // charge bar, the charge gems and the reticle. Settings ("Fading"): every other setting of the
 // module (his rule: settings live in the SKSE menu only), saved at once and live on the next frame; the rule files pick
-// weapons one by one. Debug (ONLY in the testing DLL of the PDB and Source download - his call 2026-10-09: "remove fading
+// weapons one by one. Debug (ONLY in the testing DLL of the PDB and Source download - his call: "remove fading
 // debug entirely only keep it with source and pdb as an in game testing dll"; built with FADE_DEBUG_PAGE): the debug log,
 // each tracked hand's weapon, charge, the numbers on its lights and how many lights were found, plus the rule files and
 // their problems - what a bug report needs.
@@ -168,7 +168,7 @@ namespace Fade
 			Percent("Sputter strength", t.sputterStrength, 0, 100, "How deep the deepest dip goes, at empty.", save);
 			ImGuiMCP::EndDisabled();
 			Toggle("Steady at empty", t.emptySteady, "At exactly 0% the light stops sputtering and holds still.", save);
-			// HIS WORD 2026-10-10: "remove cools toward option in color cooling, the only option will be grey, ember cooling only
+			// HIS WORD: "remove cools toward option in color cooling, the only option will be grey, ember cooling only
 			// for fire spell types that are orange" (Glow::TintFor)
 			Toggle("Color cooling", t.cool,
 				"Below the sputter level the light's color drains toward grey. Fire magic with an orange light turns a dull ember "
@@ -189,7 +189,7 @@ namespace Fade
 			Percent("Flare strength", t.flareStrength, 0, 200, "How far past full the recharge flare swells.", save);
 			ImGuiMCP::EndDisabled();
 
-			// HIS WORD 2026-10-10: "put bound weapons above own light for unlit weapons in the what fades menu. completely remove
+			// HIS WORD: "put bound weapons above own light for unlit weapons in the what fades menu. completely remove
 			// own light for unlit weapons option" - the switch is gone from the menu (the setting file's OwnLight stays as it was)
 			GlowHeading(Icon::kWand, "What fades");
 			Toggle("Weapon enchantments", s.weapons, "An enchanted weapon's lights and glow follow its charge.", save);
@@ -220,7 +220,7 @@ namespace Fade
 					save);
 			}
 
-			GlowHeading(Icon::kBook, "By Magicka Type");  // his name for it, 2026-10-10 (was "By kind of magic")
+			GlowHeading(Icon::kBook, "By Magicka Type");  // his name for it (was "By kind of magic")
 			ImGuiMCP::TextDisabled("%s", T("By the strongest effect of an enchantment or a spell. Off: that kind keeps its full light."));
 			{
 				static const char* const kElementLabels[] = { TR_MARK("Fire"), TR_MARK("Frost"), TR_MARK("Shock"), TR_MARK("Absorb"),
@@ -248,7 +248,7 @@ namespace Fade
 			Commit(before, s, save);
 		}
 
-		// HIS MENU OF 2026-10-09 ~11:05: "make a HUD submenu placed right below configs. add logical and simple options for
+		// HIS MENU: "make a HUD submenu placed right below configs. add logical and simple options for
 		// toggling and messing with our hud stuff" - its own page (registered before Fading, right below the mod's own
 		// pages): the charge bar, the charge gems (size, opacity, the percent) and the reticle (size, opacity). The gems
 		// and the reticle show what the fading module tracks, so they need Fading's Enabled on.
@@ -290,7 +290,7 @@ namespace Fade
 				save);
 			ImGuiMCP::BeginDisabled(!s.reticle);
 			{
-				// his pick 2026-10-10: "a hud option with our crossfire info to make the widget fill as magicka regenerates then
+				// his pick: "a hud option with our crossfire info to make the widget fill as magicka regenerates then
 				// does a soft pulse when full" - a style of the reticle, not another widget
 				static const char* const kStyles[] = { TR_MARK("Bars beside the crosshair"), TR_MARK("Crossfire bar") };
 				Choice("Reticle style", s.reticleStyle, kStyles, 2,
@@ -436,7 +436,7 @@ namespace Fade
 			return out;
 		}
 
-		// THE MENUS (his report 2026-10-10: "the widgets also do not turn off when opening the menus like all other widgets
+		// THE MENUS (his report: "the widgets also do not turn off when opening the menus like all other widgets
 		// do"). The HUD state is published from the player's update, which stops while a menu pauses the game - so the last
 		// frame's state stood on screen over the inventory. A menu open / close watcher keeps the set of open game menus
 		// that hide the HUD; the render thread reads one flag.
@@ -488,8 +488,8 @@ namespace Fade
 			return ui && ui->GameIsPaused();
 		}
 
-		// THE HUD GEMS (his word 2026-10-09: each hand has its own cut soul gem on its own side of the health bar). 🔁 HIS WORD
-		// 2026-10-10: "the enchantment gems should not work for spells and only show when the weapon enchantment is dropping"
+		// THE HUD GEMS (his word: each hand has its own cut soul gem on its own side of the health bar). 🔁 HIS WORD
+		// "the enchantment gems should not work for spells and only show when the weapon enchantment is dropping"
 		// and "remove the circle surrounding the soul gem widgets" - a gem is a WEAPON hand's (soul-gem violet for an
 		// enchantment, pale blue for a bound weapon, ember under the sputter point), shown once its charge is below full, with
 		// no halo. Render thread: it reads only Hud().
@@ -571,7 +571,7 @@ namespace Fade
 			}
 		}
 
-		// The reticle's two soft pulses (his word 2026-10-10: "make the reticles softly pulse when out of magicka and also when
+		// The reticle's two soft pulses (his word: "make the reticles softly pulse when out of magicka and also when
 		// fully regenerated"): out of magicka, a slow breath as long as it lasts; full again, one swell that settles.
 		struct Pulse
 		{
@@ -635,8 +635,8 @@ namespace Fade
 			}
 		}
 
-		// THE RETICLE (his order 2026-10-08: "a reticule toggle ... build something from our crossfire bar"). Our own Crossfire
-		// struggle bar (Illuminated Salvage\Crossfire\src\Menu.cpp, DrawStruggleBar). 🔁 HIS WORDS 2026-10-10: "vice versa for
+		// THE RETICLE (his order: "a reticule toggle ... build something from our crossfire bar"). Our own Crossfire
+		// struggle bar (Illuminated Salvage\Crossfire\src\Menu.cpp, DrawStruggleBar). 🔁 HIS WORDS: "vice versa for
 		// reticles, they are only meant for spells", "i want the reticles to change color with spells", the two soft pulses,
 		// and a Crossfire style (his pick: a style of the reticle). So it shows a SPELL hand's magicka only, in the color of
 		// that spell's own light (ember under the sputter point), and
@@ -826,9 +826,9 @@ namespace Fade
 		}
 		// under the mod's own section; the colour scheme is the plugin's (its Menu.cpp sets it first): one DLL, one theme
 		SKSEMenuFramework::SetSection(T(Mod::kName));
-		// his order 2026-10-10: "an entirely new main menu ... search for the weapon/spell and change it's lights" (FadeItems.cpp)
+		// his order: "an entirely new main menu ... search for the weapon/spell and change it's lights" (FadeItems.cpp)
 		SKSEMenuFramework::AddSectionItem(T("Lights by Item"), Items::Render);
-		SKSEMenuFramework::AddSectionItem(T("HUD"), RenderHudSettings);  // right below the mod's own pages (his order 2026-10-09)
+		SKSEMenuFramework::AddSectionItem(T("HUD"), RenderHudSettings);  // right below the mod's own pages (his order)
 		SKSEMenuFramework::AddSectionItem(T("Fading"), RenderSettings);
 #ifdef FADE_DEBUG_PAGE
 		SKSEMenuFramework::AddSectionItem(T("Fading - debug"), RenderDebug);

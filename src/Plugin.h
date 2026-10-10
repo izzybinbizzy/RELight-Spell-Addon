@@ -32,7 +32,7 @@ namespace Plugin
 	using LightKit::Relaxed;   // a value one thread writes and another reads (LightKit.h)
 	using LightKit::SameText;  // and the one case-blind compare
 
-	// the mod's own values in the advanced settings file (his rule 2026-10-10, Fade::Tuning; registered in main.cpp)
+	// the mod's own values in the advanced settings file (his rule, Fade::Tuning; registered in main.cpp)
 	inline std::atomic<float> gNearby{ 2800.0f };       // [Lights] NearbyDistance: Hand lights for - Everyone nearby
 	inline std::atomic<float> gGroundLightsOn{ 1.0f };  // [Vanilla and ENB] GroundLights
 
@@ -86,7 +86,7 @@ namespace Plugin
 	// (IsLightAffectingSurface, disableLights.cpp) lets such a light reach every surface instead of only the surfaces whose
 	// seven closest lights it was among when they were first counted. Our hand, held and travelling lights never pass through
 	// RE::Light, so they carry the mark themselves - without it they lit only actors with flicker prevention on (a user's
-	// report, 2026-10-04: "some magic doesn't work in 1st person")
+	// report: "some magic doesn't work in 1st person")
 	inline constexpr float kMovingLightMark = 4.0f;
 
 	// RE::Light's marks on a light it made: its name starts "RL" (a config's light, LightManager.cpp), and an enchantment
@@ -111,7 +111,7 @@ namespace Plugin
 	[[nodiscard]] bool IslShader();
 	namespace Isl = LightKit::Isl;
 
-	// 🔁 HIS WORD 2026-10-10: "relight casting light is not working ... please re add the enb and cs and vanilla versions but
+	// 🔁 HIS WORD: "relight casting light is not working ... please re add the enb and cs and vanilla versions but
 	// don't make them manually selectable, just like illuminated it will auto detect" - which lighting the game draws with,
 	// found at data load (HandLights.cpp, Illuminated's rule): Community Shaders' inverse square shader, else an ENB's settings
 	// in the game folder, else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
@@ -190,7 +190,7 @@ namespace Plugin
 	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
 	void                SetWardColour(int a_colour);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
-	// Illuminated's settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister mods")
+	// Illuminated's settings, ported (his "add everything from illuminated into relight ... sister mods")
 	// - never its lighting picks (his word: "Relight doesn't get vanilla or enb light just relight and the added features")
 	[[nodiscard]] int  DimInDaylight();  // 0 off, 1 a little, 2 more
 	void               SetDimInDaylight(int a_v);
@@ -229,7 +229,7 @@ namespace Plugin
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after);
 	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, int a_element = 0);
 	// what this pass gives every light of ours, for the lights another file scales (Held.cpp): the daylight factor (looked
-	// at every two seconds, main thread) and the color it draws (the light's own since the color picks left, 2026-10-09)
+	// at every two seconds, main thread) and the color it draws (the light's own since the color picks left)
 	[[nodiscard]] float       DaylightFactor();
 	[[nodiscard]] RE::NiColor DrawnColor(int a_element, const RE::NiColor& a_base);
 

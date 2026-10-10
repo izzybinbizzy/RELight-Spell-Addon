@@ -99,7 +99,7 @@ namespace Plugin
 			return element;
 		}
 
-		// ...and has it? Measured 2026-09-30 on a Bound Sword: some games it does (its "RL" light, fadeAmount 5, on the weapon),
+		// ...and has it? Measured on a Bound Sword: some games it does (its "RL" light, fadeAmount 5, on the weapon),
 		// others none at all (after a load, in a long session) - so the held line lights the weapon whenever that light is not
 		// there, in this view, and steps aside the frame it is
 		[[nodiscard]] bool ReLightOn(RE::NiAVObject* a_node)
@@ -213,8 +213,8 @@ namespace Plugin
 			return !keep;
 		});
 		// the same Brightness x daylight factor and color rules the brightness pass gives every other light of ours (the
-		// re-score's P5, 2026-10-08: held lights missed Dim in daylight and the element colors)
-		// 🔁 2026-10-10 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
+		// re-score's P5: held lights missed Dim in daylight and the element colors)
+		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
 		// made for inverse square lighting, is drawn plain - the house light the hand lights take (LightKit::PlainOf: fade x 1.14,
 		// the reach drawn at 178 / 133)
 		const bool  isl = IslShader();

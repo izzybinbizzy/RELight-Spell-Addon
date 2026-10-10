@@ -4,7 +4,7 @@
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
-// installer put down (his call, 2026-09-28 late night: no per-option brightness sliders). Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
+// installer put down (his call: no per-option brightness sliders). Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
 // the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit. The look is the shared
 // MenuStyle.h in warm spell-light gold, with this mod's glowing headings.
 
@@ -62,7 +62,7 @@ namespace Plugin
 			                                                                                        Page::kSettings;
 		}
 
-		// The look (his ask, 2026-09-23: "a cool ui design ... not too crazy, just a subtle glowy vibe"): warm spell-light
+		// The look (his ask: "a cool ui design ... not too crazy, just a subtle glowy vibe"): warm spell-light
 		// amber on the menu's own dark - headings on a soft glow that fades to the right with a thin lit underline, gold
 		// check marks and slider grips, frames a touch warmer when hovered. Scoped to our pages, so no other mod's changes.
 		constexpr ImGuiMCP::ImVec4 kGold{ 1.0f, 0.86f, 0.55f, 1.0f };
@@ -70,7 +70,7 @@ namespace Plugin
 		// every shown line goes through T(): Data\SKSE\Plugins\RelightSpellAddon\Translation.json (relightgen.py writes the English one)
 		using Translation::T;
 
-		// his call, 2026-09-27: as Illuminated does - when CS Light is loaded, say which of its options light the same
+		// his call: as Illuminated does - when CS Light is loaded, say which of its options light the same
 		// things a second time (the option names are CS Light's own installer's, spelling included)
 		// a printf line with three counts, for a widget that takes plain text
 		[[nodiscard]] std::string Fill3(const char* a_format, std::size_t a_a, std::size_t a_b, std::size_t a_c)
@@ -136,10 +136,10 @@ namespace Plugin
 		}
 
 		// the switches. Settings: the Spells download's own options, under its heading, in the build's menu order.
-		// Patches (his call, 2026-09-23): a heading per category in the build's order, and under it each author's mods
+		// Patches (his call): a heading per category in the build's order, and under it each author's mods
 		// the mods with no author group first, then each author's mods together under the author's name - by name within each.
-		// Weapons (his call, 2026-09-26: "handled just like the spells mod menu"): the same layout as Patches.
-		// A pack split across the downloads (his call, 2026-09-26) is several options with one id: one row, one switch.
+		// Weapons (his call: "handled just like the spells mod menu"): the same layout as Patches.
+		// A pack split across the downloads (his call) is several options with one id: one row, one switch.
 		void DrawSwitches(Page a_page)
 		{
 			auto&                           opts = Options();
@@ -158,13 +158,13 @@ namespace Plugin
 					return std::make_tuple(o.menu, !o.author.empty(), o.author, o.name);
 				});
 			}
-			// his call, 2026-09-26 (night-run answers): a pack's ONE switch shows on the Weapons page as well as Patches - the
+			// his call (night-run answers): a pack's ONE switch shows on the Weapons page as well as Patches - the
 			// same option, so flipping either flips both. At the bottom of the Weapons page, under its own heading.
 			std::size_t                     packsFrom = order.size();
 			std::unordered_set<std::size_t> withVanilla;  // packs shown under the first category's heading
 			if (a_page == Page::kWeapons) {
 				// the ids with a Weapons half, gathered once per draw (the same fix as the counts below - CodeRabbit's CWE-407
-				// read of line 211, 2026-10-06: a scan of every option for every row made the draw quadratic)
+				// read of line 211: a scan of every option for every row made the draw quadratic)
 				std::unordered_set<std::string_view> weaponIds;
 				for (const auto& m : opts) {
 					if (m.weapons) {
@@ -183,7 +183,7 @@ namespace Plugin
 					}
 				}
 				std::ranges::stable_sort(packs, {}, [&opts](std::size_t a_i) { return std::make_tuple(opts[a_i].author, opts[a_i].name); });
-				// his call, 2026-09-27: "Creation Club always stays with vanilla stuff" - its switch sits in the page's first
+				// his call: "Creation Club always stays with vanilla stuff" - its switch sits in the page's first
 				// category (Artifacts, Bound Weapons), not with the mod patches at the bottom
 				const auto  rest = std::ranges::stable_partition(packs, [&opts](std::size_t a_i) { return opts[a_i].name == "Creation Club"; });
 				std::size_t at = 0;
@@ -196,7 +196,7 @@ namespace Plugin
 				order.insert(order.end(), rest.begin(), rest.end());
 				packsFrom = order.size() - (packs.size() - ccCount);
 			}
-			// every file of a pack, counted once per draw (CodeRabbit deep scan 2026-10-06, CWE-407: a scan of every option
+			// every file of a pack, counted once per draw (CodeRabbit deep scan, CWE-407: a scan of every option
 			// for every row was quadratic in the number of installed data files)
 			std::unordered_map<std::string_view, std::pair<std::size_t, std::size_t>> counts;
 			for (const auto& m : opts) {
@@ -238,7 +238,7 @@ namespace Plugin
 					SaveSettings();
 					RehandSoon();
 				}
-				if (!o.desc.empty()) {  // his call, 2026-09-26: a broad word on what each switch lights
+				if (!o.desc.empty()) {  // his call: a broad word on what each switch lights
 					ImGuiMCP::SetItemTooltip("%s", T(o.desc.c_str()));
 				}
 				const auto [lit, heldOut] = counts[o.id];  // every file of a pack
@@ -258,7 +258,7 @@ namespace Plugin
 		}
 
 		// ------------------------------------------------------------------ the player's own presets, one set per lighting
-		// HIS WORD 2026-10-10 (Illuminated's list, synced): "any presets users make need to be version dependant so they can have
+		// HIS WORD (Illuminated's list, synced): "any presets users make need to be version dependant so they can have
 		// presets per version if they switch to say, enb to community shaders mid save." Presets.ini beside the data files,
 		// a section per preset "[<lighting>|<name>]"; the menu shows the presets of the lighting found now (HandLights.cpp).
 		constexpr const char* kPresetsPath = "Data/SKSE/Plugins/RelightSpellAddon/Presets.ini";
@@ -423,9 +423,9 @@ namespace Plugin
 				T("How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
 				  "that is the slider above."));
 
-			// ---- Illuminated's light settings, ported 2026-10-08 (his "add everything from illuminated into relight ... sister
+			// Illuminated's light settings, ported (his "add everything from illuminated into relight ... sister
 			// mods"); RE::Light lights the objects, these are what it has no setting for
-			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is). 🔁 HIS WORD 2026-10-10
+			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is). 🔁 HIS WORD
 			// (Illuminated's list, synced here): "remove performance preset, only subtle default and cinematic(change dramatic to
 			// cinematic)", and the player's own presets kept per lighting
 			struct Preset
@@ -482,7 +482,7 @@ namespace Plugin
 			ImGuiMCP::SetItemTooltip("%s",
 				T("A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding."));
 
-			// his call, 2026-09-26: "a toggle for weapon lights just like hand lights and right under it"
+			// his call: "a toggle for weapon lights just like hand lights and right under it"
 			bool weapons = WeaponLightsOn();
 			if (ImGuiMCP::Checkbox(T("Weapon lights"), &weapons)) {
 				SetWeaponLightsOn(weapons);
@@ -530,7 +530,7 @@ namespace Plugin
 
 			DrawSwitches(Page::kSettings);
 
-			// his word 2026-10-09: "big fights can be called performance and be at the bottom of lights menu"
+			// his word: "big fights can be called performance and be at the bottom of lights menu"
 			GlowHeading("Performance", Icon::kBulb);
 			const char* const kWho[] = { T("Everyone"), T("Everyone nearby"), T("Player and followers"), T("Player only") };
 			int               who = HandLightsFor();
@@ -543,7 +543,7 @@ namespace Plugin
 				  "out casters farther than about forty paces from you. Reaches the next spell they ready."));
 		}
 
-		// his ask, 2026-09-23: the mod patches on a page of their own
+		// his ask: the mod patches on a page of their own
 		void __stdcall RenderPatches()
 		{
 			const GlowStyle style;
@@ -551,7 +551,7 @@ namespace Plugin
 			DrawSwitches(Page::kPatches);
 		}
 
-		// his ask, 2026-09-26: the weapon options on a page of their own, laid out as the Patches page
+		// his ask: the weapon options on a page of their own, laid out as the Patches page
 		void __stdcall RenderWeapons()
 		{
 			const GlowStyle style;

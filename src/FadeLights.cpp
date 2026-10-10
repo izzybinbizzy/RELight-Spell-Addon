@@ -585,7 +585,7 @@ namespace Fade
 				}
 				ApplyLight(sp.casterLight, h);
 			}
-			// the reticle's color (his ask 2026-10-10: "change color with spells"): the spell's own light as it is before any
+			// the reticle's color (his ask: "change color with spells"): the spell's own light as it is before any
 			// cooling - the casting light, else the brightest light at the hand; none: magicka blue
 			RE::NiPointLight* own = sp.casterLight;
 			float             best = 0.0f;
@@ -794,7 +794,7 @@ namespace Fade
 		Sweep();
 		gActiveHands = static_cast<std::size_t>(std::ranges::count_if(gHands, [](const auto& kv) { return kv.second.active; }));
 		PublishHud(s);
-		Items::Apply();  // last: an item's own choice wins over the fading (his order 2026-10-10, FadeItems.cpp)
+		Items::Apply();  // last: an item's own choice wins over the fading (his order, FadeItems.cpp)
 	}
 
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
