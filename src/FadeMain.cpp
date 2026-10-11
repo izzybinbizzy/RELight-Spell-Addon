@@ -144,6 +144,7 @@ namespace Fade
 		Register("HUD", "CrossfireBarDrop", 70.0f, -400.0f, 600.0f, "how far below the crosshair the Crossfire bar sits, in pixels", gBarDrop);
 		Register("HUD", "EmptyPulseSpeed", 2.6f, 0.5f, 10.0f, "how fast the reticle breathes while you are out of magicka", gEmptyPulseSpeed);
 		Register("HUD", "FullPulseSeconds", 0.9f, 0.2f, 3.0f, "how long the reticle's swell lasts when your magicka is full again, in seconds", gFullPulseSeconds);
+		Register("HUD", "ReticleHoldSeconds", 1.0f, 0.2f, 5.0f, "how long the reticle stays at empty or full before it fades out, in seconds", gReticleHold);
 		Tuning::Load();
 		{
 			auto s = Config();

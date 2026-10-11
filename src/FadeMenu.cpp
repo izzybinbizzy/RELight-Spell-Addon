@@ -598,6 +598,51 @@ namespace Fade
 			}
 		};
 
+		// WHEN THE RETICLE SHOWS (his rule 2026-10-11: "our reticle should only show up when magicka is being spent. it can fade
+		// in when magicka is being spent and stay for a second after 0 but disappear if magicka doesn't return like it does
+		// normally ... and when magicka is full it stays for a second to show the pulse of magicka being full then fades out
+		// until being used again"). A drop arms it; while armed it shows, through the game's own pause before magicka comes
+		// back; at full it stays the hold (at least the full swell) and goes; at empty it stays the hold, hides, and comes back
+		// if magicka starts to return; magicka that does not move for the game's pause plus the hold (a poison, a drain)
+		// ends it. Magicka coming back without a spend never shows it.
+		struct Spend
+		{
+			float  last{ -1.0f };      // last frame's fraction, -1 = none yet
+			double movedAt{ -100.0 };  // when it last went down or up
+			bool   armed{ false };
+
+			void Reset() noexcept { *this = Spend{}; }
+
+			bool Shown(float a_fill, double a_now, float a_regenWait) noexcept
+			{
+				constexpr float kEps = 1e-5f;
+				if (last >= 0.0f) {
+					const float d = a_fill - last;
+					if (d < -kEps) {
+						armed = true;  // spent: in
+						movedAt = a_now;
+					} else if (d > kEps && armed) {
+						movedAt = a_now;  // coming back: stays
+					}
+				}
+				last = a_fill;
+				if (!armed) {
+					return false;
+				}
+				const double still = a_now - movedAt;
+				const double hold = Tuning::Get(Tuning::gReticleHold);
+				if (a_fill >= 0.995f) {
+					armed = still <= (std::max)(hold, static_cast<double>(Tuning::Get(Tuning::gFullPulseSeconds)));
+					return armed;
+				}
+				if (still > a_regenWait + hold) {
+					armed = false;  // it did not come back as it normally does
+					return false;
+				}
+				return a_fill > 0.02f || still <= hold;  // empty: the hold, then hidden until it starts to come back
+			}
+		};
+
 		// a spell's sigil for the Crossfire bar (Crossfire's DrawSigil): a ring in the spell's color with its element's mark
 		void DrawSigil(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_r, int a_element, ImGuiMCP::ImU32 a_color, float a_alpha)
 		{
@@ -655,18 +700,25 @@ namespace Fade
 			static std::array<ImVec4, 2> tint{ ImVec4{ 0.32f, 0.58f, 1.0f, 1.0f }, ImVec4{ 0.32f, 0.58f, 1.0f, 1.0f } };
 			static std::array<int, 2>    element{ -1, -1 }, school{ -1, -1 }, skill{ 0, 0 };
 			static std::array<Pulse, 2>  pulse{};
+			static std::array<Spend, 2>  spend{};
 			const auto                   hud = Hud();
 			auto*                        io = GetIO();
 			if (!io) {
 				return;
 			}
+			const double        clock = GetTime();
 			std::array<bool, 2> here{ false, false };
-			if (hud.reticle && hud.drawn && !HideHud()) {
-				for (std::size_t i = 0; i < 2; ++i) {
-					const auto& h = hud.hands[i];
-					if (!h.shown || !h.spell) {
-						continue;  // a weapon's charge is the gems'
-					}
+			const bool          on = hud.reticle && hud.drawn;
+			const bool          hidden = HideHud();  // once per pass: both hands see the same menu state (CodeRabbit, Illuminated #9)
+			for (std::size_t i = 0; i < 2; ++i) {
+				const auto& h = hud.hands[i];
+				if (!on || !h.shown || !h.spell) {
+					spend[i].Reset();  // a weapon's charge is the gems'; hands down or a new spell starts unarmed
+					continue;
+				}
+				// tracked even while a menu hides it, so a menu never looks like a spend
+				const bool spent = spend[i].Shown(std::clamp(h.fraction, 0.0f, 1.0f), clock, hud.regenWait);
+				if (!hidden && spent) {
 					here[i] = true;
 					fill[i] = std::clamp(h.fraction, 0.0f, 1.0f);
 					tint[i] = ImVec4{ h.color.r, h.color.g, h.color.b, 1.0f };

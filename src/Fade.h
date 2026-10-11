@@ -174,7 +174,8 @@ namespace Fade
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
-		float                  low{ 0.15f };  // the sputter point: under it the reticle turns ember
+		float                  low{ 0.15f };       // the sputter point: under it the reticle turns ember
+		float                  regenWait{ 3.0f };  // the game's fMagickaRegenDelay: how long magicka normally waits before it comes back
 		std::array<HudHand, 2> hands{};
 	};
 	[[nodiscard]] HudState Hud();
@@ -210,6 +211,7 @@ namespace Fade
 		inline std::atomic<float>  gMinReach{ 0.35f }, gPulseSeconds{ 0.30f }, gFlareSeconds{ 0.70f }, gFallSeconds{ 0.15f }, gRiseSeconds{ 0.35f };
 		inline std::atomic<float>  gGemDistance{ 215.0f }, gGemHeight{ 62.0f }, gReticleGap{ 30.0f }, gReticleLength{ 56.0f };
 		inline std::atomic<float>  gBarWidth{ 300.0f }, gBarDrop{ 70.0f }, gEmptyPulseSpeed{ 2.6f }, gFullPulseSeconds{ 0.9f };
+		inline std::atomic<float>  gReticleHold{ 1.0f };
 		[[nodiscard]] inline float Get(const std::atomic<float>& a_v) noexcept { return a_v.load(std::memory_order_relaxed); }
 	}
 

@@ -3,10 +3,12 @@
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
-// touched. Settings: Brightness, Reach, lights off while sneaking, hand lights, weapon lights, and a switch per option the
-// installer put down (his call: no per-option brightness sliders). Patches: a switch per mod patch. Weapons: a switch per weapon option, laid out as
-// the Patches page is. Every change is saved at once (Settings.cpp) and reaches lights already lit. The look is the shared
-// MenuStyle.h in warm spell-light gold, with this mod's glowing headings.
+// touched, laid out as Illuminated's (his word 2026-10-11): Lights (the lighting found, presets, Brightness, Reach, daylight,
+// sneaking, hand and weapon lights, the ward color, automatic lights, Performance), Spell & Enchantment Art (a switch per
+// weapon / enchantment option) and Configs (a switch per spell option, then each mod patch by category) - no per-option
+// brightness sliders (his call). The fading module adds Lights by Item, HUD and Fading after them. Every change is saved at
+// once (Settings.cpp) and reaches lights already lit. The look is the shared MenuStyle.h in warm spell-light gold, with this
+// mod's glowing headings.
 
 #define WIN32_LEAN_AND_MEAN  // NOMINMAX is set for every file in xmake.lua (the fading module needs it too)
 #include "Plugin.h"
@@ -112,7 +114,7 @@ namespace Plugin
 		};
 		namespace Icon = MenuStyle::Icon;
 
-		// a heading on a soft glow; a_icon 0 for none (the Patches and Weapons pages' category headings)
+		// a heading on a soft glow; a_icon 0 for none (the Configs and Spell & Enchantment Art pages' category headings)
 		void GlowHeading(const char* a_text, unsigned a_icon = 0)
 		{
 			using namespace ImGuiMCP;
@@ -160,8 +162,8 @@ namespace Plugin
 					return std::make_tuple(o.menu, !o.author.empty(), o.author, o.name);
 				});
 			}
-			// his call (night-run answers): a pack's ONE switch shows on the Weapons page as well as Patches - the
-			// same option, so flipping either flips both. At the bottom of the Weapons page, under its own heading.
+			// his call (night-run answers): a pack's ONE switch shows on the Spell & Enchantment Art page as well as Configs - the
+			// same option, so flipping either flips both. At the bottom of that page, under its own heading.
 			std::size_t                     packsFrom = order.size();
 			std::unordered_set<std::size_t> withVanilla;  // packs shown under the first category's heading
 			if (a_page == Page::kWeapons) {
@@ -212,11 +214,13 @@ namespace Plugin
 			for (std::size_t n = 0; n < order.size(); ++n) {
 				const auto               i = order[n];
 				auto&                    o = opts[i];
-				static const std::string kPackHeading = T("Mod Patches (also on the Patches page)");
+				static const std::string kPackHeading = T("Mod Patches (also on the Configs page)");
+				// the Configs page's own switches sit under Illuminated's heading for them, "Spells and Effects"
+				static const std::string kSpellsHeading = T("Spells and Effects");
 				const auto&              heading = n >= packsFrom          ? kPackHeading :
 				                                   withVanilla.contains(i) ? shown :
 				                                   grouped                 ? (o.category.empty() ? o.download : o.category) :
-				                                                             o.download;
+				                                                             kSpellsHeading;
 				if (heading != shown) {
 					shown = heading;
 					author.clear();
@@ -336,7 +340,8 @@ namespace Plugin
 			}
 		}
 
-		void DrawUserPresets()
+		// the Version heading's one line (Illuminated's DrawVersion): the lighting found, never picked (his word)
+		void DrawVersion()
 		{
 			const std::string lighting = LightingName(LightingFound());
 			ImGuiMCP::Text("%s", T("Lighting"));
@@ -344,7 +349,12 @@ namespace Plugin
 			ImGuiMCP::TextColored(kGold, T("Automatic - %s"), T(lighting.c_str()));
 			ImGuiMCP::SetItemTooltip("%s", T("Found by itself when the game starts. Off Community Shaders the hand lights are drawn for the "
 											 "game's own lighting and light the ground. Your presets are kept apart for each lighting."));
-			static char name[48]{};
+		}
+
+		void DrawUserPresets()
+		{
+			const std::string lighting = LightingName(LightingFound());
+			static char       name[48]{};
 			ImGuiMCP::SetNextItemWidth(220.0f);
 			ImGuiMCP::InputTextWithHint("##presetName", T("Name a preset"), name, sizeof(name));
 			ImGuiMCP::SameLine();
@@ -391,21 +401,56 @@ namespace Plugin
 			}
 		}
 
-		void __stdcall RenderSettings()
+		// 🗂 HIS WORD 2026-10-11: "I also want relights skse menu updated to be similar to illuminated in the layout. I think relight
+		// is still using the older layout" - the pages are Illuminated's now: Lights (Version, Presets, Light Strength, While
+		// Sneaking, Hands and Weapons, Sprays Bolts and Wards, Spells Without a Patch, Other Light Mods, Performance last), Spell &
+		// Enchantment Art (the weapon and enchantment switches - weapon enchantments first, his Illuminated word), Configs (Spells
+		// and Effects, then the mod patches by category), and the fading module's Lights by Item, HUD and Fading after them.
+		// RELight has no lighting pick and no art pick in the menu (the installer asks those), so those rows are not here.
+		void __stdcall RenderLights()
 		{
 			const GlowStyle style;
+			GlowHeading("Version", Icon::kBulb);
+			DrawVersion();
 #ifdef FADE_DEBUG_PAGE
 			// the status card: only in the TESTING DLL (his word: "only in testing dll")
 			MenuStyle::Status(true, Fill3(T("%zu data file(s), %zu held weapon light(s) right now, %zu spell(s) with a hand light"), DataFiles(),
 										LiveHeldLights(), HandEffects())
 										.c_str());
 #endif
-			if (const auto* cs = CSLightLoaded()) {
-				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
-				ImGuiMCP::TextWrapped("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
-				ImGuiMCP::Separator();
+			GlowHeading("Presets", Icon::kBulb);
+			// Illuminated's presets, the same three (his word: "remove performance preset, only subtle default and cinematic"):
+			// one click sets the two sliders and the light budget (-1 leaves the budget as it is), and the player's own presets
+			// are kept per lighting
+			struct Preset
+			{
+				const char* name;
+				const char* tip;
+				int         brightness, reach, hands;
+			};
+			const Preset presets[] = {
+				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1 },
+				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0 },
+				{ T("Cinematic"), T("Brighter lights that reach further."), 150, 120, -1 },
+			};
+			for (std::size_t i = 0; i < std::size(presets); ++i) {
+				const auto& p = presets[i];
+				if (i) {
+					ImGuiMCP::SameLine();
+				}
+				if (ImGuiMCP::Button(p.name)) {
+					SetBrightnessPercent(p.brightness);
+					SetReachPercent(p.reach);
+					if (p.hands >= 0) {
+						SetHandLightsFor(p.hands);
+					}
+					SaveSettings();
+				}
+				ImGuiMCP::SetItemTooltip("%s", p.tip);
 			}
-			GlowHeading("Lights", Icon::kBulb);
+			DrawUserPresets();
+
+			GlowHeading("Light Strength", Icon::kBulb);
 			int b = BrightnessPercent();
 			if (ImGuiMCP::SliderInt(T("Brightness"), &b, 10, 200, "%d%%")) {
 				SetBrightnessPercent(b);
@@ -430,35 +475,6 @@ namespace Plugin
 
 			// Illuminated's light settings, ported (his "add everything from illuminated into relight ... sister
 			// mods"); RE::Light lights the objects, these are what it has no setting for
-			// presets: one click sets the two sliders and the light budget (-1 leaves the budget as it is). 🔁 HIS WORD
-			// (Illuminated's list, synced here): "remove performance preset, only subtle default and cinematic(change dramatic to
-			// cinematic)", and the player's own presets kept per lighting
-			struct Preset
-			{
-				const char* name;
-				const char* tip;
-				int         brightness, reach, hands;
-			};
-			const Preset presets[] = {
-				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1 },
-				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0 },
-				{ T("Cinematic"), T("Brighter lights that reach further."), 150, 120, -1 },
-			};
-			ImGuiMCP::TextDisabled("%s", T("Presets:"));
-			for (const auto& p : presets) {
-				ImGuiMCP::SameLine();
-				if (ImGuiMCP::Button(p.name)) {
-					SetBrightnessPercent(p.brightness);
-					SetReachPercent(p.reach);
-					if (p.hands >= 0) {
-						SetHandLightsFor(p.hands);
-					}
-					SaveSettings();
-				}
-				ImGuiMCP::SetItemTooltip("%s", p.tip);
-			}
-			DrawUserPresets();
-
 			const char* const kDaylight[] = { T("Off"), T("A little"), T("More") };
 			int               day = DimInDaylight();
 			if (ImGuiMCP::Combo(T("Dim in daylight"), &day, kDaylight, 3)) {
@@ -469,6 +485,7 @@ namespace Plugin
 				T("This mod's lights are dimmer outdoors by day and in brightly lit rooms, where a bright light looks out of place, and at "
 				  "full strength at night and in the dark. Follows the time of day as it passes."));
 
+			GlowHeading("While Sneaking", Icon::kBulb);
 			bool sneak = SneakOn();
 			if (ImGuiMCP::Checkbox(T("Lights off while sneaking"), &sneak)) {
 				SetSneakOn(sneak);
@@ -478,6 +495,7 @@ namespace Plugin
 				T("While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
 				  "hazards - and the ones already lit go out. They come back when you stand up."));
 
+			GlowHeading("Hands and Weapons", Icon::kBulb);
 			bool hands = HandLightsOn();
 			if (ImGuiMCP::Checkbox(T("Hand lights"), &hands)) {
 				SetHandLightsOn(hands);
@@ -496,22 +514,10 @@ namespace Plugin
 			}
 			ImGuiMCP::SetItemTooltip("%s",
 				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
-				  "once; the switches on the Weapons page choose among them."));
+				  "once; the switches on the Spell & Enchantment Art page choose among them."));
 
-			GlowHeading("Spells Without a Patch", Icon::kBulb);
-			bool autoOn = AutoLightsOn();
-			if (ImGuiMCP::Checkbox(T("Light spells this mod has no patch for"), &autoOn)) {
-				SetAutoLightsOn(autoOn);
-				SaveSettings();
-				RehandSoon();
-			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
-				  "gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
-			ImGuiMCP::SameLine();
-			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
-
-			GlowHeading("Wards", Icon::kShield);
+			// Illuminated's "Sprays Bolts and Wards" heading: RELight's sprays and bolts are RE::Light's, its wards' color is ours
+			GlowHeading("Sprays, Bolts and Wards", Icon::kShield);
 			if (WardsSteppedDown()) {
 				ImGuiMCP::TextDisabled("%s", T("Dynamic Wards is installed - it colors the wards, so this setting stands aside."));
 			} else {
@@ -533,7 +539,25 @@ namespace Plugin
 					  "Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
 			}
 
-			DrawSwitches(Page::kSettings);
+			GlowHeading("Spells Without a Patch", Icon::kBulb);
+			bool autoOn = AutoLightsOn();
+			if (ImGuiMCP::Checkbox(T("Light spells this mod has no patch for"), &autoOn)) {
+				SetAutoLightsOn(autoOn);
+				SaveSettings();
+				RehandSoon();
+			}
+			ImGuiMCP::SetItemTooltip("%s",
+				T("RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
+				  "gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
+			ImGuiMCP::SameLine();
+			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
+
+			// Illuminated's "Other Light Mods" heading: CS Light loaded is one warning line, its how-to in the hover text
+			if (const auto* cs = CSLightLoaded()) {
+				GlowHeading("Other Light Mods", Icon::kBulb);
+				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
+				ImGuiMCP::SetItemTooltip("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
+			}
 
 			// his word: "big fights can be called performance and be at the bottom of lights menu"
 			GlowHeading("Performance", Icon::kBulb);
@@ -548,19 +572,23 @@ namespace Plugin
 				  "out casters farther than about forty paces from you. Reaches the next spell they ready."));
 		}
 
-		// his ask: the mod patches on a page of their own
-		void __stdcall RenderPatches()
+		// Illuminated's Configs page: the spells' own switches under "Spells and Effects", then each mod patch by category (his
+		// earlier ask: the patches by category, each author's mods together under the author)
+		void __stdcall RenderConfigs()
 		{
 			const GlowStyle style;
-			MenuStyle::Note(T("Lights for other mods' spells and weapons. Each switch only matters if you have that mod."));
+			DrawSwitches(Page::kSettings);
 			DrawSwitches(Page::kPatches);
 		}
 
-		// his ask: the weapon options on a page of their own, laid out as the Patches page
-		void __stdcall RenderWeapons()
+		// Illuminated's Spell & Enchantment Art page (his word there: "weapon enchantments need to go in spell art menu above
+		// everything else"): the weapon and enchantment switches, laid out as before
+		void __stdcall RenderArt()
 		{
 			const GlowStyle style;
-			MenuStyle::Status(WeaponLightsOn(), WeaponLightsOn() ? T("Lights for weapons: enchantments, bound weapons and artifacts.") : T("Weapon lights is off on the Settings page, so every light here is out."));
+			if (!WeaponLightsOn()) {
+				MenuStyle::Status(false, T("Weapon lights is off on the Lights page, so every light here is out."));
+			}
 			DrawSwitches(Page::kWeapons);
 		}
 
@@ -594,10 +622,11 @@ namespace Plugin
 		}
 		MenuStyle::gTheme = MenuStyle::MakeTheme(0xFFD58A);  // warm spell-light gold
 		SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
-		SKSEMenuFramework::AddSectionItem(T("Settings"), RenderSettings);
-		SKSEMenuFramework::AddSectionItem(T("Patches"), RenderPatches);
-		SKSEMenuFramework::AddSectionItem(T("Weapons"), RenderWeapons);
-		SKSE::log::info("settings page added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
+		// Illuminated's order (his word 2026-10-11); the fading module adds Lights by Item, HUD and Fading after these
+		SKSEMenuFramework::AddSectionItem(T("Lights"), RenderLights);
+		SKSEMenuFramework::AddSectionItem(T("Spell & Enchantment Art"), RenderArt);
+		SKSEMenuFramework::AddSectionItem(T("Configs"), RenderConfigs);
+		SKSE::log::info("settings pages added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 
 	void RegisterMenuTail()
