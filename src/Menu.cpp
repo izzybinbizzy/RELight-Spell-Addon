@@ -84,16 +84,21 @@ namespace Plugin
 		}
 #endif
 
-		[[nodiscard]] const char* CSLightLoaded()
+		// looked up ONCE on the main thread when the pages are added (RegisterMenu), as Illuminated does - the menu draws on
+		// its own thread and never touches the data handler (CodeRabbit, RELight #11)
+		const char* gCSLight = nullptr;
+
+		void FindCSLight()
 		{
 			auto* dh = RE::TESDataHandler::GetSingleton();
 			for (const auto* name : { "CS Light.esp", "CS Light.esl" }) {
 				if (dh && (dh->LookupLoadedModByName(name) || dh->LookupLoadedLightModByName(name))) {
-					return name;
+					gCSLight = name;
 				}
 			}
-			return nullptr;
 		}
+
+		[[nodiscard]] const char* CSLightLoaded() { return gCSLight; }
 
 		class GlowStyle
 		{
@@ -615,6 +620,7 @@ namespace Plugin
 
 	void RegisterMenu()
 	{
+		FindCSLight();
 		SKSE::log::info("{}", Translation::Load("Data/SKSE/Plugins/RelightSpellAddon/Translation.json"));
 		if (!SKSEMenuFramework::IsInstalled()) {
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");

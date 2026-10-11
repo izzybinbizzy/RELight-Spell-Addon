@@ -709,7 +709,7 @@ namespace Fade
 			const double        clock = GetTime();
 			std::array<bool, 2> here{ false, false };
 			const bool          on = hud.reticle && hud.drawn;
-			const bool          hidden = HideHud();  // once per pass: both hands see the same menu state (CodeRabbit, Illuminated #9)
+			const bool          hidden = on && HideHud();  // once per pass, only when drawn: both hands see one menu state (CodeRabbit, Illuminated #9 / RELight #11)
 			for (std::size_t i = 0; i < 2; ++i) {
 				const auto& h = hud.hands[i];
 				if (!on || !h.shown || !h.spell) {
