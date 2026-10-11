@@ -633,6 +633,18 @@ namespace Fade
 			hud.gemOpacity = a_s.hudGemOpacity;
 			hud.gemPercent = a_s.hudGemPercent;
 			hud.low = a_s.tuning.sputterBelow;
+			// the reticle stays through the game's own pause before magicka comes back (his rule: it goes only when magicka
+			// "doesn't return like it does normally"); a mod may change the setting, so it is read each frame
+			// looked up again until found (CodeRabbit, Illuminated #9: a lookup before the settings exist must not be kept)
+			static RE::Setting* regenDelay = nullptr;
+			if (!regenDelay) {
+				if (auto* gmst = RE::GameSettingCollection::GetSingleton()) {
+					regenDelay = gmst->GetSetting("fMagickaRegenDelay");
+				}
+			}
+			if (regenDelay && std::isfinite(regenDelay->GetFloat())) {
+				hud.regenWait = std::clamp(regenDelay->GetFloat(), 0.0f, 30.0f);
+			}
 			auto*       player = RE::PlayerCharacter::GetSingleton();
 			const auto* state = player ? player->AsActorState() : nullptr;
 			hud.drawn = state && state->IsWeaponDrawn();
