@@ -32,6 +32,9 @@ namespace Plugin
 			RE::NiPointer<RE::NiPointLight> light;
 			RE::NiPointer<RE::BSLight>      bs;
 			bool                            seen{ false };
+			RE::NiPointer<RE::NiAVObject>   anchor;  // the magic node it sits at: the third-person one, also in first person
+			bool                            handsDown{ false };  // dropped because the hands went down: the game's light stays hidden
+			RE::NiPointer<RE::NiAVObject>   magic;   // the skeleton's magic node above the casting light, in the light's own body
 		};
 
 		std::unordered_map<std::uint64_t, Twin> gTwins;  // main thread only; key = actor form id << 1 | hand
@@ -44,7 +47,7 @@ namespace Plugin
 			if (a_twin.light && a_twin.light->parent) {
 				a_twin.light->parent->DetachChild(a_twin.light.get());
 			}
-			if (a_twin.source && !WantedDark(a_twin.source.get())) {
+			if (a_twin.source && !a_twin.handsDown && !WantedDark(a_twin.source.get())) {
 				a_twin.source->SetAppCulled(false);  // the casting light shows again
 			}
 			a_twin = {};
@@ -78,8 +81,36 @@ namespace Plugin
 				return false;
 			}
 			a_twin = { RE::NiPointer<RE::NiPointLight>(a_source), RE::NiPointer<RE::NiNode>(a_hand), RE::NiPointer<RE::NiPointLight>(light),
-				RE::NiPointer<RE::BSLight>(bs), true };
+				RE::NiPointer<RE::BSLight>(bs), true, {}, false, {} };
 			return true;
+		}
+
+		// The skeleton's magic node above a casting light, in the light's own body. Most casting lights hang right under it, but a
+		// casting art can carry its own light node - measured 2026-10-12 by the spell sweep (`Misc\Build work\relight spell sweep
+		// 2026-10-12\`): Wall of Storms, Septimus Vanish, the storm atronach's bolts hang theirs at MagicNode > MagicRight >
+		// BillboardHelperHACK > AttachLight, a name the third-person body does not have in first person, so the twin stayed
+		// under the first-person arms and lit nothing. The magic node is in both bodies.
+		RE::NiAVObject* MagicNodeAbove(RE::NiAVObject* a_light)
+		{
+			for (auto* node = a_light ? a_light->parent : nullptr; node; node = node->parent) {
+				if (std::string_view(node->name.c_str()).find("MagicNode") != std::string_view::npos) {
+					return node;
+				}
+			}
+			return a_light ? a_light->parent : nullptr;  // no magic node above it: the node it hangs on, as before
+		}
+
+		// where a light sits in the frame of a node above it (the local transforms between them, composed)
+		RE::NiPoint3 OffsetUnder(const RE::NiAVObject* a_node, const RE::NiAVObject* a_light)
+		{
+			RE::NiPoint3 at{};
+			for (const auto* obj = a_light; obj && obj != a_node; obj = obj->parent) {
+				// a billboard node is turned to face the camera every frame: its turn is the view's, not the hand's (the code review
+				// of 2026-10-12), so only its offset counts - else the lit spot would swing with the camera
+				const bool billboard = std::string_view(obj->name.c_str()).find("Billboard") != std::string_view::npos;
+				at = billboard ? at + obj->local.translate : obj->local * at;
+			}
+			return at;
 		}
 
 		// this frame's numbers of the casting light onto the twin, the twin at the magic node's place
@@ -87,7 +118,7 @@ namespace Plugin
 		{
 			auto*       light = a_twin.light.get();
 			auto*       source = a_twin.source.get();
-			const auto* magic = source->parent;
+			const auto* anchor = a_twin.anchor ? a_twin.anchor.get() : source->parent;
 			auto&       data = light->GetLightRuntimeData();
 			const float radius = data.radius.x;
 			data = source->GetLightRuntimeData();
@@ -97,13 +128,41 @@ namespace Plugin
 			if (WantedDark(source)) {
 				data.fade = 0.0f;
 			}
-			light->local = magic ? magic->local : RE::NiTransform{};
-			light->local.translate += source->local.translate;
+			// the casting light's place under its own magic node, put under the anchor (the third-person magic node of that name)
+			light->local = anchor ? anchor->local : RE::NiTransform{};
+			light->local.translate = light->local * OffsetUnder(a_twin.magic.get(), source);
 			RE::NiUpdateData update{};
 			light->Update(update);
 			if (!source->GetAppCulled()) {
 				source->SetAppCulled(true);
 			}
+		}
+
+		// In first person the casting light sits under the FIRST-person skeleton's magic node, and on ENB a light hung there lights
+		// nothing in the world - Dynamic Wards measured it (DomeLights.cpp TickHands: the ground 45.6 / 44.2 / 45.4 with the light
+		// on / off / on under the first-person nodes, 117.9 / 57.5 / 117.9 under the third-person ones). So the twin hangs at the
+		// THIRD-person body's magic node of the same name (hidden in first person, it still moves with the actor); a node that is
+		// already in the third-person body is kept.
+		RE::NiAVObject* ThirdPersonTwin(RE::Actor* a_actor, RE::NiAVObject* a_magic)
+		{
+			// only a skeleton's magic node is looked up by name: it is unique per hand, where a generic node name (an art's
+			// "AttachLight") would find the first of its kind - maybe the other hand's
+			if (!a_magic || std::string_view(a_magic->name.c_str()).find("MagicNode") == std::string_view::npos) {
+				return a_magic;
+			}
+			auto* body = a_actor->Get3D(false);
+			if (!body) {
+				return a_magic;
+			}
+			const auto* root = a_magic;
+			while (root->parent && root != body) {
+				root = root->parent;
+			}
+			if (root == body) {
+				return a_magic;  // already in the third-person body (third person, and every NPC): no search
+			}
+			auto* same = body->GetObjectByName(a_magic->name);
+			return same && same->parent ? same : a_magic;
 		}
 
 		void Visit(RE::Actor* a_actor, RE::ShadowSceneNode* a_scene)
@@ -112,16 +171,30 @@ namespace Plugin
 				return;
 			}
 			const auto& casters = a_actor->GetActorRuntimeData().magicCasters;
+			// Measured 2026-10-12 (his "There is a light thats not going away", then "Light is on the ground"; a probe build's log,
+			// `Misc\Build work\hang hunt 2026-10-12\`): in THIRD person the game keeps the casting light on the hand, in the scene,
+			// after the spell is put away - until it is unequipped - and only keeps it hidden; the twin copied it on, lighting the
+			// ground with no spell readied (in first person the game takes the light away at once). So a twin stands only while
+			// the hands are readied, and one dropped because they went down leaves the game's light hidden as the game keeps it.
+			const auto* state = a_actor->AsActorState();
+			const bool  readied = state && state->IsWeaponDrawn();
 			for (std::uint64_t hand = 0; hand < 2; ++hand) {
 				const auto key = (static_cast<std::uint64_t>(a_actor->GetFormID()) << 1) | hand;
 				auto*      caster = casters[hand];
 				auto*      bs = caster ? caster->light.get() : nullptr;
 				auto*      source = bs ? netimmerse_cast<RE::NiPointLight*>(bs->light.get()) : nullptr;
-				auto*      magic = source ? source->parent : nullptr;
-				auto*      parent = magic ? magic->parent : nullptr;
 				const auto it = gTwins.find(key);
+				if (!source || !readied) {
+					if (!readied && it != gTwins.end()) {
+						it->second.handsDown = true;
+					}
+					continue;  // no casting light in this hand, or the hands are down: a twin it had is dropped with the unseen ones
+				}
+				auto* magic = MagicNodeAbove(source);
+				auto* anchor = ThirdPersonTwin(a_actor, magic);
+				auto* parent = anchor ? anchor->parent : nullptr;
 				if (!parent) {
-					continue;  // no casting light in this hand: a twin it had is dropped with the unseen ones
+					continue;
 				}
 				auto& twin = it != gTwins.end() ? it->second : gTwins[key];
 				if (twin.light && (twin.source.get() != source || twin.parent.get() != parent)) {
@@ -129,6 +202,12 @@ namespace Plugin
 				}
 				if (!twin.light && !Make(twin, source, parent, a_scene)) {
 					continue;
+				}
+				if (twin.anchor.get() != anchor) {
+					twin.anchor.reset(anchor);
+				}
+				if (twin.magic.get() != magic) {
+					twin.magic.reset(magic);
 				}
 				twin.seen = true;
 				Follow(twin);
