@@ -32,9 +32,9 @@ namespace Plugin
 			RE::NiPointer<RE::NiPointLight> light;
 			RE::NiPointer<RE::BSLight>      bs;
 			bool                            seen{ false };
-			RE::NiPointer<RE::NiAVObject>   anchor;              // the magic node it sits at: the third-person one, also in first person
+			RE::NiPointer<RE::NiAVObject>   anchor;              // where it sits: magic's third-person counterpart (also in first person), or magic itself when there is none
 			bool                            handsDown{ false };  // dropped because the hands went down: the game's light stays hidden
-			RE::NiPointer<RE::NiAVObject>   magic;               // the skeleton's magic node above the casting light, in the light's own body
+			RE::NiPointer<RE::NiAVObject>   magic;               // the nearest node above the casting light whose name holds "MagicNode", or the light's own parent when none does
 		};
 
 		std::unordered_map<std::uint64_t, Twin> gTwins;  // main thread only; key = actor form id << 1 | hand
