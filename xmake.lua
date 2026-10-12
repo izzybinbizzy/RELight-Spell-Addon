@@ -39,7 +39,6 @@ target("RelightSpellAddon", function()
     add_includedirs("src")
     set_pcxxheader("src/PCH.h")
     -- every warning in OUR files is an error (his C++ standard, 2026-10-07: "/W4 /WX ... fix all warnings"); the
-    -- headers included with <...> (CommonLib, the standard library) are external and quiet
+    -- packages' headers are external (quiet), CommonLib and the standard library build warning-free as they are
     set_warnings("allextra", "error")
-    add_cxflags("/external:anglebrackets", "/external:W0")
 end)

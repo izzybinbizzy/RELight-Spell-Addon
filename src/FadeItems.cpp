@@ -25,9 +25,17 @@
 #ifndef NOMINMAX
 #	define NOMINMAX
 #endif
-// SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua)
+// SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua) - under
+// MSVC and under clang-cl, which checks every file too
 #pragma warning(push, 0)
+#if defined(__clang__)
+#	pragma clang diagnostic push
+#	pragma clang diagnostic ignored "-Weverything"
+#endif
 #include "SKSEMenuFramework.h"
+#if defined(__clang__)
+#	pragma clang diagnostic pop
+#endif
 #pragma warning(pop)
 #include "Translation.h"
 #include "MenuStyle.h"

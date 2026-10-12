@@ -302,7 +302,7 @@ namespace Fade
 
 		// the colour of the brightest light another mod (or the game) hangs at this hand's magic node - a staff's spell light
 		// from a light mod or the game's own casting light; nullopt when there is none
-		std::optional<RE::NiColor> OwnLightHint(RE::Actor* a_actor, bool a_left)
+		[[maybe_unused]] std::optional<RE::NiColor> OwnLightHint(RE::Actor* a_actor, bool a_left)
 		{
 			const auto&                name = a_left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
 			std::optional<RE::NiColor> best;
