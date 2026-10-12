@@ -95,12 +95,12 @@ namespace LightKit
 		[[nodiscard]] inline std::array<std::uint32_t, 2> Read(RE::NiLight* a_light) noexcept
 		{
 			std::array<std::uint32_t, 2> w{};
-			std::memcpy(w.data(), &a_light->GetLightRuntimeData(), sizeof(w));
+			std::memcpy(w.data(), reinterpret_cast<const std::byte*>(&a_light->GetLightRuntimeData()), sizeof(w));
 			return w;
 		}
 		inline void Write(RE::NiLight* a_light, const std::array<std::uint32_t, 2>& a_words) noexcept
 		{
-			std::memcpy(&a_light->GetLightRuntimeData(), a_words.data(), sizeof(a_words));
+			std::memcpy(reinterpret_cast<std::byte*>(&a_light->GetLightRuntimeData()), a_words.data(), sizeof(a_words));
 		}
 		[[nodiscard]] inline bool On(RE::NiLight* a_light) noexcept { return (Read(a_light)[0] & kFlag) != 0; }
 		inline void               SetOn(RE::NiLight* a_light) noexcept

@@ -22,9 +22,17 @@
 #endif
 #include "Fade.h"
 
-// SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua)
+// SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua) - under
+// MSVC and under clang-cl, which checks every file too
 #pragma warning(push, 0)
+#if defined(__clang__)
+#	pragma clang diagnostic push
+#	pragma clang diagnostic ignored "-Weverything"
+#endif
 #include "SKSEMenuFramework.h"
+#if defined(__clang__)
+#	pragma clang diagnostic pop
+#endif
 #pragma warning(pop)
 #include "Translation.h"
 #include "MenuStyle.h"
@@ -34,8 +42,10 @@ namespace Fade
 	namespace
 	{
 		constexpr ImGuiMCP::ImVec4 kGold{ 1.0f, 0.86f, 0.55f, 1.0f };
+#ifdef FADE_DEBUG_PAGE
 		constexpr ImGuiMCP::ImVec4 kEmber{ 0.93f, 0.72f, 0.45f, 0.85f };
 		constexpr ImGuiMCP::ImVec4 kDim{ 0.62f, 0.58f, 0.52f, 1.0f };
+#endif
 		using Translation::T;
 #define TR_MARK(x) x  // a line Translation.json carries, though it is not written inside T( ) here
 
