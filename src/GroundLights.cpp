@@ -105,7 +105,10 @@ namespace Plugin
 		{
 			RE::NiPoint3 at{};
 			for (const auto* obj = a_light; obj && obj != a_node; obj = obj->parent) {
-				at = obj->local * at;
+				// a billboard node is turned to face the camera every frame: its turn is the view's, not the hand's (the code review
+				// of 2026-10-12), so only its offset counts - else the lit spot would swing with the camera
+				const bool billboard = std::string_view(obj->name.c_str()).find("Billboard") != std::string_view::npos;
+				at = billboard ? at + obj->local.translate : obj->local * at;
 			}
 			return at;
 		}
@@ -142,11 +145,23 @@ namespace Plugin
 		// already in the third-person body is kept.
 		RE::NiAVObject* ThirdPersonTwin(RE::Actor* a_actor, RE::NiAVObject* a_magic)
 		{
-			if (!a_magic || a_magic->name.empty()) {
+			// only a skeleton's magic node is looked up by name: it is unique per hand, where a generic node name (an art's
+			// "AttachLight") would find the first of its kind - maybe the other hand's
+			if (!a_magic || std::string_view(a_magic->name.c_str()).find("MagicNode") == std::string_view::npos) {
 				return a_magic;
 			}
 			auto* body = a_actor->Get3D(false);
-			auto* same = body ? body->GetObjectByName(a_magic->name) : nullptr;
+			if (!body) {
+				return a_magic;
+			}
+			const auto* root = a_magic;
+			while (root->parent && root != body) {
+				root = root->parent;
+			}
+			if (root == body) {
+				return a_magic;  // already in the third-person body (third person, and every NPC): no search
+			}
+			auto* same = body->GetObjectByName(a_magic->name);
 			return same && same->parent ? same : a_magic;
 		}
 
@@ -168,15 +183,18 @@ namespace Plugin
 				auto*      caster = casters[hand];
 				auto*      bs = caster ? caster->light.get() : nullptr;
 				auto*      source = bs ? netimmerse_cast<RE::NiPointLight*>(bs->light.get()) : nullptr;
-				auto*      magic = source ? MagicNodeAbove(source) : nullptr;
-				auto*      anchor = ThirdPersonTwin(a_actor, magic);
-				auto*      parent = anchor ? anchor->parent : nullptr;
 				const auto it = gTwins.find(key);
-				if (!parent || !readied) {
+				if (!source || !readied) {
 					if (!readied && it != gTwins.end()) {
 						it->second.handsDown = true;
 					}
 					continue;  // no casting light in this hand, or the hands are down: a twin it had is dropped with the unseen ones
+				}
+				auto* magic = MagicNodeAbove(source);
+				auto* anchor = ThirdPersonTwin(a_actor, magic);
+				auto* parent = anchor ? anchor->parent : nullptr;
+				if (!parent) {
+					continue;
 				}
 				auto& twin = it != gTwins.end() ? it->second : gTwins[key];
 				if (twin.light && (twin.source.get() != source || twin.parent.get() != parent)) {
