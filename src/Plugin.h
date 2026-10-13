@@ -222,6 +222,9 @@ namespace Plugin
 	[[nodiscard]] bool               HeldOutForOption(const RE::NiLight* a_light);                        // main thread
 	[[nodiscard]] RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj);                                  // the reference a scene-graph object belongs to
 	[[nodiscard]] std::size_t        EnchantOptionOf(const RE::NiLight* a_light);                         // kNone unless it is an enchantment light of ours
+	// a flesh spell's light this frame where FleshFX's look wins on its shader: the hue it is drawn in (LightKit.h FleshFx),
+	// else nullptr. HIS CALL: "do the changes proposed with the dim light in its own color" (main thread)
+	[[nodiscard]] const RE::NiColor* FleshHueOf(const RE::NiLight* a_light);
 
 	// ------------------------------------------------------------------ Brightness.cpp: our own sliders
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time

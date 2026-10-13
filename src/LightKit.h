@@ -12,6 +12,7 @@
 //   CloneLight   a new light for the scene, and AddToScene to register it (ReLight's method, Truman's permission)
 //   NamedColor   one of the ten named colors as the game's color
 //   Daylight     how much dimmer the lights are by day and in bright rooms: the "Dim in daylight" setting
+//   FleshFx      which flesh spells wear FleshFX's look, and the color their lights then take
 // The plain-number helpers (Lower, CutoffFor, the named colors, ToScreen, KeyAt ...) are in LightMath.h, tested off the game.
 
 #pragma once
@@ -185,5 +186,72 @@ namespace LightKit
 			bright = DaylightOfHour(calendar->GetHour());
 		}
 		return DaylightShare(a_pick, bright);
+	}
+
+	// FleshFX (LightMath.h kFleshLooks): which flesh spells wear its look in this load order. Find() runs once at data load, on
+	// the main thread, before any light is drawn; HueOf and Shown only read after it, from any thread.
+	namespace FleshFx
+	{
+		inline constexpr std::string_view kPlugin = "FleshFX.esp";
+
+		[[nodiscard]] inline std::unordered_map<RE::FormID, RE::NiColor>& Hues()
+		{
+			static std::unordered_map<RE::FormID, RE::NiColor> hues;  // shader -> its dim color under FleshFX
+			return hues;
+		}
+
+		// A flesh shader wears FleshFX's look when FleshFX.esp is loaded, edited that shader, and the record that wins has no
+		// rim (its edge color black - FleshFX's own change). A shader a later plugin gives its rim back keeps its light's own
+		// color. Returns how many of the five wear the look; every answer is logged.
+		inline std::size_t Find()
+		{
+			auto& hues = Hues();
+			hues.clear();
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			if (!dh || !(dh->LookupLoadedModByName(kPlugin) || dh->LookupLoadedLightModByName(kPlugin))) {
+				SKSE::log::info("FleshFX: {} is not loaded - the flesh spells' lights keep their own colors", kPlugin);
+				return 0;
+			}
+			for (const auto& look : kFleshLooks) {
+				const auto* shader = dh->LookupForm<RE::TESEffectShader>(look.skyrimFormID, "Skyrim.esm");
+				if (!shader) {
+					SKSE::log::warn("FleshFX: {} (Skyrim.esm {:06X}) is not in this load order", look.editorID, look.skyrimFormID);
+					continue;
+				}
+				const auto* files = shader->sourceFiles.array;
+				const bool  edited = files && std::ranges::any_of(*files, [](const RE::TESFile* a_file) {
+					return a_file && a_file->GetFilename() == kPlugin;
+				});
+				const auto& rim = shader->data.edgeEffectColor;
+				const bool  noRim = rim.red == 0 && rim.green == 0 && rim.blue == 0;
+				if (!edited || !noRim) {
+					SKSE::log::info("FleshFX: {} keeps its light's own color ({})", look.editorID,
+						edited ? "a later plugin gives it a rim again" : "FleshFX does not edit it");
+					continue;
+				}
+				hues.insert_or_assign(shader->GetFormID(), RE::NiColor{ look.rgb[0] / 255.0f, look.rgb[1] / 255.0f, look.rgb[2] / 255.0f });
+				SKSE::log::info("FleshFX: {} wears FleshFX's look - its light is drawn in {},{},{}", look.editorID, look.rgb[0], look.rgb[1],
+					look.rgb[2]);
+			}
+			return hues.size();
+		}
+
+		// the dim color a light on this shader takes, or nullptr (not a flesh shader, or FleshFX's look does not win on it)
+		[[nodiscard]] inline const RE::NiColor* HueOf(const RE::TESEffectShader* a_shader)
+		{
+			const auto& hues = Hues();
+			if (hues.empty() || !a_shader) {
+				return nullptr;
+			}
+			const auto it = hues.find(a_shader->GetFormID());
+			return it != hues.end() ? &it->second : nullptr;
+		}
+
+		// what such a light shows: the hue at the strength the light carries now (LightMath.h AtStrengthOf)
+		[[nodiscard]] inline RE::NiColor Shown(const RE::NiColor& a_hue, const RE::NiColor& a_now) noexcept
+		{
+			const auto c = AtStrengthOf({ a_hue.red, a_hue.green, a_hue.blue }, { a_now.red, a_now.green, a_now.blue });
+			return { c[0], c[1], c[2] };
+		}
 	}
 }
