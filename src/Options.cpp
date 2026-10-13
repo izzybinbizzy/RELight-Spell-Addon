@@ -38,9 +38,12 @@ namespace Plugin
 			bool         enchant{ false };
 		};
 		std::vector<Held>                                       gHeldOut;
-		std::unordered_set<const RE::NiLight*>                  gHeldSet;      // the same lights, to answer "is it held out" without a walk
-		std::vector<std::pair<const RE::NiLight*, std::size_t>> gEnchant;      // this frame's enchantment lights -> option
-		std::vector<RE::NiLight*>                               gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
+		std::unordered_set<const RE::NiLight*>                  gHeldSet;  // the same lights, to answer "is it held out" without a walk
+		std::vector<std::pair<const RE::NiLight*, std::size_t>> gEnchant;  // this frame's enchantment lights -> option
+		// this frame's flesh-spell lights under FleshFX -> the hue they are drawn in (LightKit.h FleshFx; Brightness.cpp)
+		std::vector<std::pair<const RE::NiLight*, const RE::NiColor*>> gFlesh;
+		std::unordered_set<const RE::TESEffectShader*>                 gFleshMissLogged;  // flesh shaders whose light was not found, said once each
+		std::vector<RE::NiLight*>                                      gSheathedOut;      // held in Keep.cpp; put out by the sheathed net below
 
 		// what the per-frame walk worked out about a light, with what identifies it (a freed light's address can be reused)
 		struct Known
@@ -72,10 +75,14 @@ namespace Plugin
 			return root;
 		}
 
-		// this frame's enchantment lights of ours: a handful, kept in a vector whose storage is reused from frame to frame
+		// this frame's enchantment lights of ours: a handful, kept in a vector whose storage is reused from frame to frame.
+		// A flesh spell's shader (FleshFX's look winning on it) hangs on the caster's body: RE::Light puts a config with no
+		// attach path straight under the effect's root (found the way RE::Light finds it, EnchantRootOf), so only a light
+		// hanging DIRECTLY on that root is its light - an enchanted weapon's light deeper under the same actor keeps its color.
 		void FindEnchantLights()
 		{
 			gEnchant.clear();
+			gFlesh.clear();
 			auto* lists = RE::ProcessLists::GetSingleton();
 			if (!lists) {
 				return;
@@ -84,7 +91,18 @@ namespace Plugin
 				const auto opt = a_effect ? OptionOfShader(a_effect->effectData) : kNone;
 				auto*      root = opt != kNone ? EnchantRootOf(a_effect) : nullptr;
 				if (root) {
-					RE::BSVisit::TraverseScenegraphLights(root, [opt](RE::NiPointLight* a_light) {
+					const auto* hue = LightKit::FleshFx::HueOf(a_effect->effectData);
+					std::size_t direct = 0;
+					std::size_t deeper = 0;
+					RE::BSVisit::TraverseScenegraphLights(root, [opt, hue, root, &direct, &deeper](RE::NiPointLight* a_light) {
+						if (hue && IsEnchantLight(a_light)) {
+							if (a_light->parent == root) {
+								gFlesh.emplace_back(a_light, hue);
+								++direct;
+							} else {
+								++deeper;
+							}
+						}
 						if (IsEnchantLight(a_light)) {
 							const auto it = std::ranges::find(gEnchant, static_cast<const RE::NiLight*>(a_light), &std::pair<const RE::NiLight*, std::size_t>::first);
 							if (it == gEnchant.end()) {
@@ -95,6 +113,14 @@ namespace Plugin
 						}
 						return RE::BSVisit::BSVisitControl::kContinue;
 					});
+					// RE::Light's lights under the body but none straight on it: the flesh light is not where it was expected, so
+					// it keeps its old color - said once per shader, never silent
+					if (hue && !direct && deeper && gFleshMissLogged.insert(a_effect->effectData).second) {
+						SKSE::log::warn(
+							"FleshFX: a flesh spell's RE::Light light was not found directly on its body ({} lights deeper) - "
+							"it keeps its old color",
+							deeper);
+					}
 				}
 				return RE::BSContainer::ForEachResult::kContinue;
 			});
@@ -195,6 +221,12 @@ namespace Plugin
 	{
 		const auto it = std::ranges::find(gEnchant, a_light, &std::pair<const RE::NiLight*, std::size_t>::first);
 		return it != gEnchant.end() ? it->second : kNone;
+	}
+
+	const RE::NiColor* FleshHueOf(const RE::NiLight* a_light)
+	{
+		const auto it = std::ranges::find(gFlesh, a_light, &std::pair<const RE::NiLight*, const RE::NiColor*>::first);
+		return it != gFlesh.end() ? it->second : nullptr;
 	}
 
 	RE::TESObjectREFR* ReferenceOf(RE::NiAVObject* a_obj)

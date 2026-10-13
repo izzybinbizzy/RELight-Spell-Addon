@@ -19,6 +19,7 @@
 // (Light colors and the Fire / Frost / Shock color picks were here until his order took the color
 //   variations out of the menu - ColorFor keeps each light's own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
+// A flesh spell's light where FleshFX's look wins (LightKit.h FleshFx) is drawn in FleshFX's hue at the strength of that base.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
 // and after each enchantment effect's update; it reports each fade it writes (NoteFadeWrite), so its write is never taken
 // for a new base here and the two never compound. Lock order: the fading module's lock, then gSeenLock.
@@ -144,7 +145,8 @@ namespace Plugin
 			return IsReLightLight(a_light) && (OptionOf(a_base) != kNone || EnchantOptionOf(a_light) != kNone);
 		}
 
-		void Apply(RE::NiLight* a_light, Seen& a_s, float a_scale, float a_reach, float a_dt)
+		// a_hue: a flesh spell's light under FleshFX (Options.cpp FleshHueOf) - drawn in that hue at the strength RE::Light gave it
+		void Apply(RE::NiLight* a_light, Seen& a_s, float a_scale, float a_reach, float a_dt, const RE::NiColor* a_hue)
 		{
 			auto& data = a_light->GetLightRuntimeData();
 			if (data.fade != a_s.written) {
@@ -163,7 +165,8 @@ namespace Plugin
 			if (!SameColor(data.diffuse, a_s.wroteDiffuse)) {
 				a_s.baseDiffuse = data.diffuse;  // RE::Light (or the hand light) gave it this color: the new base
 			}
-			const RE::NiColor color = ColorFor(a_s, a_s.tint ? *a_s.tint : a_s.baseDiffuse);
+			const RE::NiColor own = a_s.tint ? *a_s.tint : a_s.baseDiffuse;
+			const RE::NiColor color = ColorFor(a_s, a_hue ? LightKit::FleshFx::Shown(*a_hue, own) : own);
 			data.diffuse = color;
 			a_s.wroteDiffuse = color;
 			// the cutoff follows the same rule, so an edit in RE::Light's editor sticks: a cutoff we did not write is the
@@ -320,7 +323,7 @@ namespace Plugin
 				KeepLight(niLight);
 				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base), .element = ElementOfForm(base) }).first;
 			}
-			Apply(niLight, it->second, scale, reach, dt);
+			Apply(niLight, it->second, scale, reach, dt, IsEnchantLight(niLight) ? FleshHueOf(niLight) : nullptr);
 		}
 		// a light not seen for a few seconds has left the scene: let it go from the cache
 		constexpr std::uint32_t kForget = 300;

@@ -13,6 +13,8 @@
 //   ToScreen           linear light <-> the screen's color (Dynamic Wards' wardgen.srgb)
 //   DaylightShare      how bright the day or the room is, for "Dim in daylight"
 //   KeyAt              a fade controller's value at a time (Truman's KeyframeSequence maths, RE::Light's controller.h)
+//   kFleshLooks        the five flesh spells' light colors when FleshFX's look wins on them; AtStrengthOf, a color carried
+//                      at another light's strength
 
 #pragma once
 
@@ -168,5 +170,38 @@ namespace LightKit
 		}
 		const float u2 = u * u, u3 = u2 * u;
 		return (2.0f * u3 - 3.0f * u2 + 1.0f) * v0 + (-2.0f * u3 + 3.0f * u2) * v1;
+	}
+
+	// The five flesh spells, by their effect shader in Skyrim.esm, and the dim light color each takes when FleshFX's look wins
+	// on it (LightKit.h FleshFx finds that in the load order). FleshFX turns the shader's glowing rim black and dresses the
+	// skin in its own textures, laid OVER the skin, so a light in the vanilla rim's hue colors a glow that is not there. These
+	// are the textures' own hues as the shader shows them, at the flesh rows' subtle top channel of 184 (the color rework's
+	// findings, the flesh section). HIS CALL: "do the changes proposed with the dim light in its own color".
+	struct FleshLook
+	{
+		std::uint32_t               skyrimFormID{ 0 };  // the shader's form in Skyrim.esm
+		std::string_view            editorID;           // as the configs claim it
+		std::array<std::uint8_t, 3> rgb{};
+	};
+	inline constexpr std::array<FleshLook, 5> kFleshLooks{ {
+		{ 0x094160, "MagicArmorOakFleshFXS", { 184, 156, 129 } },    // brown bark
+		{ 0x094161, "MagicArmorStoneFleshFXS", { 170, 184, 178 } },  // grey stone
+		{ 0x094163, "MagicArmorIronFleshFXS", { 179, 182, 184 } },   // grey metal
+		{ 0x094162, "MagicArmorEbonyFleshFXS", { 92, 56, 184 } },    // dark violet
+		{ 0x0E9AC8, "MagicArmorDragonFleshFXS", { 184, 119, 50 } },  // amber scales
+	} };
+
+	// a_hue at the strength of a_now (channels 0..1): scaled so its brightest channel is a_now's brightest. A light whose
+	// strength moves (a Dynamic Lighting color key, the full-strength switch) keeps moving, in a_hue's color; given its own
+	// result again it changes nothing, so it may be applied every frame over a value it wrote. A black a_hue stays black.
+	[[nodiscard]] inline std::array<float, 3> AtStrengthOf(const std::array<float, 3>& a_hue, const std::array<float, 3>& a_now) noexcept
+	{
+		const float top = (std::max)({ a_hue[0], a_hue[1], a_hue[2] });
+		const float want = (std::max)({ a_now[0], a_now[1], a_now[2], 0.0f });
+		if (top <= 0.0f) {
+			return a_hue;
+		}
+		const float k = want / top;
+		return { a_hue[0] * k, a_hue[1] * k, a_hue[2] * k };
 	}
 }
