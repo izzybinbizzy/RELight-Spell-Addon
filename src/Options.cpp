@@ -91,9 +91,16 @@ namespace Plugin
 				auto*      root = opt != kNone ? EnchantRootOf(a_effect) : nullptr;
 				if (root) {
 					const auto* hue = LightKit::FleshFx::HueOf(a_effect->effectData);
-					RE::BSVisit::TraverseScenegraphLights(root, [opt, hue, root](RE::NiPointLight* a_light) {
-						if (hue && IsEnchantLight(a_light) && a_light->parent == root) {
-							gFlesh.emplace_back(a_light, hue);
+					std::size_t direct = 0;
+					std::size_t deeper = 0;
+					RE::BSVisit::TraverseScenegraphLights(root, [opt, hue, root, &direct, &deeper](RE::NiPointLight* a_light) {
+						if (hue && IsEnchantLight(a_light)) {
+							if (a_light->parent == root) {
+								gFlesh.emplace_back(a_light, hue);
+								++direct;
+							} else {
+								++deeper;
+							}
 						}
 						if (IsEnchantLight(a_light)) {
 							const auto it = std::ranges::find(gEnchant, static_cast<const RE::NiLight*>(a_light), &std::pair<const RE::NiLight*, std::size_t>::first);
@@ -105,6 +112,13 @@ namespace Plugin
 						}
 						return RE::BSVisit::BSVisitControl::kContinue;
 					});
+					// RE::Light's lights under the body but none straight on it: the flesh light is not where it was expected, so
+					// it keeps its old color - said once per shader, never silent
+					static std::unordered_set<const RE::TESEffectShader*> logged;
+					if (hue && !direct && deeper && logged.insert(a_effect->effectData).second) {
+						SKSE::log::warn("FleshFX: a flesh spell's RE::Light light was not found directly on its body ({} lights deeper) - "
+										"it keeps its old color", deeper);
+					}
 				}
 				return RE::BSContainer::ForEachResult::kContinue;
 			});

@@ -200,38 +200,54 @@ namespace LightKit
 			return hues;
 		}
 
-		// A flesh shader wears FleshFX's look when FleshFX.esp is loaded, edited that shader, and the record that wins has no
-		// rim (its edge color black - FleshFX's own change). A shader a later plugin gives its rim back keeps its light's own
-		// color. Returns how many of the five wear the look; every answer is logged.
+		// the five flesh shaders this load order has, FleshFX or not (Find() fills it; Illuminated's record route lights them all)
+		[[nodiscard]] inline std::vector<std::pair<const RE::TESEffectShader*, const FleshLook*>>& Resolved()
+		{
+			static std::vector<std::pair<const RE::TESEffectShader*, const FleshLook*>> resolved;
+			return resolved;
+		}
+
+		// A flesh shader wears FleshFX's look when FleshFX.esp is loaded and its record of that shader is the one that wins (it
+		// blackens the rim and lays its own textures on the skin). A shader a later plugin wins keeps its light's own color.
+		// Returns how many of the five wear the look; every answer is logged.
 		inline std::size_t Find()
 		{
 			auto& hues = Hues();
+			auto& resolved = Resolved();
 			hues.clear();
+			resolved.clear();
 			auto* dh = RE::TESDataHandler::GetSingleton();
+			for (const auto& look : kFleshLooks) {
+				if (const auto* found = dh ? dh->LookupForm<RE::TESEffectShader>(look.skyrimFormID, "Skyrim.esm") : nullptr) {
+					resolved.emplace_back(found, &look);
+				} else {
+					SKSE::log::warn("FleshFX: {} (Skyrim.esm {:06X}) is not in this load order", look.editorID, look.skyrimFormID);
+				}
+			}
 			if (!dh || !(dh->LookupLoadedModByName(kPlugin) || dh->LookupLoadedLightModByName(kPlugin))) {
 				SKSE::log::info("FleshFX: {} is not loaded - the flesh spells' lights keep their own colors", kPlugin);
 				return 0;
 			}
-			for (const auto& look : kFleshLooks) {
-				const auto* shader = dh->LookupForm<RE::TESEffectShader>(look.skyrimFormID, "Skyrim.esm");
-				if (!shader) {
-					SKSE::log::warn("FleshFX: {} (Skyrim.esm {:06X}) is not in this load order", look.editorID, look.skyrimFormID);
-					continue;
-				}
+			for (const auto& [shader, lookOf] : resolved) {
+				const auto& look = *lookOf;
+				// FleshFX's look wins when FleshFX.esp is the LAST file that changes the shader (the winning record); the rim color
+				// is only logged - measured 2026-10-12 23:11, the loaded edge color read non-zero in game while the winning record's
+				// colors are all 0 (houseCARL), so it cannot decide this
 				const auto* files = shader->sourceFiles.array;
+				const auto* last = files && !files->empty() ? files->back() : nullptr;
 				const bool  edited = files && std::ranges::any_of(*files, [](const RE::TESFile* a_file) {
 					return a_file && a_file->GetFilename() == kPlugin;
 				});
+				const bool  wins = last && last->GetFilename() == kPlugin;
 				const auto& rim = shader->data.edgeEffectColor;
-				const bool  noRim = rim.red == 0 && rim.green == 0 && rim.blue == 0;
-				if (!edited || !noRim) {
-					SKSE::log::info("FleshFX: {} keeps its light's own color ({})", look.editorID,
-						edited ? "a later plugin gives it a rim again" : "FleshFX does not edit it");
+				if (!wins) {
+					SKSE::log::info("FleshFX: {} keeps its light's own color ({}; rim {},{},{})", look.editorID,
+						edited ? "a later plugin wins it" : "FleshFX does not edit it", rim.red, rim.green, rim.blue);
 					continue;
 				}
 				hues.insert_or_assign(shader->GetFormID(), RE::NiColor{ look.rgb[0] / 255.0f, look.rgb[1] / 255.0f, look.rgb[2] / 255.0f });
-				SKSE::log::info("FleshFX: {} wears FleshFX's look - its light is drawn in {},{},{}", look.editorID, look.rgb[0], look.rgb[1],
-					look.rgb[2]);
+				SKSE::log::info("FleshFX: {} wears FleshFX's look - its light is drawn in {},{},{} (rim as loaded {},{},{})", look.editorID,
+					look.rgb[0], look.rgb[1], look.rgb[2], rim.red, rim.green, rim.blue);
 			}
 			return hues.size();
 		}
