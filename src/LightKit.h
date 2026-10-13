@@ -236,9 +236,10 @@ namespace LightKit
 				// colors are all 0 (houseCARL), so it cannot decide this
 				const auto* files = shader->sourceFiles.array;
 				const auto* last = files && !files->empty() ? files->back() : nullptr;
-				const auto  isFleshFx = [](const RE::TESFile* a_file) { return a_file && a_file->GetFilename() == kPlugin; };
-				const bool  edited = files && std::ranges::any_of(*files, isFleshFx);
-				bool        wins = isFleshFx(last);
+				// case-blind, as the data handler's own lookup above is (a load order may store "fleshfx.esp")
+				const auto isFleshFx = [](const RE::TESFile* a_file) { return a_file && SameText(a_file->GetFilename(), kPlugin); };
+				const bool edited = files && std::ranges::any_of(*files, isFleshFx);
+				bool       wins = isFleshFx(last);
 				for (std::uint32_t i = 0; !wins && last && last->masterPtrs && i < last->masterCount; ++i) {
 					wins = isFleshFx(last->masterPtrs[i]);
 				}
