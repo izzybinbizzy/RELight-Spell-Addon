@@ -42,7 +42,8 @@ namespace Plugin
 		std::vector<std::pair<const RE::NiLight*, std::size_t>> gEnchant;  // this frame's enchantment lights -> option
 		// this frame's flesh-spell lights under FleshFX -> the hue they are drawn in (LightKit.h FleshFx; Brightness.cpp)
 		std::vector<std::pair<const RE::NiLight*, const RE::NiColor*>> gFlesh;
-		std::vector<RE::NiLight*>                                      gSheathedOut;  // held in Keep.cpp; put out by the sheathed net below
+		std::unordered_set<const RE::TESEffectShader*>                 gFleshMissLogged;  // flesh shaders whose light was not found, said once each
+		std::vector<RE::NiLight*>                                      gSheathedOut;      // held in Keep.cpp; put out by the sheathed net below
 
 		// what the per-frame walk worked out about a light, with what identifies it (a freed light's address can be reused)
 		struct Known
@@ -114,10 +115,11 @@ namespace Plugin
 					});
 					// RE::Light's lights under the body but none straight on it: the flesh light is not where it was expected, so
 					// it keeps its old color - said once per shader, never silent
-					static std::unordered_set<const RE::TESEffectShader*> logged;
-					if (hue && !direct && deeper && logged.insert(a_effect->effectData).second) {
-						SKSE::log::warn("FleshFX: a flesh spell's RE::Light light was not found directly on its body ({} lights deeper) - "
-										"it keeps its old color", deeper);
+					if (hue && !direct && deeper && gFleshMissLogged.insert(a_effect->effectData).second) {
+						SKSE::log::warn(
+							"FleshFX: a flesh spell's RE::Light light was not found directly on its body ({} lights deeper) - "
+							"it keeps its old color",
+							deeper);
 					}
 				}
 				return RE::BSContainer::ForEachResult::kContinue;

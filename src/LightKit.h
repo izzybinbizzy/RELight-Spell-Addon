@@ -230,15 +230,18 @@ namespace LightKit
 			}
 			for (const auto& [shader, lookOf] : resolved) {
 				const auto& look = *lookOf;
-				// FleshFX's look wins when FleshFX.esp is the LAST file that changes the shader (the winning record); the rim color
-				// is only logged - measured 2026-10-12 23:11, the loaded edge color read non-zero in game while the winning record's
+				// FleshFX's look wins when the LAST file that changes the shader (the winning record) is FleshFX.esp or a patch made
+				// for it (FleshFX.esp is one of its masters - e.g. a Mysticism FleshFX patch keeps FleshFX's look); the rim color is
+				// only logged - measured 2026-10-12 23:11, the loaded edge color read non-zero in game while the winning record's
 				// colors are all 0 (houseCARL), so it cannot decide this
 				const auto* files = shader->sourceFiles.array;
 				const auto* last = files && !files->empty() ? files->back() : nullptr;
-				const bool  edited = files && std::ranges::any_of(*files, [](const RE::TESFile* a_file) {
-					return a_file && a_file->GetFilename() == kPlugin;
-				});
-				const bool  wins = last && last->GetFilename() == kPlugin;
+				const auto  isFleshFx = [](const RE::TESFile* a_file) { return a_file && a_file->GetFilename() == kPlugin; };
+				const bool  edited = files && std::ranges::any_of(*files, isFleshFx);
+				bool        wins = isFleshFx(last);
+				for (std::uint32_t i = 0; !wins && last && last->masterPtrs && i < last->masterCount; ++i) {
+					wins = isFleshFx(last->masterPtrs[i]);
+				}
 				const auto& rim = shader->data.edgeEffectColor;
 				if (!wins) {
 					SKSE::log::info("FleshFX: {} keeps its light's own color ({}; rim {},{},{})", look.editorID,
@@ -246,8 +249,8 @@ namespace LightKit
 					continue;
 				}
 				hues.insert_or_assign(shader->GetFormID(), RE::NiColor{ look.rgb[0] / 255.0f, look.rgb[1] / 255.0f, look.rgb[2] / 255.0f });
-				SKSE::log::info("FleshFX: {} wears FleshFX's look - its light is drawn in {},{},{} (rim as loaded {},{},{})", look.editorID,
-					look.rgb[0], look.rgb[1], look.rgb[2], rim.red, rim.green, rim.blue);
+				SKSE::log::info("FleshFX: {} wears FleshFX's look ({}) - its light is drawn in {},{},{} (rim as loaded {},{},{})",
+					look.editorID, last->GetFilename(), look.rgb[0], look.rgb[1], look.rgb[2], rim.red, rim.green, rim.blue);
 			}
 			return hues.size();
 		}
