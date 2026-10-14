@@ -106,15 +106,16 @@ namespace Plugin
 	using LightKit::kK;
 
 	// Community Shaders' inverse square lighting reads a flag and the cutoff from two words of a light (LightKit.h has
-	// how they are written). RE::Light's own test for it (the shader file), read at data load (HandLights.cpp): only
-	// then are the words written
+	// how they are written). Read at data load (HandLights.cpp): the shader file, Light Limit Fix's built-in one, or
+	// CommunityShaders.dll loaded (its Light Limit Fix reads those words on every light) - only then are the words written
 	[[nodiscard]] bool IslShader();
 	namespace Isl = LightKit::Isl;
 
 	// 🔁 HIS WORD: "relight casting light is not working ... please re add the enb and cs and vanilla versions but
 	// don't make them manually selectable, just like illuminated it will auto detect" - which lighting the game draws with,
 	// found at data load (HandLights.cpp, Illuminated's rule): Community Shaders' inverse square shader (or Light Limit Fix's,
-	// Bottled Shaders 1.0.10), else an ENB's settings in the game folder, else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
+	// Bottled Shaders 1.0.10, or CommunityShaders.dll loaded - 2.2), else an ENB that is running (2.2: not its settings
+	// left in the game folder), else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
 	// Shaders) and their ground light (GroundLights.cpp). RE::Light stays the main driver of everything else.
 	enum class Lighting : int
 	{
@@ -258,4 +259,7 @@ namespace Plugin
 	// ------------------------------------------------------------------ Menu.cpp
 	void RegisterMenu();
 	void RegisterMenuTail();  // after the fading module's pages: the testing DLL's Diagnostics page last (nothing in the main DLL)
+
+	// ------------------------------------------------------------------ DevBench.cpp: the settings and what was made, for a test bench
+	void OfferToDevBench();  // SKSE's post-load: inspect kind=relight and relight.control, when DevBench is loaded (optional)
 }

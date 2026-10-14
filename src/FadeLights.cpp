@@ -15,8 +15,9 @@
 //
 // When: Light Placer rewrites a flickering or animated light's fade in ReferenceEffect::UpdatePosition and in the cell's
 // animation pass; a steady light it sets once. So the scaling runs in three places a frame - right after each enchantment
-// effect's update (AfterReferenceEffect), in the player's update (UpdateHands), and after each cell's light animation for the
-// hands in that cell (ReapplyAll, this frame's numbers again) - and each light keeps Glow::Scaled's
+// effect's update (AfterReferenceEffect), in the player's update (UpdateHands), and after each loaded cell's light animation
+// (ReapplyAll, this frame's numbers again - every hand, as a light may be animated in a cell its actor has since left; RELight
+// 2.2's code review) - and each light keeps Glow::Scaled's
 // "what we wrote / what it was" pair, so running twice, or on a light nobody rewrites, never compounds. The Brightness
 // slider scales the same lights just before (the plugin's Brightness pass): each fade written here is reported to it
 // (Plugin::NoteFadeWrite), and it reports a slider change on a steady light back (Rebase), so neither takes the other's
@@ -110,8 +111,6 @@ namespace Fade
 			int              element{ -1 };
 			bool             active{ false };
 			std::uint32_t    frame{ 0 };
-			// the actor's cell as last read on the main thread: the cell animation pass re-applies only its own cell's hands
-			const RE::TESObjectCELL* cell{ nullptr };
 			// a spell hand's kind (KindOf), worked out again only when the spell in hand changes
 			const RE::SpellItem* kindSpell{ nullptr };
 			RE::FormID           kindID{ 0 };
@@ -454,7 +453,6 @@ namespace Fade
 			h.left = a_left;
 			h.spell = true;
 			h.frame = gFrame;
-			h.cell = a_actor->GetParentCell();
 			SpellHand sp;
 			if (!ReadSpellHand(a_actor, a_left, sp)) {
 				h.active = false;
@@ -658,7 +656,6 @@ namespace Fade
 				h.actorSeen = actor.get();
 				h.left = left;
 				h.frame = gFrame;
-				h.cell = actor->GetParentCell();
 				h.reading = ReadHand(actor.get(), left);
 				if (!h.reading.tracked) {
 					h.active = false;
@@ -821,7 +818,7 @@ namespace Fade
 		data->rimColor.alpha = std::clamp(seen.rim.Apply(data->rimColor.alpha, k), 0.0f, 1.0f);
 	}
 
-	void ReapplyAll(const RE::TESObjectCELL* a_cell)
+	void ReapplyAll()
 	{
 		std::lock_guard lock(gLock);
 		if (gEnabled) {
@@ -829,9 +826,10 @@ namespace Fade
 				if (!seen.light || gFrame - seen.frame > 1) {
 					continue;
 				}
-				// the pass runs once for every loaded cell: only the hands in this one (as the main thread last read them)
+				// every cell's pass re-applies every hand: a light may be animated in a cell its actor has since left, and a write
+				// that changes nothing costs nothing (Glow::Scaled)
 				const auto it = gHands.find(seen.hand);
-				if (it != gHands.end() && it->second.active && (!a_cell || it->second.cell == a_cell)) {
+				if (it != gHands.end() && it->second.active) {
 					ApplyLight(light, it->second, false);
 				}
 			}

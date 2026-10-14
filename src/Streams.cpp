@@ -23,6 +23,38 @@ namespace Plugin
 		constexpr const char* kLightName = "RSAStream";
 
 		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
+
+		// how many of each kind of user a claim changed
+		struct LightUsers
+		{
+			std::size_t projectiles{ 0 }, muzzles{ 0 }, effects{ 0 }, explosions{ 0 }, hazards{ 0 };
+		};
+
+		// every record field that names a light record - a projectile's own light and its muzzle flash, a magic effect's, an
+		// explosion's, a hazard's - handed to a_change(the projectile whose own light it is, or nullptr; the field), which returns
+		// true when it changed that field. One walk for both claims, so a user kind is never in one and missing from the other
+		// (2.2's code review)
+		template <class F>
+		LightUsers ForEachLightField(RE::TESDataHandler& a_dh, F&& a_change)
+		{
+			LightUsers n;
+			for (auto* p : a_dh.GetFormArray<RE::BGSProjectile>()) {
+				if (p) {
+					n.projectiles += a_change(p, p->data.light) ? 1 : 0;
+					n.muzzles += a_change(nullptr, p->data.muzzleFlashLight) ? 1 : 0;
+				}
+			}
+			for (auto* e : a_dh.GetFormArray<RE::EffectSetting>()) {
+				n.effects += e && a_change(nullptr, e->data.light) ? 1 : 0;
+			}
+			for (auto* x : a_dh.GetFormArray<RE::BGSExplosion>()) {
+				n.explosions += x && a_change(nullptr, x->data.light) ? 1 : 0;
+			}
+			for (auto* h : a_dh.GetFormArray<RE::BGSHazard>()) {
+				n.hazards += h && a_change(nullptr, h->data.light) ? 1 : 0;
+			}
+			return n;
+		}
 	}
 
 	// A spray is lit by its own light record, which RE::Light tunes through our `isPluginLight` config. Many of those
@@ -37,51 +69,27 @@ namespace Plugin
 				gSpraySet.insert(l);
 			}
 		}
-		if (gSpraySet.empty()) {
-			return;
-		}
 		auto* dh = RE::TESDataHandler::GetSingleton();
-		if (!dh) {
+		if (gSpraySet.empty() || !dh) {
 			return;
 		}
-		std::size_t proj = 0, muzzle = 0, effects = 0, expl = 0, hazards = 0;
-		for (auto* p : dh->GetFormArray<RE::BGSProjectile>()) {
-			if (!p) {
-				continue;
+		const auto n = ForEachLightField(*dh, [](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
+			if (!a_light || !gSpraySet.contains(a_light)) {
+				return false;
 			}
-			// 2.2 (the bolts): a BEAM our data lights keeps the record too - a record of both is lit by the spray's config, never
-			// taken off the bolt (his rule: the projectile's own light, made bigger and brighter)
-			if (p->data.light && gSpraySet.contains(p->data.light) && !p->IsFlamethrower() && !p->IsCone() && !(p->IsBeam() && StreamOf(p))) {
-				p->data.light = nullptr;
-				++proj;
+			// a spray (flamethrower or cone) keeps its own record - and since 2.2 (the bolts) a BEAM our data lights keeps it too: a
+			// record of both is lit by the spray's config, never taken off the bolt (his rule: the projectile's own light, made
+			// bigger and brighter)
+			if (a_proj && (a_proj->IsFlamethrower() || a_proj->IsCone() || (a_proj->IsBeam() && StreamOf(a_proj)))) {
+				return false;
 			}
-			if (p->data.muzzleFlashLight && gSpraySet.contains(p->data.muzzleFlashLight)) {
-				p->data.muzzleFlashLight = nullptr;
-				++muzzle;
-			}
-		}
-		for (auto* e : dh->GetFormArray<RE::EffectSetting>()) {
-			if (e && e->data.light && gSpraySet.contains(e->data.light)) {
-				e->data.light = nullptr;
-				++effects;
-			}
-		}
-		for (auto* x : dh->GetFormArray<RE::BGSExplosion>()) {
-			if (x && x->data.light && gSpraySet.contains(x->data.light)) {
-				x->data.light = nullptr;
-				++expl;
-			}
-		}
-		for (auto* h : dh->GetFormArray<RE::BGSHazard>()) {
-			if (h && h->data.light && gSpraySet.contains(h->data.light)) {
-				h->data.light = nullptr;
-				++hazards;
-			}
-		}
+			a_light = nullptr;
+			return true;
+		});
 		SKSE::log::info(
 			"spray lights: {} record(s) are the sprays' alone now - taken off {} projectile(s), {} muzzle flash(es), "
 			"{} magic effect(s), {} explosion(s), {} hazard(s)",
-			gSpraySet.size(), proj, muzzle, effects, expl, hazards);
+			gSpraySet.size(), n.projectiles, n.muzzles, n.effects, n.explosions, n.hazards);
 	}
 
 	// A beam is lit by its own light record too, made bigger and brighter by our `isPluginLight` config (his rule 2026-10-13,
@@ -92,7 +100,7 @@ namespace Plugin
 	// spray record too stays the spray's (ClaimSprayLights keeps it on our beams, lit by the spray's config).
 	void ClaimBeamLights()
 	{
-		std::unordered_set<RE::TESObjectLIGH*> beams;
+		std::unordered_set<const RE::TESObjectLIGH*> beams;
 		for (const auto id : BeamLightRecords()) {
 			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id); l && !gSpraySet.contains(l)) {
 				beams.insert(l);
@@ -103,13 +111,19 @@ namespace Plugin
 			return;
 		}
 		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> copies;
-		std::size_t                                                      failed = 0;
+		std::size_t                                                      failed = 0, ours = 0;
 		const auto                                                       copyOf = [&](RE::TESObjectLIGH* a_light) {
 			auto [it, fresh] = copies.try_emplace(a_light, nullptr);
 			if (fresh) {
 				if (auto* copy = LightKit::NewForm<RE::TESObjectLIGH>()) {
+					// the whole light as the user had it: its look, sound, emittance, lens flare and model (2.2's code review;
+					// Illuminated's FormCopies.cpp CopyLight copies the same)
 					copy->data = a_light->data;
 					copy->fade = a_light->fade;
+					copy->sound = a_light->sound;
+					copy->emittanceColor = a_light->emittanceColor;
+					copy->lensFlare = a_light->lensFlare;
+					copy->SetModel(a_light->GetModel());
 					it->second = copy;
 				} else {
 					++failed;  // no copy: this user keeps the record (and our config's light) - said in the log
@@ -117,46 +131,21 @@ namespace Plugin
 			}
 			return it->second ? it->second : a_light;
 		};
-		std::size_t ours = 0, proj = 0, muzzle = 0, effects = 0, expl = 0, hazards = 0;
-		for (auto* p : dh->GetFormArray<RE::BGSProjectile>()) {
-			if (!p) {
-				continue;
+		const auto n = ForEachLightField(*dh, [&](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
+			if (!a_light || !beams.contains(a_light)) {
+				return false;
 			}
-			if (p->data.light && beams.contains(p->data.light)) {
-				if (p->IsBeam() && StreamOf(p)) {
-					++ours;
-				} else {
-					p->data.light = copyOf(p->data.light);
-					++proj;
-				}
+			if (a_proj && a_proj->IsBeam() && StreamOf(a_proj)) {
+				++ours;  // one of our beams: it keeps the record our config raises
+				return false;
 			}
-			if (p->data.muzzleFlashLight && beams.contains(p->data.muzzleFlashLight)) {
-				p->data.muzzleFlashLight = copyOf(p->data.muzzleFlashLight);
-				++muzzle;
-			}
-		}
-		for (auto* e : dh->GetFormArray<RE::EffectSetting>()) {
-			if (e && e->data.light && beams.contains(e->data.light)) {
-				e->data.light = copyOf(e->data.light);
-				++effects;
-			}
-		}
-		for (auto* x : dh->GetFormArray<RE::BGSExplosion>()) {
-			if (x && x->data.light && beams.contains(x->data.light)) {
-				x->data.light = copyOf(x->data.light);
-				++expl;
-			}
-		}
-		for (auto* h : dh->GetFormArray<RE::BGSHazard>()) {
-			if (h && h->data.light && beams.contains(h->data.light)) {
-				h->data.light = copyOf(h->data.light);
-				++hazards;
-			}
-		}
+			a_light = copyOf(a_light);
+			return true;
+		});
 		SKSE::log::info(
 			"beam lights: {} record(s) stay on our {} beam(s); {} copy(ies) made for the other users - {} projectile(s), {} muzzle "
 			"flash(es), {} magic effect(s), {} explosion(s), {} hazard(s){}",
-			beams.size(), ours, copies.size() - failed, proj, muzzle, effects, expl, hazards,
+			beams.size(), ours, copies.size() - failed, n.projectiles, n.muzzles, n.effects, n.explosions, n.hazards,
 			failed ? std::format("; {} copy(ies) could not be made - those users keep the record", failed) : std::string{});
 	}
 

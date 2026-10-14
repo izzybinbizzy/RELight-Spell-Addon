@@ -70,6 +70,24 @@ namespace Plugin
 			return text.find("InverseSquare") != std::string::npos;
 		}
 
+		// Community Shaders (or a fork that keeps its DLL name - Bottled Shaders) is running. Its Light Limit Fix reads the
+		// first two words of EVERY light as its own flags and cutoff (LLFCommon::RuntimeLightDataExt), whether or not a
+		// shader file says so: the plain lights' ambient color written there was read as flags - 2.1 USER REPORT 2026-10-14
+		// (Bottled Shaders + KittyVFX): a red of 81-122 sets bit 9, Disabled, so the frost and shock hands lit nothing
+		[[nodiscard]] bool CommunityShadersLoaded() { return REX::W32::GetModuleHandleA("CommunityShaders.dll") != nullptr; }
+
+		// an ENB that is running, not its settings left in the game folder (the same report: leftover enbseries.ini read
+		// as ENB beside Bottled Shaders). ENB's d3d11.dll exports its SDK
+		[[nodiscard]] bool EnbLoaded()
+		{
+			for (const char* dll : { "d3d11.dll", "dxgi.dll", "d3d9.dll" }) {
+				if (const auto handle = REX::W32::GetModuleHandleA(dll); handle && REX::W32::GetProcAddress(handle, "ENBGetSDKVersion")) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 		[[nodiscard]] bool AutoKey(std::string_view a_key) { return a_key.starts_with(kAutoPrefix); }
 
 		[[nodiscard]] bool SkippedPrefix(const RE::EffectSetting* a_effect)
@@ -303,18 +321,22 @@ namespace Plugin
 
 	void MakeHandLights()
 	{
-		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour.
 		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
-		// finds it (Lighting.cpp ReadLighting), never picked: the inverse square shader, or a Community Shaders that builds
-		// it into Light Limit Fix (Bottled Shaders 1.0.10 has only that), is Community Shaders. Off the shader the hand
-		// lights are drawn plain (DressHandLight) and light the ground through their twins (GroundLights.cpp) - that stays
-		// RE::Light's own test (his "relight is relight is relight")
+		// finds it (Lighting.cpp ReadLighting), never picked. Off Community Shaders the hand lights are drawn plain
+		// (DressHandLight) and light the ground through their twins (GroundLights.cpp).
+		// 🔁 2.2 (the 2.1 user report, Bottled Shaders + KittyVFX): inverse square words are written whenever Community
+		// Shaders runs - RE::Light's own test (the separate shader file) alone missed Bottled Shaders 1.0.10+, which builds
+		// it into Light Limit Fix, and the plain branch's ambient then landed in Light Limit Fix's flags (CommunityShadersLoaded)
 		std::error_code ec;
-		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
-		const bool enb = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
-		gLighting = gIsl || IslBuiltIntoLightLimitFix() ? Lighting::kShaders : enb ? Lighting::kEnb :
-		                                                                             Lighting::kVanilla;
-		SKSE::log::info("lighting: {} (detected)", LightingName(gLighting));
+		const bool islFile = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
+		const bool islInLlf = IslBuiltIntoLightLimitFix();
+		const bool cs = CommunityShadersLoaded();
+		const bool enb = EnbLoaded();
+		gIsl = islFile || islInLlf || cs;
+		gLighting = gIsl ? Lighting::kShaders : enb ? Lighting::kEnb :
+		                                              Lighting::kVanilla;
+		SKSE::log::info("lighting: {} (detected - CommunityShaders.dll {}, inverse square shader {}, in Light Limit Fix {}, ENB running {})",
+			LightingName(gLighting), cs ? "loaded" : "not loaded", islFile ? "found" : "not found", islInLlf ? "yes" : "no", enb ? "yes" : "no");
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };

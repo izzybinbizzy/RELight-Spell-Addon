@@ -29,6 +29,8 @@
 //                   parts): weapon and staff lights follow their charge, a spell's hand light your magicka - its own
 //                   settings, rules, pages
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
+//   DevBench.cpp    inspect kind=relight and the tool relight.control, when DevBench is loaded (optional; Illuminated's way);
+//                   DevBenchGlue.h and DevBenchAPI.* are the shared copies (master: Dynamic Wards' src\)
 //
 // THREADS: every list of game lights here (and in Options.cpp, HandLights.cpp, Held.cpp) is filled and emptied on the
 // main thread only. The hooks that may run on the game's loader and job threads (the spell-light call, a 3D load) read
@@ -318,8 +320,8 @@ namespace
 		static void thunk(RE::TESObjectCELL* a_cell)
 		{
 			func(a_cell);
-			// this frame's fading numbers again for this cell's lights, without advancing any timer
-			LightKit::Guarded("cell animations", [a_cell]() { Fade::ReapplyAll(a_cell); });
+			// this frame's fading numbers again for every hand's lights, without advancing any timer
+			LightKit::Guarded("cell animations", []() { Fade::ReapplyAll(); });
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
@@ -459,16 +461,20 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 				Plugin::DropGroundLights();  // the hands and casting lights they follow are the old game's
 				Fade::OnGameLoading();
 			} else if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
-				Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the game reads its plugins (still before)
+				Fade::OnPluginLoad();       // the fading module: editor IDs recorded before the game reads its plugins (still before)
+				Plugin::OfferToDevBench();  // inspect kind=relight and relight.control, when DevBench is loaded (optional)
 				Fade::OnPostLoad();
 				// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
 				Install();
-				// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows
-				SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
-					if (a_m && a_m->type == 'DWAC') {
-						LightKit::Guarded("Dynamic Wards message", []() { Plugin::RefindHandLights(); });
-					}
-				});
+				// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows. Only when it is loaded:
+				// SKSE refuses a listener for a plugin that is not, and CommonLib logs that as an error players report (2.1)
+				if (Plugin::WardsSteppedDown()) {
+					SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
+						if (a_m && a_m->type == 'DWAC') {
+							LightKit::Guarded("Dynamic Wards message", []() { Plugin::RefindHandLights(); });
+						}
+					});
+				}
 			} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 				OnDataLoaded();
 			} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {

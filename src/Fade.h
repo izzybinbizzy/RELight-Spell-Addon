@@ -135,7 +135,7 @@ namespace Fade
 	void                                       AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D);  // after the effect's own update; a_own3D: search
 																												   // the effect's own model too
 	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect);                                                   // after the game animates an enchantment's shader
-	void ReapplyAll(const RE::TESObjectCELL* a_cell);                                                              // after a cell's light animation: this frame's numbers again, its hands'
+	void ReapplyAll();                                                                                             // after a cell's light animation: this frame's numbers again, every hand's
 	void Rebase(RE::NiPointLight* a_light, float a_ratio, float a_now);                                            // the plugin's Brightness moved a steady light
 	void ReleaseAll();                                                                                             // every light back as we found it
 	// Lights by Item wrote this light (FadeItems.cpp, under gLock): the fading pass and Brightness keep their own base

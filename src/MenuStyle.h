@@ -1,5 +1,5 @@
-// MenuStyle.h - the shared look of izzydoingit's SKSE Menu Framework pages (one identical copy per plugin, like
-// Translation.h). Each mod passes its own accent; the layout, the icon headers, the notes and the color picker with its
+// MenuStyle.h - the shared look of izzydoingit's SKSE Menu Framework pages (one identical copy in each live plugin, like
+// Translation.h; a parked plugin keeps the copy it was built with). Each mod passes its own accent; the layout, the icon headers, the notes and the color picker with its
 // spectrum bar are the same everywhere.
 // Copyright (C) 2026 izzydoingit. GPL-3.0-or-later.
 //

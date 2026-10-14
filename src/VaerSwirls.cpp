@@ -123,16 +123,28 @@ namespace Plugin
 		// deliberate and stays. Measured (his Precision magic trails report, Illuminated's same pass): VAER's own Vibrant
 		// Weapons patch (VAER_EAE.esp) takes the swirl off six fire / frost / shock effects and gives them the vanilla shader so
 		// Enchantment Art Extender dresses the weapon, and this pass was putting VAER's swirl back over it.
+		// A generated patch that won only carries an earlier plugin's change forward, so the judge is the newest plugin before it
+		// that is not one (the code review of 2.2: VAER_EAE.esp's change carried by Synthesis.esp is still VAER's own patch's).
 		[[nodiscard]] const RE::TESFile* VaerAwareChange(const RE::EffectSetting* a_effect)
 		{
-			const auto* last = a_effect ? a_effect->GetFile(-1) : nullptr;
-			if (!last || _stricmp(last->fileName, "VAEReborn.esp") == 0 || GeneratedPatch(last->fileName)) {
+			const auto* files = a_effect ? a_effect->sourceFiles.array : nullptr;
+			if (!files) {
 				return nullptr;
 			}
-			for (std::uint32_t i = 0; last->masterPtrs && i < last->masterCount; ++i) {
-				if (const auto* master = last->masterPtrs[i]; master && _stricmp(master->fileName, "VAEReborn.esp") == 0) {
-					return last;
+			for (auto n = files->size(); n-- > 0;) {
+				const auto* last = (*files)[n];
+				if (!last || GeneratedPatch(last->fileName)) {
+					continue;
 				}
+				if (_stricmp(last->fileName, "VAEReborn.esp") == 0) {
+					return nullptr;
+				}
+				for (std::uint32_t i = 0; last->masterPtrs && i < last->masterCount; ++i) {
+					if (const auto* master = last->masterPtrs[i]; master && _stricmp(master->fileName, "VAEReborn.esp") == 0) {
+						return last;
+					}
+				}
+				return nullptr;
 			}
 			return nullptr;
 		}
