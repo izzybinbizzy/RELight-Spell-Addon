@@ -261,6 +261,7 @@ namespace Plugin
 			return;
 		}
 		++gTick;
+		std::erase_if(gRefused, [](const auto& a_entry) { return gTick >= a_entry.second; });  // a hand that left is not kept (2.2's code review)
 		for (auto& entry : gTwins) {
 			entry.second.seen = false;
 		}

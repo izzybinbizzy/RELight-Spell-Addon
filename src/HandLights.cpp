@@ -331,12 +331,19 @@ namespace Plugin
 		const bool islFile = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
 		const bool islInLlf = IslBuiltIntoLightLimitFix();
 		const bool cs = CommunityShadersLoaded();
-		const bool enb = EnbLoaded();
+		const bool enbRunning = EnbLoaded();
+		// ENB's settings in the game folder still count when Community Shaders is not running: an ENB loaded through an
+		// injector under another module name has no d3d11.dll export to find (2.2's code review); with Community Shaders
+		// running, leftover settings never make it ENB (the 2.1 report)
+		const bool enbFiles = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
 		gIsl = islFile || islInLlf || cs;
-		gLighting = gIsl ? Lighting::kShaders : enb ? Lighting::kEnb :
-		                                              Lighting::kVanilla;
-		SKSE::log::info("lighting: {} (detected - CommunityShaders.dll {}, inverse square shader {}, in Light Limit Fix {}, ENB running {})",
-			LightingName(gLighting), cs ? "loaded" : "not loaded", islFile ? "found" : "not found", islInLlf ? "yes" : "no", enb ? "yes" : "no");
+		gLighting = gIsl ? Lighting::kShaders : enbRunning || enbFiles ? Lighting::kEnb :
+		                                                                Lighting::kVanilla;
+		SKSE::log::info(
+			"lighting: {} (detected - CommunityShaders.dll {}, inverse square shader {}, in Light Limit Fix {}, ENB running {}, ENB "
+			"settings in the game folder {})",
+			LightingName(gLighting), cs ? "loaded" : "not loaded", islFile ? "found" : "not found", islInLlf ? "yes" : "no",
+			enbRunning ? "yes" : "no", enbFiles ? "yes" : "no");
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };

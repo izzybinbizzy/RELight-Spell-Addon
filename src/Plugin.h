@@ -114,8 +114,8 @@ namespace Plugin
 	// 🔁 HIS WORD: "relight casting light is not working ... please re add the enb and cs and vanilla versions but
 	// don't make them manually selectable, just like illuminated it will auto detect" - which lighting the game draws with,
 	// found at data load (HandLights.cpp, Illuminated's rule): Community Shaders' inverse square shader (or Light Limit Fix's,
-	// Bottled Shaders 1.0.10, or CommunityShaders.dll loaded - 2.2), else an ENB that is running (2.2: not its settings
-	// left in the game folder), else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
+	// Bottled Shaders 1.0.10, or CommunityShaders.dll loaded - 2.2), else an ENB that is running or its settings in the
+	// game folder (2.2: never over Community Shaders), else Vanilla. Only where a light cannot work without it: the hand lights (drawn plain off Community
 	// Shaders) and their ground light (GroundLights.cpp). RE::Light stays the main driver of everything else.
 	enum class Lighting : int
 	{

@@ -182,7 +182,9 @@ namespace Plugin
 		// the peak with the reach held (at 100%/100% it equals the file's). Only when RE::Light's own test finds inverse
 		// square lighting (IslShader), as the hand lights - no lighting pick of our own (his "relight is relight is relight")
 		if (IslShader()) {
-			Isl::SetOn(light);
+			// a light of our own, never made by the game's GenDynamic, so Community Shaders set none of its flags: the flag word
+			// is ours whole - the attenuation's float left there could read as Disabled (2.2's code review, the hand-light fix)
+			Isl::Write(light, { Isl::kFlag, 0u });
 			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
 		}
 		light->local.translate = a_at;
