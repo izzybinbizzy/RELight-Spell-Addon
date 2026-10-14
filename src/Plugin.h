@@ -16,7 +16,7 @@ namespace Plugin
 	// Data\SKSE\Plugins\RelightSpellAddon\. The build writes them; this reads them once, when the game has loaded its
 	// data. They say which objects this mod lights (the sliders scale those and nothing else), which layers are
 	// tick-box options (the menu draws a switch for each), the sprays and beams RE::Light lights (ours for the menu),
-	// the hand lights, the held lights, and the colour an art pick gives the objects it recolours.
+	// the hand lights, the held lights, and the color an art pick gives the objects it recolors.
 	inline constexpr std::size_t kNone = static_cast<std::size_t>(-1);
 
 	// std::string keys looked up by std::string_view without a temporary string
@@ -84,7 +84,7 @@ namespace Plugin
 
 	// RE::Light marks every light that moves with its owner (torches, spell lights) `fadeAmount = 4`: its flicker prevention
 	// (IsLightAffectingSurface, disableLights.cpp) lets such a light reach every surface instead of only the surfaces whose
-	// seven closest lights it was among when they were first counted. Our hand, held and travelling lights never pass through
+	// seven closest lights it was among when they were first counted. Our hand and held lights never pass through
 	// RE::Light, so they carry the mark themselves - without it they lit only actors with flicker prevention on (a user's
 	// report: "some magic doesn't work in 1st person")
 	inline constexpr float kMovingLightMark = 4.0f;
@@ -141,7 +141,7 @@ namespace Plugin
 	[[nodiscard]] std::size_t                           OptionOfShader(const RE::TESEffectShader* a_shader);  // an enchantment's, by editor ID
 	[[nodiscard]] bool                                  OptionLit(std::size_t a_option);                      // its switch is on, and Weapon lights if it is a weapon's
 	[[nodiscard]] const Stream*                         StreamOf(const RE::TESForm* a_base);                  // nullptr unless it is one of our streams
-	[[nodiscard]] const RE::NiColor*                    TintOf(const RE::TESForm* a_base);                    // an art pick's colour, or nullptr
+	[[nodiscard]] const RE::NiColor*                    TintOf(const RE::TESForm* a_base);                    // an art pick's color, or nullptr
 	[[nodiscard]] std::string                           MeshKey(std::string_view a_path);
 	[[nodiscard]] std::string                           PathKey(std::string_view a_path);
 	[[nodiscard]] const StringMap<std::vector<Hand>>&   Hands();                           // hand key -> the layers that light it, highest order first
@@ -171,7 +171,6 @@ namespace Plugin
 	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);                   // put out by a switch until the next cast
 	[[nodiscard]] std::size_t HandLightsMade();
 	[[nodiscard]] std::size_t HandEffects();
-	[[nodiscard]] int         ElementOfHandKey(std::string_view a_key);  // the element of the effects that wear it (0 if they disagree)
 	[[nodiscard]] std::size_t AutoHandEffects();                         // spells lit by an automatic hand light now
 
 	// ------------------------------------------------------------------ Settings.cpp: the settings file
@@ -189,11 +188,11 @@ namespace Plugin
 	void                SetHandLightsOn(bool a_on);
 	[[nodiscard]] bool  WeaponLightsOn();
 	void                SetWeaponLightsOn(bool a_on);
-	[[nodiscard]] int   WardColour();  // 0 vanilla blue, 1 white (Wards.cpp)
-	void                SetWardColour(int a_colour);
+	[[nodiscard]] int   WardColor();  // 0 vanilla blue, 1 white (Wards.cpp)
+	void                SetWardColor(int a_color);
 	void                SetOptionOn(std::size_t a_index, bool a_on);
-	// Illuminated's settings, ported (his "add everything from illuminated into relight ... sister mods")
-	// - never its lighting picks (his word: "Relight doesn't get vanilla or enb light just relight and the added features")
+	// Illuminated's settings, ported (his "add everything from illuminated into relight ... sister mods"). The lighting is
+	// never a pick here: it is found by itself (LightingFound, HandLights.cpp), as his later word asked
 	[[nodiscard]] int  DimInDaylight();  // 0 off, 1 a little, 2 more
 	void               SetDimInDaylight(int a_v);
 	[[nodiscard]] int  HandLightsFor();  // 0 everyone, 1 everyone nearby, 2 player and followers, 3 player only
@@ -204,12 +203,13 @@ namespace Plugin
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
 	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
 
-	// ------------------------------------------------------------------ Brightness.cpp: elements
-	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by; a projectile or explosion takes the element of the
-	// effects that fire it (none if they disagree)
-	inline constexpr const char* kElementNames[] = { "", "Fire", "Frost", "Shock" };
-	[[nodiscard]] int            ElementOf(const RE::EffectSetting* a_effect);
-	[[nodiscard]] int            ElementOfForm(const RE::TESForm* a_form);
+	// ------------------------------------------------------------------ Brightness.cpp: an effect's element
+	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by. Only the automatic hand lights read it now (the
+	// color an unpatched spell's hand light takes, HandLights.cpp): the Fire / Frost / Shock color picks are gone
+	[[nodiscard]] int ElementOf(const RE::EffectSetting* a_effect);
+
+	// main.cpp: "Hand lights for" (the light budget for big fights) leaves this actor out - no hand light, no held light
+	[[nodiscard]] bool LeftOutByBudget(const RE::Actor* a_actor);
 
 	// ------------------------------------------------------------------ Options.cpp: the switches
 	// lights handed from a hook that may run on a loader thread to the main thread (an SKSE task holds them until then)
@@ -230,7 +230,10 @@ namespace Plugin
 	void UpdateBrightness(float a_delta);  // every frame, last; a_delta is the game's frame time
 	// the fading module (Fade*.cpp) wrote this light's fade: taken only when it started from our value (never scaled twice)
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after);
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr, int a_element = 0);
+	// the fading module wrote this light's reach (radius x and y): the same handshake as the fade, so the Reach slider and
+	// the fading's "reach follows" never take each other's write for a new base and compound (the audit, 2026-10-14)
+	void NoteReachWrite(const RE::NiPointLight* a_light, float a_before, float a_after);
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx = nullptr);
 	// what this pass gives every light of ours, for the lights another file scales (Held.cpp): the daylight factor (looked
 	// at every two seconds, main thread)
 	[[nodiscard]] float DaylightFactor();
@@ -241,16 +244,13 @@ namespace Plugin
 	[[nodiscard]] bool IsSprayLight(const RE::TESObjectLIGH* a_light);
 	// the light RE::Light (or the game) makes for a projectile a `stream` line names: ours for the sliders
 	[[nodiscard]] bool IsStreamObject(const RE::TESObjectREFR* a_ref);
-	// one light made and registered the ReLight way, on the main thread (Held.cpp); nullptr when it could not be
-	[[nodiscard]] RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade,
-		float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made);
 
 	// ------------------------------------------------------------------ Held.cpp: a weapon's own light while it is drawn
 	void                      UpdateHeldLights();  // every frame, after UpdateOptionLights
 	[[nodiscard]] std::size_t LiveHeldLights();
 
-	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its colour
-	void               ApplyWards(const char* a_why);  // one dome per ward and the colour pick; nothing while Dynamic Wards is loaded
+	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its color
+	void               ApplyWards(const char* a_why);  // one dome per ward and the color pick; nothing while Dynamic Wards is loaded
 	[[nodiscard]] bool WardsSteppedDown();             // Dynamic Wards is loaded: the wards are its
 
 	// ------------------------------------------------------------------ VaerSwirls.cpp: VAER Reborn's swirl on Thaumaturgy's effects

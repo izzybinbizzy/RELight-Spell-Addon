@@ -19,9 +19,9 @@
 // (ReapplyAll, this frame's numbers again - every hand, as a light may be animated in a cell its actor has since left; RELight
 // 2.2's code review) - and each light keeps Glow::Scaled's
 // "what we wrote / what it was" pair, so running twice, or on a light nobody rewrites, never compounds. The Brightness
-// slider scales the same lights just before (the plugin's Brightness pass): each fade written here is reported to it
-// (Plugin::NoteFadeWrite), and it reports a slider change on a steady light back (Rebase), so neither takes the other's
-// write for a new value.
+// slider scales the same lights just before (the plugin's Brightness pass): each fade and each reach written here is
+// reported to it (Plugin::NoteFadeWrite, Plugin::NoteReachWrite), and it reports a slider change on a steady light back
+// (Rebase), so neither takes the other's write for a new value.
 //
 // When a light stops being under a tracked hand (weapon put away into the inventory, swapped, charge refilled on an
 // exempt weapon) it is put back as we found it, unless someone else has written it since.
@@ -181,9 +181,11 @@ namespace Fade
 			data.fade = seen.fade.Apply(before, a_hand.out.brightness);
 			Plugin::NoteFadeWrite(a_light, before, data.fade);
 			if (t.reachFollows > 0.0f || seen.radius.Written()) {
-				const float r = seen.radius.Apply(data.radius.x, a_hand.out.reach);
+				const float reachBefore = data.radius.x;
+				const float r = seen.radius.Apply(reachBefore, a_hand.out.reach);
 				data.radius.x = r;  // x and y are the reach, z is the size
 				data.radius.y = r;
+				Plugin::NoteReachWrite(a_light, reachBefore, r);  // the reach handshake, as the fade's (a plugin's Reach slider)
 			}
 			if (a_hand.out.cool > 0.0f || seen.color.touched) {
 				data.diffuse = seen.color.Apply(data.diffuse, a_hand.fire, a_hand.out.cool);
@@ -202,9 +204,11 @@ namespace Fade
 			data.fade = a_seen.fade.Restore(before);
 			Plugin::NoteFadeWrite(a_seen.light.get(), before, data.fade);
 			if (a_seen.radius.Written()) {
-				const float r = a_seen.radius.Restore(data.radius.x);
+				const float reachBefore = data.radius.x;
+				const float r = a_seen.radius.Restore(reachBefore);
 				data.radius.x = r;
 				data.radius.y = r;
+				Plugin::NoteReachWrite(a_seen.light.get(), reachBefore, r);
 			}
 			data.diffuse = a_seen.color.Restore(data.diffuse);
 		}

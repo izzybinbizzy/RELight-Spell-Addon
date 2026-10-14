@@ -14,15 +14,23 @@ Ships with RELight - Spell Addon and is required by it.
   back when a later plugin (Thaumaturgy, Artificer) replaced it, and Thaumaturgy's own Fear, Paralyze, Turn Undead,
   Banish, Silent Moons and second Absorb effects wear VAER's swirl too.
 - **Hand lights** - a light on your hands while you cast, made in memory, with Dynamic Lighting. No plugin, no script.
-  On by default.
-- **Lights off while sneaking**, off by default.
+  On by default. Spells from mods with no patch get one too, in the color of their own light or their element.
+- **Community Shaders, ENB and Vanilla found by themselves** - nothing to pick. Off Community Shaders the hand lights are
+  drawn for the game's own lighting and light the ground too.
+- **Wards** - one dome per ward, and a ward color (Vanilla blue or White). All of it stands aside when Dynamic Wards is
+  installed.
+- **FleshFX** - with FleshFX installed, the flesh spells' lights take the color of its skins.
+- **Lights off while sneaking** - every spell light, off by default.
 - **Fading lights** - weapon, staff and bound weapon lights follow their charge, a spell's hand light your magicka
   (rule files in `SKSE\Plugins\RelightSpellAddon\Fading`).
-- **Presets, dim in daylight, light colors, Fire / Frost / Shock colors, hand lights for (a budget for big fights)** and a
-  hand light for every spell no patch covers.
+- **Lights by Item** - search any spell, staff or weapon and switch its light off or give it a color of its own.
+- **HUD** - hide the enchantment charge bar, a charge gem per weapon hand, and a spell reticle that drains with your magicka.
+- **Presets, dim in daylight, and hand lights for (a budget for big fights)**.
 
 Every change applies at once, even to a spell you are holding. Settings are in SKSE Menu Framework's Mod Control
-Panel and are saved to `SKSE\Plugins\RelightSpellAddon.ini`.
+Panel and are saved to `SKSE\Plugins\RelightSpellAddon.ini`. Values the menu does not show are in
+`SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced Settings.ini`, written with every value and a note the
+first time the game starts.
 
 The held weapon lights are made the way ReLight by Truman makes its lights, with his permission.
 

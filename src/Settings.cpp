@@ -15,7 +15,8 @@
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
 //   [Switches]
-//   Spells - Runes=1            one line per switch; a switch with no line is on
+//   Spells - Runes=1            one line per switch; a switch with no line is on. A line for an option that is not
+//                               installed now is kept as it is, so reinstalling the option brings its switch back
 // Keys and sections match case-insensitively. A value that is not a whole number keeps its default and is named in the log. An old
 // [Brightness] section (the per-option sliders, retired) is passed over; any other section is named in the log.
 //
@@ -87,6 +88,11 @@ namespace Plugin
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 		};
 
+		// [Switches] lines for options that are not installed now, as read: written back unchanged, so an option taken out
+		// and put back keeps its switch (the audit, 2026-10-14: the line was dropped at the next save and the switch came
+		// back on). Main thread (LoadSettings, then the save task)
+		std::vector<std::pair<std::string, int>> gOtherSwitches;
+
 		// one [Settings] line; false when the key is not one of ours
 		bool ApplySetting(std::string_view a_key, int a_v)
 		{
@@ -117,6 +123,9 @@ namespace Plugin
 					text << o.id << "=" << (o.on ? 1 : 0) << "\n";
 				}
 			}
+			for (const auto& [id, v] : gOtherSwitches) {
+				text << id << "=" << v << "\n";
+			}
 			const std::string tmp = std::string(kPath) + ".tmp";
 			std::error_code   ec;
 			std::ofstream     out(tmp, std::ios::trunc);
@@ -137,6 +146,7 @@ namespace Plugin
 
 	void LoadSettings()
 	{
+		gOtherSwitches.clear();
 		std::ifstream            in(kPath);
 		std::string              line;
 		std::string              section;
@@ -177,10 +187,15 @@ namespace Plugin
 					problems.push_back(std::format("{}: not a setting", key));
 				}
 			} else {
+				bool installed = false;
 				for (auto& o : Options()) {
 					if (o.switchable && SameText(o.id, key)) {
 						o.on = *v != 0;
+						installed = true;
 					}
+				}
+				if (!installed) {
+					gOtherSwitches.emplace_back(std::string(key), *v);
 				}
 			}
 		}
@@ -267,13 +282,13 @@ namespace Plugin
 		}
 	}
 
-	int WardColour() { return gWard; }
+	int WardColor() { return gWard; }
 
-	void SetWardColour(int a_colour)
+	void SetWardColor(int a_color)
 	{
-		a_colour = std::clamp(a_colour, 0, 1);
-		if (gWard.exchange(a_colour) != a_colour) {
-			SKSE::log::info("ward color set to {}", a_colour == 1 ? "white" : "vanilla blue");
+		a_color = std::clamp(a_color, 0, 1);
+		if (gWard.exchange(a_color) != a_color) {
+			SKSE::log::info("ward color set to {}", a_color == 1 ? "white" : "vanilla blue");
 		}
 	}
 

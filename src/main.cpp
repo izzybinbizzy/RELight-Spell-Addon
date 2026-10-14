@@ -12,8 +12,9 @@
 //   Options.cpp     the switches - an option's lights put out while the game runs
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     sprays, breath shouts and beams: RE::Light lights them, the menu reaches their lights
-//   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment)
-//   Wards.cpp       one ward, one dome, and the ward colour pick - all left to Dynamic Wards when it is loaded
+//   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment),
+//                   made and registered the ReLight way (MakeHeldLight)
+//   Wards.cpp       one ward, one dome, and the ward color pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script (and the lighting found)
 //   GroundLights.cpp off Community Shaders, a twin of each hand light that lights the ground (Illuminated's)
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
@@ -59,11 +60,100 @@ namespace
 		return player && player->IsSneaking();
 	}
 
+	// The projectiles, explosions and hazards that are MAGIC: what a magic effect fires or sets off (its projectile, its
+	// explosion, its projectile's explosion, the hazard such an explosion leaves), worked out once at data load before
+	// the hooks go in, read-only after (the 3D-load hooks ask from loader threads). An arrow, a trap's explosion or a
+	// burning oil slick is none of these, so "Lights off while sneaking" leaves its light alone (the audit, 2026-10-14:
+	// every arrow, explosion and hazard used to count as a spell)
+	std::unordered_set<const void*> gSpellBases;
+	std::atomic<bool>               gSpellBasesReady{ false };  // set once gSpellBases is built (release), read before it (acquire)
+
+	void FindSpellBases()
+	{
+		gSpellBases.clear();
+		std::unordered_set<const RE::BGSExplosion*> explosions;
+		for (const auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
+			if (!effect) {
+				continue;
+			}
+			if (const auto* proj = effect->data.projectileBase) {
+				gSpellBases.insert(proj);
+				if (proj->data.explosionType) {
+					explosions.insert(proj->data.explosionType);
+				}
+			}
+			if (effect->data.explosion) {
+				explosions.insert(effect->data.explosion);
+			}
+		}
+		for (const auto* x : explosions) {
+			gSpellBases.insert(x);
+			if (x->data.spawnProjectile) {
+				gSpellBases.insert(x->data.spawnProjectile);
+			}
+			// the hazard it leaves: CommonLib types this field as a reference, the game stores the hazard's base form there,
+			// so it is only compared as an address, never read
+			if (x->data.impactPlacedObject) {
+				gSpellBases.insert(static_cast<const void*>(x->data.impactPlacedObject));
+			}
+		}
+		gSpellBasesReady.store(true, std::memory_order_release);
+		SKSE::log::info("lights off while sneaking: {} projectile, explosion and hazard form(s) are magic", gSpellBases.size());
+	}
+
 	[[nodiscard]] bool IsSpellObject(const RE::TESObjectREFR* a_ref)
 	{
 		using FT = RE::FormType;
-		return a_ref && a_ref->Is(FT::ProjectileMissile, FT::ProjectileArrow, FT::ProjectileGrenade, FT::ProjectileBeam,
-							FT::ProjectileFlame, FT::ProjectileCone, FT::ProjectileBarrier, FT::Explosion, FT::PlacedHazard);
+		if (!a_ref || !a_ref->Is(FT::ProjectileMissile, FT::ProjectileArrow, FT::ProjectileGrenade, FT::ProjectileBeam, FT::ProjectileFlame,
+						  FT::ProjectileCone, FT::ProjectileBarrier, FT::Explosion, FT::PlacedHazard)) {
+			return false;
+		}
+		if (!gSpellBasesReady.load(std::memory_order_acquire)) {
+			return false;  // before data load: no magic object exists yet
+		}
+		const auto* base = a_ref->GetBaseObject();
+		// magic by what fires it, or an object this mod's data lights (a mod's scripted spell art)
+		return base && (gSpellBases.contains(base) || Plugin::OptionOf(base) != Plugin::kNone);
+	}
+
+	// What the sneaking pass worked out about each light, so the walk up to its reference is not repeated for every light
+	// every frame while she sneaks (the audit's speed finding). A freed light's address can come back as another light,
+	// so each is remembered with its name text and its parent, as Options.cpp and Brightness.cpp do. Main thread only.
+	struct SneakKnown
+	{
+		const void*   name{ nullptr };
+		const void*   parent{ nullptr };
+		bool          spell{ false };
+		std::uint32_t frame{ 0 };
+	};
+	std::unordered_map<const RE::NiLight*, SneakKnown> gSneakKnown;
+	std::uint32_t                                      gSneakFrame = 0;
+
+	// a spell light made through the hooked call goes dark while she sneaks when it hangs on a caster (a casting light) or
+	// on a magic object - never on a trap's explosion that happens to go through the same call (any thread)
+	[[nodiscard]] bool SneakDarkens(const RE::TESObjectREFR* a_ref) { return !a_ref || a_ref->As<RE::Actor>() || IsSpellObject(a_ref); }
+
+	// a light the sneaking pass puts out: a spell light the hooked call made, on a caster or on a magic object (never on a
+	// trap's explosion that happens to go through the same call), or any light on a magic projectile, explosion or hazard
+	[[nodiscard]] bool SneakSpellLight(RE::NiLight* a_light)
+	{
+		auto&       k = gSneakKnown[a_light];
+		const void* name = a_light->name.c_str();
+		const void* parent = a_light->parent;
+		if (k.frame == 0 || k.name != name || k.parent != parent) {
+			const auto* ref = Plugin::ReferenceOf(a_light);
+			const bool  made = gMagicLights.contains(a_light);
+			const bool  spell = IsSpellObject(ref) || (made && SneakDarkens(ref));
+			if (!spell && ref && ref->As<RE::Actor>()) {
+				// a light on a caster not noted as a spell light yet (its SKSE task may come later this frame): asked again
+				// next frame, never remembered as "not a spell light"
+				gSneakKnown.erase(a_light);
+				return false;
+			}
+			k = { name, parent, spell, gSneakFrame };
+		}
+		k.frame = gSneakFrame;
+		return k.spell;
 	}
 
 	void CullSpellLights()
@@ -72,6 +162,7 @@ namespace
 		if (!ssn) {
 			return;
 		}
+		++gSneakFrame;
 		for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
 			if (!bsLight || !bsLight->light) {
 				continue;
@@ -80,11 +171,16 @@ namespace
 			if (niLight->GetAppCulled()) {
 				continue;
 			}
-			if (gMagicLights.contains(niLight) || IsSpellObject(Plugin::ReferenceOf(niLight))) {
+			if (SneakSpellLight(niLight)) {
 				niLight->SetAppCulled(true);
 				Plugin::KeepLight(niLight);
 				gCulled.push_back(niLight);
 			}
+		}
+		// a light not seen for a few seconds has left the scene: what was worked out about it is let go
+		constexpr std::uint32_t kForget = 300;
+		if (gSneakFrame % kForget == 0) {
+			std::erase_if(gSneakKnown, [](const auto& a_kv) { return gSneakFrame - a_kv.second.frame > kForget; });
 		}
 	}
 
@@ -114,8 +210,7 @@ namespace
 		// a hand light of ours, a spray light RE::Light made from our config, and the light of a beam or breath
 		// projectile our data names (RE::Light lights it; Streams.cpp) are ours for the sliders
 		if (a_ours) {
-			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey),
-				a_handKey.empty() ? 0 : Plugin::ElementOfHandKey(a_handKey));
+			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey));
 		}
 		// a light made while the player was already sneaking was put out at once and comes here through AdoptSneakCulled;
 		// one made just before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
@@ -125,17 +220,8 @@ namespace
 	// no casting light at all - this is the call that would make it, ours or RE::Light's, so nothing is made and put out
 	[[nodiscard]] bool LeftOutCaster(const RE::TESObjectREFR* a_ref)
 	{
-		const int   who = Plugin::HandLightsFor();
-		const auto* actor = who && a_ref ? a_ref->As<RE::Actor>() : nullptr;
-		if (!actor || actor->IsPlayerRef()) {
-			return false;
-		}
-		const float nearby = Plugin::gNearby.load(std::memory_order_relaxed);  // "about forty paces" - [Lights] NearbyDistance
-		if (who == 1) {
-			const auto* player = RE::PlayerCharacter::GetSingleton();
-			return !player || actor->GetPosition().GetSquaredDistance(player->GetPosition()) > nearby * nearby;
-		}
-		return who == 3 || !actor->IsPlayerTeammate();
+		const auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
+		return actor && Plugin::LeftOutByBudget(actor);  // the one budget rule, for held lights too (Held.cpp)
 	}
 
 	void AdoptSneakCulled(const Plugin::LightList& a_lights);
@@ -172,7 +258,7 @@ namespace
 		if (made) {
 			LightKit::Guarded("spell light", [&]() {
 				const bool ours = hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref);
-				const bool sneaking = PlayerSneaking();
+				const bool sneaking = PlayerSneaking() && SneakDarkens(a_ref);
 				if (sneaking) {
 					made->SetAppCulled(true);
 				}
@@ -243,10 +329,11 @@ namespace
 			if (!tasks) {
 				return root;
 			}
-			LightKit::Guarded("3D load", [root, tasks]() {
+			LightKit::Guarded("3D load", [a_this, root, tasks]() {
 				// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread
 				if (PlayerSneaking()) {
-					if (auto culled = CullTree(root); !culled.empty()) {
+					// an arrow, a trap's explosion or an oil fire keeps its light: only a magic object's go out (IsSpellObject)
+					if (auto culled = IsSpellObject(a_this) ? CullTree(root) : Plugin::LightList{}; !culled.empty()) {
 						tasks->AddTask([lights = std::move(culled)]() { AdoptSneakCulled(lights); });
 					}
 				} else {
@@ -417,6 +504,7 @@ namespace
 			Plugin::ClaimBeamLights();          // the same for the beams (2.2) - after the sprays: a record of both is the spray's
 			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
+			FindSpellBases();  // before InstallLate: the 3D-load hooks read it from loader threads
 			Plugin::VaerSwirls();       // after LoadData: it needs to know whether the VAER Reborn option is installed
 			LightKit::FleshFx::Find();  // which flesh spells wear FleshFX's look: their lights take its hue (Brightness.cpp)
 			InstallLate();
@@ -438,9 +526,24 @@ bool Plugin::WantedDark(RE::NiLight* a_light)
 	return (PlayerSneaking() && gMagicLights.contains(a_light)) || HeldOutForOption(a_light) || HandLightHeldOut(a_light);
 }
 
+bool Plugin::LeftOutByBudget(const RE::Actor* a_actor)
+{
+	const int who = HandLightsFor();
+	if (!who || !a_actor || a_actor->IsPlayerRef()) {
+		return false;
+	}
+	if (who == 1) {
+		const float nearby = gNearby.load(std::memory_order_relaxed);  // "about forty paces" - [Lights] NearbyDistance
+		const auto* player = RE::PlayerCharacter::GetSingleton();
+		return !player || a_actor->GetPosition().GetSquaredDistance(player->GetPosition()) > nearby * nearby;
+	}
+	return who == 3 || !a_actor->IsPlayerTeammate();
+}
+
 void Plugin::ForgetSpellLights(const GoneLights& a_gone)
 {
 	std::erase_if(gMagicLights, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
+	std::erase_if(gSneakKnown, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
 	std::erase_if(gCulled, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
 	ForgetOptionLights(a_gone);
 }

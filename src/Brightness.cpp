@@ -16,13 +16,14 @@
 // RE::Light lights the objects; what it has no setting for is done here, on the lights this pass already looks after):
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
-// (Light colors and the Fire / Frost / Shock color picks were here until his order took the color
-//   variations out of the menu - ColorFor keeps each light's own color; an art pick's tint still recolors.)
+// (Light colors and the Fire / Frost / Shock color picks were here until his order took the color variations out of the
+// menu: every light keeps its own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
 // A flesh spell's light where FleshFX's look wins (LightKit.h FleshFx) is drawn in FleshFX's hue at the strength of that base.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
-// and after each enchantment effect's update; it reports each fade it writes (NoteFadeWrite), so its write is never taken
-// for a new base here and the two never compound. Lock order: the fading module's lock, then gSeenLock.
+// and after each enchantment effect's update; it reports each fade it writes (NoteFadeWrite) and each reach it writes
+// (NoteReachWrite), so its write is never taken for a new base here and the two never compound. Lock order: the fading
+// module's lock, then gSeenLock.
 
 #include "Plugin.h"
 
@@ -42,7 +43,6 @@ namespace Plugin
 			float                baseCutoff{ -1.0f };  // the cutoff RE::Light (or its editor) last gave it
 			float                wroteCutoff{ -2.0f };
 			std::array<float, 3> phase{};
-			int                  element{ 0 };   // fire, frost or shock: its color setting
 			RE::NiColor          baseDiffuse{};  // the color RE::Light (or the hand light) last gave it
 			RE::NiColor          wroteDiffuse{ -1.0f, -1.0f, -1.0f };
 		};
@@ -55,7 +55,6 @@ namespace Plugin
 		// ✂ HIS ORDER: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
 		// (Paler / Deeper) and the Fire / Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art
 		// pick's tint) gives it. One place, so the lights that are scaled elsewhere (Held.cpp) draw the same.
-		[[nodiscard]] RE::NiColor ColorFor(const Seen&, const RE::NiColor& a_base) { return a_base; }
 
 		float gDaylight = 1.0f, gDaylightClock = 2.0f;  // main thread only (UpdateBrightness)
 
@@ -94,7 +93,6 @@ namespace Plugin
 		{
 			RE::NiLight*  light;
 			const HandFx* fx;
-			int           element;
 		};
 		std::vector<Made> gNew;  // lights made since the last frame
 
@@ -166,7 +164,7 @@ namespace Plugin
 				a_s.baseDiffuse = data.diffuse;  // RE::Light (or the hand light) gave it this color: the new base
 			}
 			const RE::NiColor own = a_s.tint ? *a_s.tint : a_s.baseDiffuse;
-			const RE::NiColor color = ColorFor(a_s, a_hue ? LightKit::FleshFx::Shown(*a_hue, own) : own);
+			const RE::NiColor color = a_hue ? LightKit::FleshFx::Shown(*a_hue, own) : own;  // every light keeps its own color
 			data.diffuse = color;
 			a_s.wroteDiffuse = color;
 			// the cutoff follows the same rule, so an edit in RE::Light's editor sticks: a cutoff we did not write is the
@@ -193,18 +191,18 @@ namespace Plugin
 		}
 	}
 
-	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx, int a_element)
+	void RememberLight(RE::NiLight* a_light, const HandFx* a_fx)
 	{
 		if (a_light) {
 			KeepLight(a_light);
 			std::lock_guard l{ gNewLock };
-			gNew.push_back({ a_light, a_fx, a_element });
+			gNew.push_back({ a_light, a_fx });
 		}
 	}
 
 	float DaylightFactor() { return gDaylight; }
 
-	// ------------------------------------------------------------------ elements and their colors
+	// ------------------------------------------------------------------ an effect's element (the automatic hand lights' color)
 	int ElementOf(const RE::EffectSetting* a_effect)
 	{
 		switch (a_effect ? a_effect->data.resistVariable : RE::ActorValue::kNone) {
@@ -219,31 +217,6 @@ namespace Plugin
 		}
 	}
 
-	int ElementOfForm(const RE::TESForm* a_form)
-	{
-		static const auto map = [] {
-			std::unordered_map<const RE::TESForm*, int> m;
-			for (const auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
-				const int e = ElementOf(effect);
-				if (!e) {
-					continue;
-				}
-				for (const RE::TESForm* f : { static_cast<const RE::TESForm*>(effect->data.projectileBase),
-						 static_cast<const RE::TESForm*>(effect->data.explosion) }) {
-					if (f) {
-						auto [it, added] = m.try_emplace(f, e);
-						if (!added && it->second != e) {
-							it->second = 0;  // fired by effects of two elements: none
-						}
-					}
-				}
-			}
-			return m;
-		}();
-		const auto it = a_form ? map.find(a_form) : map.end();
-		return it == map.end() ? 0 : it->second;
-	}
-
 	void ForgetSliderLights(const GoneLights& a_gone)
 	{
 		{
@@ -253,6 +226,17 @@ namespace Plugin
 		std::lock_guard l{ gSeenLock };
 		std::erase_if(gSeen, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
 		std::erase_if(gNotOurs, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
+	}
+
+	void NoteReachWrite(const RE::NiPointLight* a_light, float a_before, float a_after)
+	{
+		std::lock_guard l{ gSeenLock };
+		// as NoteFadeWrite: only when the fading module started from the reach this pass wrote. Without it the two passes each
+		// took the other's write for a new base whenever Reach was not 100% and the fading's reach was below full (a spell
+		// hand with magicka spent), and the reach crept every frame until the fading's loop guard froze it
+		if (const auto it = gSeen.find(a_light); it != gSeen.end() && it->second.wroteRadius == a_before) {
+			it->second.wroteRadius = a_after;
+		}
 	}
 
 	void NoteFadeWrite(const RE::NiPointLight* a_light, float a_before, float a_after)
@@ -279,7 +263,6 @@ namespace Plugin
 			for (const auto& m : made) {
 				auto& s = gSeen[m.light];
 				s.fx = m.fx;
-				s.element = m.element;
 			}
 		}
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -319,7 +302,7 @@ namespace Plugin
 				}
 				gNotOurs.erase(niLight);
 				KeepLight(niLight);
-				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base), .element = ElementOfForm(base) }).first;
+				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base) }).first;
 			}
 			Apply(niLight, it->second, scale, reach, dt, IsEnchantLight(niLight) ? FleshHueOf(niLight) : nullptr);
 		}

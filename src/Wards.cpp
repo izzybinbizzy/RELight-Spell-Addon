@@ -2,7 +2,7 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// The wards: one dome per ward, and the colour pick. Everything here steps down when DynamicWards.dll is loaded, which
+// The wards: one dome per ward, and the color pick. Everything here steps down when DynamicWards.dll is loaded, which
 // dresses every ward itself (his call: "have the whole ward system step down if dynamic wards is present").
 //
 // ONE DOME. A ward spell's rank is the effect that accumulates Ward Power; every OTHER effect on the same spell that wears
@@ -11,7 +11,7 @@
 // Lesser Ward fires Ward - Lesser and Odin's Ward Regeneration, both on WardBodyFX). Those lose their art and their light.
 // An effect on a mod's own ward art (Better Vampires' blood ward) is never touched.
 //
-// THE COLOUR (his call, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
+// THE COLOR (his call, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
 // pointed at our meshes (`meshes\magic\Glow Wards\`, Dynamic Wards' own looks under our names): the dome (with 360 Ward
 // the 360 sphere, in place of its orange), the hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand,
 // and gives the 360 sphere and flash the vanilla blue. The hand light follows in HandLights.cpp. Nothing is saved.
@@ -34,7 +34,7 @@ namespace Plugin
 		std::vector<RE::EffectSetting*>                    gSilenced;
 		std::unordered_map<RE::BGSArtObject*, std::string> gOriginal;  // an art form's model before we pointed it at ours
 		bool                                               gSteppedDownLogged = false;
-		std::optional<RE::Color>                           gWardLightColour;  // MagicLightWardHand01's own, before White
+		std::optional<RE::Color>                           gWardLightColor;  // MagicLightWardHand01's own, before White
 
 		bool DynamicWardsLoaded() { return REX::W32::GetModuleHandleA("DynamicWards.dll") != nullptr; }
 
@@ -169,7 +169,7 @@ namespace Plugin
 			}
 			// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
 			const bool has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
-			const bool white = WardColour() == 1;
+			const bool white = WardColor() == 1;
 			auto*      dome = dh->LookupForm<RE::BGSArtObject>(kDomeArt, "Skyrim.esm");
 			auto*      hand = dh->LookupForm<RE::BGSArtObject>(kHandArt, "Skyrim.esm");
 			auto*      flash = has360 ? dh->LookupForm<RE::BGSArtObject>(kFlashArt, k360Plugin) : nullptr;
@@ -205,10 +205,10 @@ namespace Plugin
 			}
 			// the game's own ward hand light, where no installed layer lights the ward hand (HandLights.cpp does where one does)
 			if (auto* light = dh->LookupForm<RE::TESObjectLIGH>(kWardLight, "Skyrim.esm")) {
-				if (!gWardLightColour) {
-					gWardLightColour = light->data.color;
+				if (!gWardLightColor) {
+					gWardLightColor = light->data.color;
 				}
-				light->data.color = white ? RE::Color{ 255, 255, 255, 0 } : *gWardLightColour;
+				light->data.color = white ? RE::Color{ 255, 255, 255, 0 } : *gWardLightColor;
 			}
 			SKSE::log::info("wards: {} {} ({}), hand {}", has360 ? "360 sphere" : "dome", white ? "white" : "vanilla blue",
 				dome && dome->GetModel() ? dome->GetModel() : "no art form", hand && hand->GetModel() ? hand->GetModel() : "no art form");

@@ -5,7 +5,7 @@
 // The light on the caster's hands - no plugin, no script.
 //
 // Casting art hangs off the actor, so no RE::Light mesh config reaches it. Instead each magic effect whose casting
-// art is a mesh this mod lights is pointed, in memory, at its casting light: a light record made here in the colour,
+// art is a mesh this mod lights is pointed, in memory, at its casting light: a light record made here in the color,
 // strength and reach the installed layers give that mesh. RE::Light switches off casting lights it has no config for,
 // and an in-memory record can have none, so main.cpp's hook makes these lights itself and never hands them on.
 // Nothing is saved; take the mod out and every effect keeps its own light.
@@ -56,7 +56,6 @@ namespace Plugin
 		Lighting                                                  gLighting = Lighting::kVanilla;  // found at data load (MakeHandLights)
 		std::map<std::string, Hand, std::less<>>                  gAutoHands;                      // "auto r,g,b" -> its hand (stable: a map's nodes never move)
 		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;                     // the same key -> its light record
-		StringMap<int>                                            gElementOfKey;                   // hand key -> element, most of its effects' (0: none, or a tie)
 
 		// a Community Shaders that builds inverse square lights into Light Limit Fix: its attenuation reads each light's
 		// InverseSquare flag (Illuminated's Lighting.cpp, the same test)
@@ -116,10 +115,12 @@ namespace Plugin
 			return nullptr;
 		}
 
-		// the ward colour pick (Wards.cpp): White gives the ward's hand light white, in the layer's own strength and reach
+		// the ward color pick (Wards.cpp): White gives the ward's hand light white, in the layer's own strength and reach.
+		// Not while Dynamic Wards is loaded: it colors the wards and the menu hides the pick, so a White left in the settings
+		// file must not whiten the hand light under its color (the audit, 2026-10-14)
 		const Hand* Picked(const Hand* a_hand)
 		{
-			if (!a_hand || WardColour() != 1 || MeshKey(a_hand->key) != "wardinhandfx") {
+			if (!a_hand || WardsSteppedDown() || WardColor() != 1 || MeshKey(a_hand->key) != "wardinhandfx") {
 				return a_hand;
 			}
 			static std::unordered_map<const Hand*, Hand> white;  // under gLock, like every caller
@@ -131,7 +132,7 @@ namespace Plugin
 			return &it->second;
 		}
 
-		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's colour, reach and strength
+		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's color, reach and strength
 		void Fill(RE::TESObjectLIGH* a_light, const Hand& a_hand)
 		{
 			auto& d = a_light->data;
@@ -175,7 +176,6 @@ namespace Plugin
 				ours.insert(c);
 			}
 			gTargets.clear();
-			gElementOfKey.clear();
 			std::size_t                     byPath = 0;
 			std::vector<RE::EffectSetting*> uncovered;
 			const auto                      ownOf = [&](RE::EffectSetting* a_effect) {
@@ -186,15 +186,6 @@ namespace Plugin
 					mine = nullptr;
 				}
 				return mine;
-			};
-			// a key's element: the one most of the effects wearing it carry (fire, frost or shock); an effect of no element
-			// does not count - measured: Flames' hand art is shared with effects of none, and "all must agree" left
-			// the Fire color off Flames' own hand. A tie gives none.
-			StringMap<std::array<std::size_t, 4>> votes;
-			const auto                            noteElement = [&](const std::string& a_key, int a_element) {
-				if (a_element > 0 && a_element < 4) {
-					++votes[a_key][static_cast<std::size_t>(a_element)];
-				}
 			};
 			for (auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
 				if (!effect || !effect->data.castingArt) {
@@ -215,7 +206,6 @@ namespace Plugin
 					uncovered.push_back(effect);
 					continue;
 				}
-				noteElement(key, ElementOf(effect));
 				gTargets.push_back({ effect, ownOf(effect), std::move(key) });
 			}
 			// the automatic hand lights: the middle of the tuned hand lights (by fade x radius²), and each element's color
@@ -270,13 +260,7 @@ namespace Plugin
 					gAutoCopies.emplace(key, copy);
 					gAutoHands.emplace(key, std::move(h));
 				}
-				noteElement(key, ElementOf(effect));
 				gTargets.push_back({ effect, ownOf(effect), std::move(key), true });
-			}
-			for (const auto& [key, v] : votes) {
-				const auto best = std::ranges::max_element(v.begin() + 1, v.end());
-				const auto ties = std::ranges::count(v.begin() + 1, v.end(), *best);
-				gElementOfKey.emplace(key, ties == 1 ? static_cast<int>(best - v.begin()) : 0);
 			}
 			// an effect whose casting art moved to a mesh no layer lights is no target now: it gets its own light back,
 			// or it would keep our light for the art it no longer wears
@@ -431,8 +415,7 @@ namespace Plugin
 						live.heldOut = false;
 					}
 					DressHandLight(live.light, *h);
-					const auto e = gElementOfKey.find(live.key);  // gLock is held here: not ElementOfHandKey, which takes it
-					RememberLight(live.light, HandFxOf(h->key), e == gElementOfKey.end() || e->second < 0 ? 0 : e->second);
+					RememberLight(live.light, HandFxOf(h->key));
 				} else if (!live.heldOut) {
 					live.light->SetAppCulled(true);
 					live.heldOut = true;
@@ -456,7 +439,7 @@ namespace Plugin
 		return it == gInUse.end() ? nullptr : it->second;
 	}
 
-	// dressed as RE::Light dresses a plugin light: fade, reach with the size in z, colour, and under Community Shaders
+	// dressed as RE::Light dresses a plugin light: fade, reach with the size in z, color, and under Community Shaders
 	// the inverse square flag and cutoff
 	void DressHandLight(RE::NiLight* a_light, const Hand& a_hand)
 	{
@@ -529,10 +512,4 @@ namespace Plugin
 		return gAutoLit;
 	}
 
-	int ElementOfHandKey(std::string_view a_key)
-	{
-		std::lock_guard l{ gLock };
-		const auto      it = gElementOfKey.find(a_key);
-		return it == gElementOfKey.end() || it->second < 0 ? 0 : it->second;
-	}
 }
