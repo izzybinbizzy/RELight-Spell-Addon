@@ -204,8 +204,6 @@ namespace Plugin
 
 	float DaylightFactor() { return gDaylight; }
 
-	RE::NiColor DrawnColor(int, const RE::NiColor& a_base) { return ColorFor(Seen{}, a_base); }
-
 	// ------------------------------------------------------------------ elements and their colors
 	int ElementOf(const RE::EffectSetting* a_effect)
 	{

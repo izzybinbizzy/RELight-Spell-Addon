@@ -1,17 +1,18 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section. HUD (his order): the
-// charge bar, the charge gems and the reticle. Settings ("Fading"): every other setting of the
-// module (his rule: settings live in the SKSE menu only), saved at once and live on the next frame; the rule files pick
-// weapons one by one. Debug (ONLY in the testing DLL of the PDB and Source download - his call: "remove fading
+// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section, in his order: HUD (the charge bar, the
+// charge gems and the reticle) right below the mod's Configs page, then Fading, then Lights by Item (FadeItems.cpp) - his
+// answer 2026-10-13: "HUD right below Configs, Lights by Item after Fading". Settings ("Fading"): every other setting of the
+// module (his rule: settings live in the SKSE menu only), live on the next frame and saved on the game's main thread (never
+// the render thread); the rule files pick weapons one by one. Debug (ONLY in the testing DLL of the PDB and Source download - his call: "remove fading
 // debug entirely only keep it with source and pdb as an in game testing dll"; built with FADE_DEBUG_PAGE): the debug log,
 // each tracked hand's weapon, charge, the numbers on its lights and how many lights were found, plus the rule files and
 // their problems - what a bug report needs.
 // The look is the shared MenuStyle.h with these pages' warm glowing headings; two optional HUD elements show one charge
-// gem per hand of the player beside the health bar (HudGems) and the reticle beside the crosshair (Reticle): Crossfire's struggle bar stood
-// on end, one per hand, draining with its charge or magicka. Both draw from Hud() (FadeLights.cpp), a small copy the
+// gem per hand of the player beside the health bar (HudGems) and the reticle (Reticle): a spell hand's magicka, as a bar per
+// hand beside the crosshair or one bar under it (drawn from our Crossfire struggle bar, his pick). Both draw from Hud() (FadeLights.cpp), a small copy the
 // main thread publishes once a frame, so the render thread never waits on the per-frame pass.
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -92,9 +93,9 @@ namespace Fade
 
 		void Tip(const char* a_text) { ImGuiMCP::SetItemTooltip("%s", T(a_text)); }
 
-		// The settings page edits a copy of the settings (Config), which goes back whole when anything changed (SetConfig):
-		// the main thread reads them every frame, so the shared copy is never written half-way. A switch or a choice saves
-		// the file at once; a slider when it is let go.
+		// The pages edit a copy of the settings (Config); only the keys that changed go back (Commit -> ApplySetting), so a
+		// DevBench change made meanwhile is kept, and the shared copy is never written half-way. A switch or a choice saves
+		// the file on the next game frame; a slider when it is let go.
 		void Toggle(const char* a_label, bool& a_value, const char* a_tip, bool& a_save)
 		{
 			a_save |= ImGuiMCP::Checkbox(T(a_label), &a_value);
@@ -127,6 +128,24 @@ namespace Fade
 			Tip(a_tip);
 		}
 
+		// the file is written on the game's main thread, never on the render thread these pages run on (his rule): one task,
+		// however many changes come before it runs
+		void QueueSave()
+		{
+			static std::atomic<bool> queued{ false };
+			if (queued.exchange(true)) {
+				return;
+			}
+			if (auto* tasks = SKSE::GetTaskInterface()) {
+				tasks->AddTask([]() {
+					queued = false;
+					SaveSettings();
+				});
+			} else {
+				queued = false;
+			}
+		}
+
 		// only what changed on a page goes back, key by key: a change DevBench made meanwhile is kept
 		void Commit(const Settings& a_before, const Settings& a_now, bool a_save)
 		{
@@ -136,7 +155,7 @@ namespace Fade
 				}
 			}
 			if (a_save) {
-				SaveSettings();
+				QueueSave();
 			}
 		}
 
@@ -200,7 +219,8 @@ namespace Fade
 			ImGuiMCP::EndDisabled();
 
 			// HIS WORD: "put bound weapons above own light for unlit weapons in the what fades menu. completely remove
-			// own light for unlit weapons option" - the switch is gone from the menu (the setting file's OwnLight stays as it was)
+			// own light for unlit weapons option" - gone with its setting (an OwnLight line in an older Fading.ini is read past
+			// and left out at the next save)
 			GlowHeading(Icon::kWand, "What fades");
 			Toggle("Weapon enchantments", s.weapons, "An enchanted weapon's lights and glow follow its charge.", save);
 			ImGuiMCP::SameLine(column);
@@ -259,8 +279,9 @@ namespace Fade
 		}
 
 		// HIS MENU: "make a HUD submenu placed right below configs. add logical and simple options for
-		// toggling and messing with our hud stuff" - its own page (registered before Fading, right below the mod's own
-		// pages): the charge bar, the charge gems (size, opacity, the percent) and the reticle (size, opacity). The gems
+		// toggling and messing with our hud stuff" - its own page (registered first of the module's pages, so it sits right
+		// below the mod's Configs page; his answer 2026-10-13):
+		// the charge bar, the charge gems (size, opacity, the percent) and the reticle (size, opacity). The gems
 		// and the reticle show what the fading module tracks, so they need Fading's Enabled on.
 		void __stdcall RenderHudSettings()
 		{
@@ -271,10 +292,14 @@ namespace Fade
 			ImGuiMCP::PushItemWidth(ImGuiMCP::GetContentRegionAvail().x * 0.45f);
 
 			GlowHeading(Icon::kGauge, "Charge bar");
+			// his answer 2026-10-13: with Fading off nothing else shows a weapon's charge, so the bar comes back and this
+			// switch greys out (FadeSettings.cpp hides the bar only while both are on)
+			ImGuiMCP::BeginDisabled(!s.enabled);
 			Toggle("Hide the charge bar", s.hideChargeBar,
 				"The HUD's enchantment charge bar is hidden: the weapon's light shows the charge instead. Works with the "
-				"vanilla HUD, SkyHUD and TrueHUD.",
+				"vanilla HUD, SkyHUD and TrueHUD. Needs Fading on - with Fading off the bar shows.",
 				save);
+			ImGuiMCP::EndDisabled();
 
 			GlowHeading(Icon::kGem, "Charge gems");
 			ImGuiMCP::BeginDisabled(!s.enabled);
@@ -302,10 +327,11 @@ namespace Fade
 			{
 				// his pick: "a hud option with our crossfire info to make the widget fill as magicka regenerates then
 				// does a soft pulse when full" - a style of the reticle, not another widget
-				static const char* const kStyles[] = { TR_MARK("Bars beside the crosshair"), TR_MARK("Crossfire bar") };
+				// his answer 2026-10-13: "Crossfire bar" renamed "Bar under the crosshair" everywhere
+				static const char* const kStyles[] = { TR_MARK("Bars beside the crosshair"), TR_MARK("Bar under the crosshair") };
 				Choice("Reticle style", s.reticleStyle, kStyles, 2,
-					"Bars: one bar each side of the crosshair, one per hand. Crossfire bar: Crossfire's bar under the crosshair, filling "
-					"as your magicka comes back, with each hand's spell sigil and its school at the ends.",
+					"Bars beside the crosshair: one bar each side of the crosshair, one per hand. Bar under the crosshair: one bar under "
+					"it, filling as your magicka comes back, with each hand's spell sigil and its school at the ends.",
 					save);
 			}
 			Percent("Reticle size", s.reticleSize, 50, 200, "How big the reticle's bars are.", save);
@@ -328,7 +354,7 @@ namespace Fade
 				Toggle("Debug log", s.debugLog, "Writes each tracked weapon, rule match, pulse and flare to the mod's log file.", save);
 				if (save) {
 					ApplySetting("DebugLog", s.debugLog ? 1 : 0);
-					SaveSettings();
+					QueueSave();
 				}
 			}
 
@@ -393,13 +419,7 @@ namespace Fade
 			}
 
 			GlowHeading(Icon::kBulb, "Lights");
-			if constexpr (Mod::kOwnLight) {
-				ImGuiMCP::Text(T("%zu light(s) being scaled, %zu of them our own; %zu glow(s) dimmed"), ScaledLightCount(), OwnLightCount(),
-					DimmedGlowCount());
-				ImGuiMCP::Text(T("Own light drawn for: %s"), T(OwnLightLighting()));
-			} else {
-				ImGuiMCP::Text(T("%zu light(s) being scaled; %zu glow(s) dimmed"), ScaledLightCount(), DimmedGlowCount());
-			}
+			ImGuiMCP::Text(T("%zu light(s) being scaled; %zu glow(s) dimmed"), ScaledLightCount(), DimmedGlowCount());
 			if (const auto frozen = FrozenLightCount()) {
 				ImGuiMCP::TextColored(kGold, T("%zu light(s) held steady: another plugin scales them the same way"), frozen);
 				Tip("Two plugins each scaling the other's output would drive the light to black or white. This mod noticed "
@@ -538,7 +558,7 @@ namespace Fade
 				return;
 			}
 			// sized to the screen (1080 lines = 1), each gem beside one end of the vanilla health bar
-			const float screen = std::clamp(io->DisplaySize.y / 1080.0f, 0.6f, 2.5f);
+			const float screen = Glow::ScreenScale(io->DisplaySize.y);
 			const float k = screen * std::clamp(hud.gemSize, 0.5f, 2.0f);  // the HUD page's Gem size
 			const float cx = io->DisplaySize.x * 0.5f, y = io->DisplaySize.y - Tuning::Get(Tuning::gGemHeight) * screen;
 			const float hw = 11.0f * k, hh = 19.0f * k, sh = 7.0f * k;  // half width, half height, shoulder height
@@ -653,7 +673,7 @@ namespace Fade
 			}
 		};
 
-		// a spell's sigil for the Crossfire bar (Crossfire's DrawSigil): a ring in the spell's color with its element's mark
+		// a spell's sigil for the bar under the crosshair (our Crossfire's DrawSigil): a ring in the spell's color with its element's mark
 		void DrawSigil(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_r, int a_element, ImGuiMCP::ImU32 a_color, float a_alpha)
 		{
 			using namespace ImGuiMCP;
@@ -693,12 +713,13 @@ namespace Fade
 		// THE RETICLE (his order: "a reticule toggle ... build something from our crossfire bar"). Our own Crossfire
 		// struggle bar (Illuminated Salvage\Crossfire\src\Menu.cpp, DrawStruggleBar). 🔁 HIS WORDS: "vice versa for
 		// reticles, they are only meant for spells", "i want the reticles to change color with spells", the two soft pulses,
-		// and a Crossfire style (his pick: a style of the reticle). So it shows a SPELL hand's magicka only, in the color of
+		// and a style drawn from our Crossfire bar (his pick: a style of the reticle). So it shows a SPELL hand's magicka only, in the color of
 		// that spell's own light (ember under the sputter point), and
 		//   Bars (style 0): the bar stood on end beside the crosshair, one per hand - the left hand left, the right right - its
 		//     dark slot, the fill faint at the bottom and brightest at its top, a tick and chevron at both ends, the diamond
 		//     riding the top of the fill with its breathing glow;
-		//   Crossfire bar (style 1): the struggle bar itself under the crosshair, filling from the left as magicka comes back -
+		//   Bar under the crosshair (style 1 - "Crossfire bar" until his answer 2026-10-13 renamed it): the struggle bar itself
+		//     under the crosshair, filling from the left as magicka comes back -
 		//     the left hand's spell color at the left end, the right hand's at the right - each hand's sigil beyond its end and
 		//     its school and skill under it, the diamond at the edge of the fill.
 		// Each fades in and out, and only while her spells are drawn and no menu is open. Render thread: it reads only Hud().
@@ -749,16 +770,17 @@ namespace Fade
 				return;
 			}
 			const double now = GetTime();
-			const float  k = std::clamp(hud.reticleSize, 0.5f, 2.0f);
-			const float  cx = io->DisplaySize.x * 0.5f, cy = io->DisplaySize.y * 0.5f;
-			const float  low = hud.low;
-			const auto   colOf = [](float a) {
+			// sized to the screen like the gems (1080 lines = 1; his answer 2026-10-13), times the HUD page's Reticle size
+			const float k = Glow::ScreenScale(io->DisplaySize.y) * std::clamp(hud.reticleSize, 0.5f, 2.0f);
+			const float cx = io->DisplaySize.x * 0.5f, cy = io->DisplaySize.y * 0.5f;
+			const float low = hud.low;
+			const auto  colOf = [](float a) {
 				return [a](float r, float g, float b, float o) { return ColorConvertFloat4ToU32(ImVec4{ r, g, b, o * a }); };
 			};
 			const auto hueOf = [&](std::size_t i) { return fill[i] < low ? ImVec4{ 1.0f, 0.42f, 0.18f, 1.0f } : tint[i]; };
 
 			if (hud.reticleStyle == 1) {
-				// THE CROSSFIRE BAR: one bar, magicka is one pool - the fuller side's fill (both hands read the same magicka)
+				// THE BAR UNDER THE CROSSHAIR: one bar, magicka is one pool - the fuller side's fill (both hands read the same magicka)
 				const float a = std::clamp(hud.reticleOpacity, 0.1f, 1.0f) * (std::max)(shown[0], shown[1]);
 				const auto  col = colOf(a);
 				const float f = (std::max)(shown[0] > 0.0f ? fill[0] : 0.0f, shown[1] > 0.0f ? fill[1] : 0.0f);
@@ -797,7 +819,7 @@ namespace Fade
 					col(0.96f, 0.93f, 0.82f, 1.0f));
 				ImDrawListManager::AddQuad(dl, ImVec2{ edge, yc - r }, ImVec2{ edge + r, yc }, ImVec2{ edge, yc + r }, ImVec2{ edge - r, yc },
 					col(0.16f, 0.13f, 0.10f, 1.0f), 1.0f);
-				// each hand's sigil beyond its end, its school and skill under it (Crossfire's info)
+				// each hand's sigil beyond its end, its school and skill under it (our Crossfire bar's info)
 				static constexpr const char* kSchools[]{ "Destruction", "Restoration", "Conjuration", "Alteration", "Illusion" };
 				auto*                        font = GetFont();
 				const float                  fs = GetFontSize() * 0.8f * k;
@@ -888,10 +910,12 @@ namespace Fade
 		}
 		// under the mod's own section; the colour scheme is the plugin's (its Menu.cpp sets it first): one DLL, one theme
 		SKSEMenuFramework::SetSection(T(Mod::kName));
+		// his answer 2026-10-13: "HUD right below Configs, Lights by Item after Fading" - the mod's own pages (up to Configs)
+		// are added before these, its last page (Praedy's Staves, Diagnostics) after them (RegisterMenuTail)
+		SKSEMenuFramework::AddSectionItem(T("HUD"), RenderHudSettings);
+		SKSEMenuFramework::AddSectionItem(T("Fading"), RenderSettings);
 		// his order: "an entirely new main menu ... search for the weapon/spell and change it's lights" (FadeItems.cpp)
 		SKSEMenuFramework::AddSectionItem(T("Lights by Item"), Items::Render);
-		SKSEMenuFramework::AddSectionItem(T("HUD"), RenderHudSettings);  // right below the mod's own pages (his order)
-		SKSEMenuFramework::AddSectionItem(T("Fading"), RenderSettings);
 #ifdef FADE_DEBUG_PAGE
 		SKSEMenuFramework::AddSectionItem(T("Fading - debug"), RenderDebug);
 #endif

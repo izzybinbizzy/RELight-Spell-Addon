@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -18,14 +18,13 @@
 #include <bit>
 #include <cstdint>
 #include <numbers>
-#include <span>
 
 namespace Glow
 {
 	enum class Curve : int
 	{
 		kLinear = 0,
-		kGentle = 1  // stays bright longer, drops near the end (an old "steep", 2, reads as this)
+		kGentle = 1  // stays bright longer, drops near the end
 	};
 
 	enum class CoolTint : int
@@ -36,30 +35,37 @@ namespace Glow
 
 	struct Tuning
 	{
-		float    floor{ 0.10f };  // brightness left at 0% charge
-		Curve    curve{ Curve::kGentle };
-		float    reachFollows{ 0.5f };  // 0: reach never changes, 1: reach follows the brightness curve fully
-		float    minReach{ 0.35f };     // reach never drops below this share of the light's own
-		bool     sputter{ true };
-		float    sputterBelow{ 0.15f };    // fraction under which the light sputters
-		float    sputterStrength{ 0.6f };  // deepest dip, at the bottom of the sputter band
-		bool     emptySteady{ true };      // at exactly 0 the light holds still at the floor
-		bool     pulse{ true };
-		float    pulseStrength{ 0.6f };
-		float    pulseSeconds{ 0.30f };
-		bool     flare{ true };
-		float    flareStrength{ 0.8f };
-		float    flareSeconds{ 0.70f };
-		bool     cool{ true };
-		float    coolAmount{ 0.5f };
-		CoolTint coolTint{ CoolTint::kEmber };
-		float    fallSeconds{ 0.15f };  // how fast the shown level follows a drop
-		float    riseSeconds{ 0.35f };  // and a rise
+		float floor{ 0.10f };  // brightness left at 0% charge
+		Curve curve{ Curve::kGentle };
+		float reachFollows{ 0.5f };  // 0: reach never changes, 1: reach follows the brightness curve fully
+		float minReach{ 0.35f };     // reach never drops below this share of the light's own
+		bool  sputter{ true };
+		float sputterBelow{ 0.15f };    // fraction under which the light sputters
+		float sputterStrength{ 0.6f };  // deepest dip, at the bottom of the sputter band
+		bool  emptySteady{ true };      // at exactly 0 the light holds still at the floor
+		bool  pulse{ true };
+		float pulseStrength{ 0.6f };
+		float pulseSeconds{ 0.30f };
+		bool  flare{ true };
+		float flareStrength{ 0.8f };
+		float flareSeconds{ 0.70f };
+		bool  cool{ true };
+		float coolAmount{ 0.5f };    // toward grey, or ember for an orange fire light (TintFor)
+		float fallSeconds{ 0.15f };  // how fast the shown level follows a drop
+		float riseSeconds{ 0.35f };  // and a rise
 
 		bool operator==(const Tuning&) const = default;
 	};
 
 	[[nodiscard]] inline float Clamp01(float a_v) noexcept { return std::clamp(a_v, 0.0f, 1.0f); }
+
+	// how big the HUD elements draw on a screen this many lines tall: 1 at 1080, held between 0.6 and 2.5. The charge gems
+	// and the reticle both take it (his answer 2026-10-13: the reticle grows with the screen like the gems - 1440p and 4K
+	// no smaller against the screen)
+	[[nodiscard]] inline float ScreenScale(float a_lines) noexcept
+	{
+		return std::isfinite(a_lines) ? std::clamp(a_lines / 1080.0f, 0.6f, 2.5f) : 1.0f;
+	}
 
 	[[nodiscard]] inline float ApplyCurve(Curve a_curve, float a_f) noexcept
 	{
@@ -311,88 +317,6 @@ namespace Glow
 		float r{ 1.0f }, g{ 1.0f }, b{ 1.0f };
 	};
 
-	// The fading module's own light (Settings::ownLight): a simple light in the enchantment's colour, for a weapon no other mod
-	// lights. It stands down the moment another mod's light is found on the weapon, and waits kOwnLightDelay after a draw
-	// or a swap before it comes on, so a lighting mod that hangs its light a few frames late is never doubled.
-	inline constexpr float kOwnLightDelay = 0.5f;  // seconds a weapon must stay unlit by any other mod
-	inline constexpr float kOwnLightReach = 160.0f;
-
-	// a_unlitSeconds: how long the weapon has been tracked with no other mod's light on it (0 while one is)
-	[[nodiscard]] inline bool WantsOwnLight(bool a_on, bool a_bound, float a_unlitSeconds, bool a_hasModel) noexcept
-	{
-		return a_on && !a_bound && a_hasModel && a_unlitSeconds >= kOwnLightDelay;
-	}
-
-	// what the enchantment does, for its colour: 1 fire, 2 frost, 3 shock (its element), 4 soul trap, 5 magicka,
-	// 6 stamina, 7 health (what it drains or absorbs), 8 fear / turn undead / banish, 9 paralysis, 10 a heal (restoring health)
-	enum class LightKind
-	{
-		kNone,
-		kFire,
-		kFrost,
-		kShock,
-		kSoulTrap,
-		kMagicka,
-		kStamina,
-		kHealth,
-		kFear,
-		kParalyze,
-		kHeal
-	};
-
-	// its color: the element; else the most colourful of its shader's and light's colours (0-255) - a vanilla weapon
-	// shader keeps a GREY fill (31,31,31) and its colour in the edge, and a grey scaled to full brightness is white
-	// (his "white from the start"); else what it drains; else a soft white
-	[[nodiscard]] inline Rgb OwnLightColor(LightKind a_kind, std::span<const Rgb> a_colors) noexcept
-	{
-		switch (a_kind) {
-		case LightKind::kFire:
-			return { 1.0f, 0.45f, 0.15f };
-		case LightKind::kFrost:
-			return { 0.45f, 0.7f, 1.0f };
-		case LightKind::kShock:
-			return { 0.65f, 0.55f, 1.0f };
-		default:
-			break;
-		}
-		constexpr float kMinSaturation = 0.2f;
-		const Rgb*      best = nullptr;
-		float           bestSat = kMinSaturation;
-		for (const auto& c : a_colors) {
-			if (!std::isfinite(c.r + c.g + c.b)) {
-				continue;
-			}
-			const float top = (std::max)({ c.r, c.g, c.b }), low = (std::min)({ c.r, c.g, c.b });
-			if (top > 8.0f && (top - low) / top >= bestSat) {
-				best = &c;
-				bestSat = (top - low) / top;
-			}
-		}
-		if (best) {
-			// its hue at full brightness: a dim colour still makes a light that shows
-			const float top = (std::max)({ best->r, best->g, best->b });
-			return { Clamp01(best->r / top), Clamp01(best->g / top), Clamp01(best->b / top) };
-		}
-		switch (a_kind) {
-		case LightKind::kSoulTrap:
-			return { 0.62f, 0.4f, 1.0f };
-		case LightKind::kMagicka:
-			return { 0.35f, 0.55f, 1.0f };
-		case LightKind::kStamina:
-			return { 0.45f, 1.0f, 0.45f };
-		case LightKind::kHealth:
-			return { 1.0f, 0.35f, 0.35f };
-		case LightKind::kFear:  // fear, turn undead, banish: the vanilla fear shader's edge (45,63,134) - a mod may whiten it
-			return { 0.34f, 0.47f, 1.0f };
-		case LightKind::kParalyze:
-			return { 0.55f, 1.0f, 0.5f };
-		case LightKind::kHeal:  // restoring health: the warm gold of the vanilla healing light, never a drain's red
-			return { 1.0f, 0.88f, 0.62f };
-		default:
-			return { 0.9f, 0.9f, 1.0f };
-		}
-	}
-
 	// the colour a light cools toward: its own brightness in grey, or that brightness in a dull ember
 	[[nodiscard]] inline Rgb CoolTarget(const Rgb& a_c, CoolTint a_tint) noexcept
 	{
@@ -485,6 +409,14 @@ namespace Glow
 		// what to put back when we let go: our base if the value still holds our write, else leave it
 		[[nodiscard]] float Restore(float a_current) const noexcept { return touched && a_current == written ? base : a_current; }
 
+		// the dither's signs from this seed instead of the scaler's own address (the tests run many seeds; the game's lights each
+		// keep their address's)
+		void Seed(std::uint32_t a_seed) noexcept
+		{
+			rng = a_seed | 1u;
+			seeded = true;
+		}
+
 	private:
 		// someone else wrote the value since our last write (usually once a frame; twice if its owner writes it in two passes, which only makes the probe decide sooner)
 		void NewRead(float a_current) noexcept
@@ -494,6 +426,7 @@ namespace Glow
 				prevSign = sign;
 				sign = NextSign();
 			}
+			follow = a_current;  // what came back this time, for the next frozen vote
 			switch (watch) {
 			case Watch::kFollow:
 				{
@@ -518,8 +451,14 @@ namespace Glow
 				if (OwnerSeen()) {
 					Leave(a_current);  // the owner's own animation
 				} else if (votes >= kProbeFrames) {
-					Enter(Watch::kFrozen);
-					base = driftFrom;  // another scaler feeds our output back to us: keep the base from before the loop
+					// a loop never echoes our dither (measured: 0 echoes in 60,000 freezes); an owner's own fast fade echoes a few
+					// times even when it is too quick to show it on most frames - it is let go, never pinned
+					if (std::popcount(ownerVotes & 0xFFFFFFu) <= 1) {
+						Enter(Watch::kFrozen);
+						base = driftFrom;  // another scaler feeds our output back to us: keep the base from before the loop
+					} else {
+						Leave(a_current);
+					}
 				}
 				break;
 			case Watch::kFrozen:
@@ -540,7 +479,12 @@ namespace Glow
 				haveX = false;
 				return;
 			}
-			const float x = std::log(a_current / written);
+			// frozen, our write is the held base's: what comes back is measured against it moved as the owner's value moved since,
+			// so an owner that keeps fading faster than the dither still echoes it and is let go (it never would otherwise)
+			const float ref = watch == Watch::kFrozen && base != 0.0f && follow != 0.0f && (follow > 0.0f) == (base > 0.0f) ?
+			                      written * (follow / base) :
+			                      written;
+			const float x = std::log(a_current / ref);
 			if (haveX && sign != prevSign) {
 				const float want = -kDither * (sign - prevSign);  // what the owner's value would show: +-2 dither
 				const float d = x - lastX;
@@ -595,6 +539,7 @@ namespace Glow
 		std::uint32_t ownerVotes{ 0 };                 // the latest votes, a bit each, newest lowest: 1 = the owner's value
 		float         sign{ 1.0f }, prevSign{ 1.0f };  // this frame's dither sign, and last frame's
 		float         lastX{ 0.0f };
+		float         follow{ 0.0f };  // the value read last time (a frozen vote measures against it)
 		bool          haveX{ false };
 		std::uint32_t rng{ 1u };
 		bool          seeded{ false };

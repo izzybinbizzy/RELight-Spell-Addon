@@ -8,9 +8,10 @@
 //
 //   Lower, SameText    the one lower-casing helper and the one case-blind compare every file uses
 //   CutoffFor          the cutoff of an inverse-square light (the build's K, as gen.py and relightgen.py write every config)
-//   IslReach, PlainOf  how far such a light reaches, and the same light drawn by the game's own lighting (ENB, Vanilla)
-//   NamedColorRgb      the ten named colors of the element color settings (Dynamic Wards' preset hues, the same order)
-//   ToScreen           linear light <-> the screen's color (Dynamic Wards' wardgen.srgb)
+//   IslReach, PlainOf  how far such a light reaches, and the same light drawn by the game's own lighting (ENB, Vanilla);
+//                      PlainAt, the same from a reach already worked out; LightPlacerSize, a record's size as Light Placer reads it;
+//                      NeverDimmer, the fade a raised light keeps so it is never dimmer than the light it was raised from
+//   ToScreen           linear light -> the screen's color (Dynamic Wards' wardgen.srgb)
 //   DaylightShare      how bright the day or the room is, for "Dim in daylight"
 //   KeyAt              a fade controller's value at a time (Truman's KeyframeSequence maths, RE::Light's controller.h)
 //   kFleshLooks        the five flesh spells' light colors when FleshFX's look wins on them; AtStrengthOf, a color carried
@@ -66,7 +67,7 @@ namespace LightKit
 
 	// How far an inverse-square light reaches (reach² = K x fade / cutoff - size²), and the same light drawn by the game's own
 	// lighting (ENB, Vanilla): Dynamic Wards' house light - LTBG section 4's reach 133 drawn at radius 178 with fade 1.14
-	// (wardgen.plain_light), never shorter than the radius the light already states. Illuminated's Lighting.cpp does the same.
+	// (wardgen.plain_light), never shorter than the radius the light already states. The one copy of this maths in both mods.
 	[[nodiscard]] inline float IslReach(float a_fade, float a_cutoff, float a_size = kLightSize) noexcept
 	{
 		if (a_cutoff <= 0.0f || a_fade <= 0.0f) {
@@ -78,33 +79,42 @@ namespace LightKit
 	{
 		float fade{ 0.0f }, radius{ 0.0f };
 	};
-	[[nodiscard]] inline Plain PlainOf(float a_fade, float a_radius, float a_cutoff, float a_size = kLightSize) noexcept
+	// the plain light of a reach already worked out (a light that states its reach, not its cutoff)
+	[[nodiscard]] inline Plain PlainAt(float a_fade, float a_radius, float a_reach) noexcept
 	{
 		constexpr float kPlainReach = 178.0f / 133.0f, kPlainFade = 1.14f;
-		return { a_fade * kPlainFade, (std::max)(a_radius, IslReach(a_fade, a_cutoff, a_size) * kPlainReach) };
+		return { a_fade * kPlainFade, (std::max)(a_radius, a_reach * kPlainReach) };
 	}
-
-	// the element color settings' ten colors, 1 to kNamedColorCount (their names are each menu's)
-	inline constexpr std::array<std::uint32_t, 10> kNamedColors = { 0xD0102E, 0xFF6A10, 0xFFC420, 0x2ED452, 0x00D2B0, 0x40DCFF,
-		0x2468FF, 0x7A3CFF, 0xFF2EC4, 0xFFFFFF };
-	inline constexpr int                           kNamedColorCount = static_cast<int>(kNamedColors.size());
-
-	// one named color as 0xRRGGBB; a pick outside 1..kNamedColorCount takes the nearest end
-	[[nodiscard]] constexpr std::uint32_t NamedColorRgb(int a_pick) noexcept
+	[[nodiscard]] inline Plain PlainOf(float a_fade, float a_radius, float a_cutoff, float a_size = kLightSize) noexcept
 	{
-		return kNamedColors[static_cast<std::size_t>(std::clamp(a_pick, 1, kNamedColorCount) - 1)];
+		return PlainAt(a_fade, a_radius, IslReach(a_fade, a_cutoff, a_size));
 	}
 
-	// linear light <-> the screen's color, per channel (0..1)
+	// the size an inverse-square light record carries in its field of view, as Light Placer reads it (its GetSize): 50 or
+	// more is a real field of view, not a size, so the house size
+	[[nodiscard]] inline float LightPlacerSize(float a_fov) noexcept
+	{
+		return a_fov >= 50.0f ? kLightSize : std::clamp(a_fov, 0.01f, 50.0f);
+	}
+
+	// the fade a raised light takes so it is never dimmer at its source than the light it was raised from (his answer
+	// 2026-10-13: a bolt's raised light is never dimmer than its own original). An inverse-square light's peak is
+	// fade x K / size², so the original's fade is first carried to the raised light's size; a_ownSize 0 (a light not drawn
+	// inverse square) compares the two fades as they are
+	[[nodiscard]] inline float NeverDimmer(float a_raisedFade, float a_raisedSize, float a_ownFade, float a_ownSize) noexcept
+	{
+		if (!std::isfinite(a_ownFade) || a_ownFade <= 0.0f) {
+			return a_raisedFade;
+		}
+		const float own = a_ownSize > 0.0f && a_raisedSize > 0.0f ? a_ownFade * (a_raisedSize * a_raisedSize) / (a_ownSize * a_ownSize) : a_ownFade;
+		return (std::max)(a_raisedFade, own);
+	}
+
+	// linear light -> the screen's color, per channel (0..1)
 	[[nodiscard]] inline float ToScreen(float a_x) noexcept
 	{
 		const float x = std::clamp(a_x, 0.0f, 1.0f);
 		return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.0f / 2.4f) - 0.055f;
-	}
-	[[nodiscard]] inline float ToLinear(float a_x) noexcept
-	{
-		const float x = std::clamp(a_x, 0.0f, 1.0f);
-		return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f);
 	}
 	// the same for one 0..255 channel
 	[[nodiscard]] inline std::uint8_t ScreenChannel(std::uint8_t a_linear) noexcept

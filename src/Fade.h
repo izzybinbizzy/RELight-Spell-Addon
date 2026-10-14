@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -31,7 +31,7 @@ namespace Fade
 		return std::string(u.begin(), u.end());
 	}
 
-	// ------------------------------------------------------------------ FadeSettings.cpp: the settings (SettingsText.h)
+	// ------------------------------------------------------------------ FadeSettings.cpp: the settings (FadeSettingsText.h)
 	// The one shared copy lives in FadeSettings.cpp behind a lock: the menu (render thread) and DevBench (its own thread)
 	// change it while the main thread reads it every frame, so everyone works on a copy. The two switches the per-call hooks
 	// read (the HUD charge bar, every effect update) are kept beside it as atomics, so those hooks never lock or copy.
@@ -39,7 +39,7 @@ namespace Fade
 	void                   SetConfig(const Settings& a_settings);              // replaces it whole; live on the next frame
 	bool                   ApplySetting(std::string_view a_key, int a_value);  // one Fading.ini line; false if unknown
 	[[nodiscard]] bool     DebugLogOn() noexcept;                              // lock-free
-	[[nodiscard]] bool     HideChargeBarOn() noexcept;                         // lock-free
+	[[nodiscard]] bool     HideChargeBarOn() noexcept;                         // lock-free; the switch AND Fading on
 	void                   LoadSettings();
 	void                   SaveSettings();
 
@@ -53,11 +53,12 @@ namespace Fade
 	[[nodiscard]] Preview& PreviewState();
 
 	// ------------------------------------------------------------------ FadeEditorIDs.cpp: names the game throws away
+	// (weapons and enchantments for the rule files, magic effects for the soul trap test and the plugins' own readers)
 	void                      RememberEditorID(const RE::TESForm* a_form, const char* a_id);
 	void                      InstallEditorIDHooks();               // weapons, enchantments, magic effects: before the game reads its plugins
-	void                      ForgetPassEditorIDs();                // after data load: only what a rule file can name is kept
+	void                      ForgetPassEditorIDs();                // after data load: only weapons, enchantments and magic effects are kept
 	[[nodiscard]] std::string EditorID(const RE::TESForm* a_form);  // "" when unknown (a copy: the table may be rewritten)
-	[[nodiscard]] std::string Label(const RE::TESForm* a_form);     // "Name [EditorID] Plugin.esp|0x001234" for the log
+	[[nodiscard]] std::string Label(const RE::TESForm* a_form);     // "Name [EditorID] Skyrim.esm|0004E4EE" for the log
 
 	// the hook RecordEditorIDs<T> installs: SetFormEditorID (vtable slot 0x33) on T, recording the ID, then the game's own
 	template <class T>
@@ -106,6 +107,9 @@ namespace Fade
 		RE::NiPointLight*    casterLight{ nullptr };        // the game's casting light (the effect's hand light)
 	};
 	[[nodiscard]] bool ReadSpellHand(RE::Actor* a_actor, bool a_left, SpellHand& a_out);
+	// where a spell hand's lights are: its magic node in each view the actor has (the player's first person too), and the game's
+	// casting light - the fading pass and Lights by Item reach the same lights
+	void SpellHandLights(RE::Actor* a_actor, bool a_left, RE::NiAVObject* (&a_nodes)[2], RE::NiPointLight*& a_casterLight);
 
 	// ------------------------------------------------------------------ FadeCharge.cpp: what a hand holds
 	struct Reading
@@ -122,13 +126,18 @@ namespace Fade
 	[[nodiscard]] Reading ReadHand(RE::Actor* a_actor, bool a_left);
 
 	// ------------------------------------------------------------------ FadeLights.cpp: the lights on a weapon
-	void UpdateHands(float a_delta);                                         // every frame, from the player's update
-	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D);  // after the effect's own update; a_own3D: search
-																			 // the effect's own model too
-	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect);             // after the game animates an enchantment's shader
-	void ReapplyAll();                                                       // after the cell's light animation: this frame's numbers again
-	void Rebase(RE::NiPointLight* a_light, float a_ratio, float a_now);      // the plugin's Brightness moved a steady light
-	void ReleaseAll();                                                       // every light back as we found it
+	// the weapon's 3D in a biped: a left-hand weapon sits in the shield slot, a right-hand one in its type's slot (main thread)
+	[[nodiscard]] RE::NiAVObject* WeaponPart(RE::Actor* a_actor, bool a_firstPerson, bool a_left, const RE::TESForm* a_weapon);
+	void                          UpdateHands(float a_delta);  // every frame, from the player's update
+	// the roots an actor's weapon-hand enchantment effects hang their lights on, while the fading pass follows that hand (under
+	// its lock: Lights by Item asks from inside the pass)
+	[[nodiscard]] std::vector<RE::NiAVObject*> EffectRootsOf(const RE::Actor* a_actor, bool a_left);
+	void                                       AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D);  // after the effect's own update; a_own3D: search
+																												   // the effect's own model too
+	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect);                                                   // after the game animates an enchantment's shader
+	void ReapplyAll(const RE::TESObjectCELL* a_cell);                                                              // after a cell's light animation: this frame's numbers again, its hands'
+	void Rebase(RE::NiPointLight* a_light, float a_ratio, float a_now);                                            // the plugin's Brightness moved a steady light
+	void ReleaseAll();                                                                                             // every light back as we found it
 	// Lights by Item wrote this light (FadeItems.cpp, under gLock): the fading pass and Brightness keep their own base
 	void NoteItemWrite(RE::NiPointLight* a_light, float a_fadeBefore, float a_fadeAfter, const RE::NiColor& a_colorBefore,
 		const RE::NiColor& a_colorAfter);
@@ -162,7 +171,7 @@ namespace Fade
 		bool      spell{ false }, bound{ false };
 		float     fraction{ 1.0f };
 		Glow::Rgb color{ 0.32f, 0.58f, 1.0f };  // a spell's own light at full (his ask: the reticle in the spell's color)
-		int       element{ -1 };                // Element of a spell's strongest effect, -1 none (the Crossfire bar's sigil)
+		int       element{ -1 };                // Element of a spell's strongest effect, -1 none (the bar under the crosshair's sigil)
 		int       school{ -1 };                 // 0 Destruction .. 4 Illusion, -1 none
 		int       skill{ 0 };                   // the player's level in that school
 	};
@@ -170,7 +179,7 @@ namespace Fade
 	{
 		bool                   gems{ false }, reticle{ false };  // the two switches (and the module is on)
 		bool                   drawn{ false };                   // the player's weapons or spells are out
-		int                    reticleStyle{ 0 };                // 0 the bars beside the crosshair, 1 Crossfire's bar
+		int                    reticleStyle{ 0 };                // 0 the bars beside the crosshair, 1 the bar under the crosshair
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
@@ -183,29 +192,15 @@ namespace Fade
 	// (his report). Kept by a menu open / close watcher (FadeMenu.cpp), read by the render thread
 	[[nodiscard]] bool MenusHideHud() noexcept;
 
-	// what the API hands other plugins: the charge fraction and the multiplier on this hand's lights; false if untracked
-	[[nodiscard]] bool Query(RE::Actor* a_actor, bool a_left, float& a_fraction, float& a_brightness);
-
-	// ------------------------------------------------------------------ FadeOwnLight.cpp: our own light, on a weapon no mod lights
-	// (made only where FadeConfig.h offers it - Mod::kOwnLight; elsewhere these do nothing)
-	inline constexpr const char* kOwnLightName = Mod::kOwnLightName;
-	// this frame, the hand `a_key` wants its own light on `a_model` (nullptr: it wants none): hung (in `a_ench`'s color),
-	// moved or dropped. Returns the light when one was hung just now (so it can take this frame's numbers), else nullptr
-	RE::NiPointLight* KeepOwnLight(std::uint64_t a_key, RE::NiAVObject* a_model, const RE::EnchantmentItem* a_ench);
-	// the colour of the spell's own light at this hand (see FadeLights.cpp OwnLightHint): our light takes its hue
-	void                      TintOwnLight(std::uint64_t a_key, const RE::NiColor& a_color);
-	void                      SweepOwnLights();  // after every hand was seen this frame: the lights of hands that did not ask go
-	void                      DropOwnLights();   // every one of them (switched off, a load)
-	[[nodiscard]] std::size_t OwnLightCount();
-	[[nodiscard]] const char* OwnLightLighting();  // the lighting our light is drawn for: Community Shaders, ENB or Vanilla
-
 	// ------------------------------------------------------------------ FadeTuning.cpp: the all-in-one advanced settings file
 	// (his rule: every value worth tuning that the menu does not show, one file, a section per category). A value is
-	// registered with its default and range before Load (data load); Load reads the file, then writes it back whole.
+	// registered with its default and range before Load (data load); Load reads the file, then writes it back whole. A key
+	// that was renamed names its old name (a_was): a file that still carries the old line keeps its value, written back under
+	// the new name (the rule for any renamed setting: write the new, read both).
 	namespace Tuning
 	{
 		void Register(std::string_view a_section, std::string_view a_key, float a_default, float a_lo, float a_hi, std::string_view a_note,
-			std::atomic<float>& a_value);
+			std::atomic<float>& a_value, std::string_view a_was = {});
 		void Load();
 		// the fading module's own: [Fading] (Glow::Tuning's values the menu does not show) and [HUD] (where the HUD sits)
 		inline std::atomic<float>  gMinReach{ 0.35f }, gPulseSeconds{ 0.30f }, gFlareSeconds{ 0.70f }, gFallSeconds{ 0.15f }, gRiseSeconds{ 0.35f };

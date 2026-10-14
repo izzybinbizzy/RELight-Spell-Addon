@@ -17,18 +17,24 @@
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script (and the lighting found)
 //   GroundLights.cpp off Community Shaders, a twin of each hand light that lights the ground (Illuminated's)
 //   Keep.cpp        the one place a light the game made is held for the lists above, and let go when it leaves the game
-//   Plugin.h        what the files share; PCH.h what they all include; LightKit.h the small helpers Illuminated carries too
+//   DataText.h      the data files' line reader, game-free (tested; relightgen.py read_data_text is its twin)
+//   Plugin.h        what the files share; PCH.h what they all include; LightKit.h and LightMath.h the small helpers
+//                   Illuminated carries too
 //   MenuStyle.h, Translation.h, SKSEMenuFramework.h  the shared menu look and translation (word for word in our other
 //                   plugins), and SKSE Menu Framework's own header
-//   VaerSwirls.cpp  VAER Reborn's swirl on Thaumaturgy's own enchantment effects, once at data loaded
-//   Fade*.cpp       the fading module (the same code as Illuminated's; FadeConfig.h is this mod's part): weapon and
-//                   staff lights follow their charge, a spell's hand light your magicka - its own settings, rules, pages
+//   VaerSwirls.cpp  once at data loaded: VAER Reborn's own effects get its art and shader back where a later plugin
+//                   replaced them, Thaumaturgy's own enchantment effects wear VAER's swirl, and .dds.dds shader textures
+//                   find their file
+//   Fade*.cpp       the fading module (the same code as Illuminated's; FadeConfig.h and FadeDevBench.cpp are this mod's
+//                   parts): weapon and staff lights follow their charge, a spell's hand light your magicka - its own
+//                   settings, rules, pages
 //   Menu.cpp        the settings page, in SKSE Menu Framework's Mod Control Panel
 //
 // THREADS: every list of game lights here (and in Options.cpp, HandLights.cpp, Held.cpp) is filled and emptied on the
-// main thread only. The hooks that may run on the game's loader and job threads (the spell-light call, a 3D load) touch
-// the light itself at most (put it out, so it never shows a frame it should not) and hand the bookkeeping to the main
-// thread as an SKSE task that holds the light until then - so no lock is held across a frame, and none is needed.
+// main thread only. The hooks that may run on the game's loader and job threads (the spell-light call, a 3D load) read
+// the settings (atomics) and the caster's plain state (sneaking, position, follower), touch only the light itself (put it
+// out, so it never shows a frame it should not) and hand the bookkeeping to the main thread as an SKSE task that holds the
+// light until then - so no lock is held across a frame, and none is needed.
 
 #include "Fade.h"
 #include "Plugin.h"
@@ -109,8 +115,8 @@ namespace
 			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey),
 				a_handKey.empty() ? 0 : Plugin::ElementOfHandKey(a_handKey));
 		}
-		// a light made while the player was already sneaking was never made (the hook returns nullptr); one made just
-		// before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
+		// a light made while the player was already sneaking was put out at once and comes here through AdoptSneakCulled;
+		// one made just before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
 	}
 
 	// "Hand lights for" (Illuminated's light budget for big fights, ported): a caster the setting leaves out gets
@@ -130,42 +136,67 @@ namespace
 		return who == 3 || !actor->IsPlayerTeammate();
 	}
 
+	void AdoptSneakCulled(const Plugin::LightList& a_lights);
+
+	using MagicLightFn = RE::NiPointLight*(RE::TESObjectLIGH*, RE::TESObjectREFR*, RE::NiNode*, bool, bool, bool);
+
+	// the spell-light call, at every hooked site; a_next is what that site called before us (the game's function, or another
+	// plugin's hook - RE::Light's)
+	RE::NiPointLight* MakeMagicLight(const REL::Relocation<MagicLightFn>& a_next, RE::TESObjectLIGH* a_light, RE::TESObjectREFR* a_ref,
+		RE::NiNode* a_node, bool a_forceDynamic, bool a_useLightRadius, bool a_affectRequesterOnly)
+	{
+		if (LeftOutCaster(a_ref)) {
+			return nullptr;
+		}
+		// our hand lights are made with the game's own function and never reach RE::Light, which would switch off
+		// a casting light it has no config for (an in-memory record can have none)
+		const Plugin::Hand* hand = Plugin::HandOfLight(a_light);
+		RE::NiPointLight*   made = nullptr;
+		if (hand) {
+			made = netimmerse_cast<RE::NiPointLight*>(
+				a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
+			Plugin::DressHandLight(made, *hand);  // only writes the fresh light's own fields
+		} else {
+			made = a_next(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
+		}
+		// ⚠ the Lightning Bolt freeze (found with Truman, by switching hooks off one at a time): this hook
+		// also runs on the game's loader and job threads. It used to keep the light in our lists right here and, every
+		// 64th light, let go of lights nothing else held - so a light could be FREED on a loader thread while the game's
+		// threads walked the scene. RE::Light's own hook keeps nothing (it marks the light and returns); ours now hands
+		// the light to the main thread (an SKSE task, Truman's route for main-thread work), where every list of ours is
+		// filled and emptied. The task holds the light until then, and lets go of it on the main thread too.
+		// While she sneaks the light is made and put out at once (as a 3D load's are), so it comes back when she stands up
+		// (the menu's promise) instead of staying dark until the next cast.
+		if (made) {
+			LightKit::Guarded("spell light", [&]() {
+				const bool ours = hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref);
+				const bool sneaking = PlayerSneaking();
+				if (sneaking) {
+					made->SetAppCulled(true);
+				}
+				if (auto* tasks = SKSE::GetTaskInterface()) {
+					tasks->AddTask([light = RE::NiPointer<RE::NiLight>(made), key = hand ? hand->key : std::string{}, ours, sneaking]() {
+						NoteMagicLight(light, key, ours);
+						if (sneaking) {
+							AdoptSneakCulled({ light });
+						}
+					});
+				}
+			});
+		}
+		return made;
+	}
+
+	// one per call site, so each site goes on to the function IT called before (another plugin may have hooked one alone)
+	template <std::size_t I>
 	struct MagicLight
 	{
 		static RE::NiPointLight* thunk(RE::TESObjectLIGH* a_light, RE::TESObjectREFR* a_ref, RE::NiNode* a_node,
 			bool a_forceDynamic, bool a_useLightRadius, bool a_affectRequesterOnly)
 		{
-			if (PlayerSneaking() || LeftOutCaster(a_ref)) {
-				return nullptr;
-			}
-			// our hand lights are made with the game's own function and never reach RE::Light, which would switch off
-			// a casting light it has no config for (an in-memory record can have none)
-			const Plugin::Hand* hand = Plugin::HandOfLight(a_light);
-			RE::NiPointLight*   made = nullptr;
-			if (hand) {
-				made = netimmerse_cast<RE::NiPointLight*>(
-					a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
-				Plugin::DressHandLight(made, *hand);  // only writes the fresh light's own fields
-			} else {
-				made = func(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
-			}
-			// ⚠ the Lightning Bolt freeze (found with Truman, by switching hooks off one at a time): this hook
-			// also runs on the game's loader and job threads. It used to keep the light in our lists right here and, every
-			// 64th light, let go of lights nothing else held - so a light could be FREED on a loader thread while the game's
-			// threads walked the scene. RE::Light's own hook keeps nothing (it marks the light and returns); ours now hands
-			// the light to the main thread (an SKSE task, Truman's route for main-thread work), where every list of ours is
-			// filled and emptied. The task holds the light until then, and lets go of it on the main thread too.
-			if (made) {
-				const bool ours = hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref);
-				if (auto* tasks = SKSE::GetTaskInterface()) {
-					tasks->AddTask([light = RE::NiPointer<RE::NiLight>(made), key = hand ? hand->key : std::string{}, ours]() {
-						NoteMagicLight(light, key, ours);
-					});
-				}
-			}
-			return made;
+			return MakeMagicLight(func, a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 		}
-		static inline REL::Relocation<decltype(thunk)> func;
+		static inline REL::Relocation<MagicLightFn> func;
 	};
 
 	// every light under a just-loaded 3D put out (any thread); returned, held, for the main thread to take into gCulled
@@ -210,18 +241,20 @@ namespace
 			if (!tasks) {
 				return root;
 			}
-			// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread
-			if (PlayerSneaking()) {
-				if (auto culled = CullTree(root); !culled.empty()) {
-					tasks->AddTask([lights = std::move(culled)]() { AdoptSneakCulled(lights); });
+			LightKit::Guarded("3D load", [root, tasks]() {
+				// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread
+				if (PlayerSneaking()) {
+					if (auto culled = CullTree(root); !culled.empty()) {
+						tasks->AddTask([lights = std::move(culled)]() { AdoptSneakCulled(lights); });
+					}
+				} else {
+					// RE::Light has already hung its light here; a switched-off option's goes out before its first frame
+					std::size_t option = Plugin::kNone;
+					if (auto culled = Plugin::CullOptionLightsUnder(root, option); !culled.empty()) {
+						tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
+					}
 				}
-			} else {
-				// RE::Light has already hung its light here; a switched-off option's goes out before its first frame
-				std::size_t option = Plugin::kNone;
-				if (auto culled = Plugin::CullOptionLightsUnder(root, option); !culled.empty()) {
-					tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
-				}
-			}
+			});
 			return root;
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -236,25 +269,27 @@ namespace
 		static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 		{
 			func(a_this, a_delta);
-			// first: every list forgets the lights that left the game since the last frame, and they are freed
-			Plugin::SweepKeptLights();
-			const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
-			if (sneaking) {
-				CullSpellLights();
-			} else if (gWasSneaking) {
-				UncullAll();
-			}
-			gWasSneaking = sneaking;
-			// after the sneaking pass, in the same frame, so a light given back above and then held out
-			// here never reaches the screen in between
-			Plugin::UpdateOptionLights();
-			Plugin::UpdateHeldLights();
-			// RE::Light has already written this frame's fades (its update runs inside `func` above): the sliders next, then
-			// the fading module as the final pass, on what the sliders wrote (each fade it writes is reported back -
-			// Brightness.cpp's NoteFadeWrite)
-			Plugin::UpdateBrightness(a_delta);
-			Fade::UpdateHands(a_delta);
-			Plugin::TickGroundLights();  // last: off Community Shaders the hand lights' twins copy this frame's numbers (GroundLights.cpp)
+			LightKit::Guarded("player update", [a_this, a_delta]() {
+				// first: every list forgets the lights that left the game since the last frame, and they are freed
+				Plugin::SweepKeptLights();
+				const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
+				if (sneaking) {
+					CullSpellLights();
+				} else if (gWasSneaking) {
+					UncullAll();
+				}
+				gWasSneaking = sneaking;
+				// after the sneaking pass, in the same frame, so a light given back above and then held out
+				// here never reaches the screen in between
+				Plugin::UpdateOptionLights();
+				Plugin::UpdateHeldLights();
+				// RE::Light has already written this frame's fades (its update runs inside `func` above): the sliders next, then
+				// the fading module as the final pass, on what the sliders wrote (each fade it writes is reported back -
+				// Brightness.cpp's NoteFadeWrite)
+				Plugin::UpdateBrightness(a_delta);
+				Fade::UpdateHands(a_delta);
+				Plugin::TickGroundLights();  // last: off Community Shaders the hand lights' twins copy this frame's numbers (GroundLights.cpp)
+			});
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -267,7 +302,9 @@ namespace
 		static void thunk(T* a_this)
 		{
 			func(a_this);
-			Fade::AfterReferenceEffect(a_this, std::is_same_v<T, RE::ModelReferenceEffect>);  // an art model, not a shader's actor
+			LightKit::Guarded("effect update", [a_this]() {
+				Fade::AfterReferenceEffect(a_this, std::is_same_v<T, RE::ModelReferenceEffect>);  // an art model, not a shader's actor
+			});
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
@@ -281,7 +318,8 @@ namespace
 		static void thunk(RE::TESObjectCELL* a_cell)
 		{
 			func(a_cell);
-			Fade::ReapplyAll();
+			// this frame's fading numbers again for this cell's lights, without advancing any timer
+			LightKit::Guarded("cell animations", [a_cell]() { Fade::ReapplyAll(a_cell); });
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
@@ -308,29 +346,32 @@ namespace
 		if (REL::Module::IsAE()) {
 			sites.push_back({ RELOCATION_ID(33403, 34185), REL::VariantOffset(0x407, 0x407, 0x407) });
 		}
-		std::uintptr_t first = 0;
-		std::size_t    hooked = 0;
-		for (auto& [id, off] : sites) {
-			REL::Relocation<std::uintptr_t> target{ id, off };
+		constexpr std::array thunks{ &MagicLight<0>::thunk, &MagicLight<1>::thunk, &MagicLight<2>::thunk, &MagicLight<3>::thunk };
+		const std::array     nexts{ &MagicLight<0>::func, &MagicLight<1>::func, &MagicLight<2>::func, &MagicLight<3>::func };
+		const auto           game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
+		std::size_t          hooked = 0, toGame = 0;
+		for (std::size_t i = 0; i < sites.size() && i < thunks.size(); ++i) {
+			REL::Relocation<std::uintptr_t> target{ sites[i].first, sites[i].second };
 			if (!LightKit::IsCallAt(target.address())) {
 				SKSE::log::warn(
 					"spell lights: a call site is not a call (another plugin rewrote it?); left alone - those spells keep their "
 					"own light handling");
 				continue;
 			}
-			auto old = trampoline.write_call<5>(target.address(), MagicLight::thunk);
+			const auto old = trampoline.write_call<5>(target.address(), thunks[i]);
+			*nexts[i] = old;
 			++hooked;
-			if (!first) {
-				first = old;
-				MagicLight::func = old;
-			} else if (old != first) {
-				SKSE::log::warn("spell light call sites lead to different functions; using the first");
-			}
+			toGame += old == game ? 1 : 0;
 		}
-		// if the call sites still lead to the game's own function, RE::Light hooked nothing here
-		const auto game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
-		SKSE::log::info("spell lights: {} of {} call sites hooked, after every plugin loaded; they led to {}", hooked, sites.size(),
-			first == game ? "the game's own function (RE::Light has no hook there)" : "another plugin's hook (RE::Light's)");
+		// a site that still leads to the game's own function has no RE::Light hook there
+		if (hooked == 0) {
+			SKSE::log::warn("spell lights: no call site hooked - sneaking and Hand lights for do not reach spell lights");
+		} else {
+			SKSE::log::info(
+				"spell lights: {} of {} call sites hooked, after every plugin loaded; {} led to the game's own function, {} to "
+				"another plugin's hook (RE::Light's)",
+				hooked, sites.size(), toGame, hooked - toGame);
+		}
 	}
 
 	void InstallLate()
@@ -371,6 +412,7 @@ namespace
 			Plugin::LoadData();
 			Plugin::LoadSettings();
 			Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
+			Plugin::ClaimBeamLights();          // the same for the beams (2.2) - after the sprays: a record of both is the spray's
 			Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 			Plugin::MakeHandLights();
 			Plugin::VaerSwirls();       // after LoadData: it needs to know whether the VAER Reborn option is installed
@@ -407,32 +449,38 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	// module's two charge-bar calls, 14 bytes each, room to spare): a second SKSE::AllocTrampoline would replace the buffer
 	// under live hooks
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 160 });
+	// an exception never leaves into the game from any message (kDataLoaded's work has its own, more telling, guard)
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
 		if (!a_msg) {
 			return;
 		}
-		if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame) {
-			Fade::OnGameLoading();
-		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
-			Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the game reads its plugins (still before)
-			Fade::OnPostLoad();
-			// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
-			Install();
-			// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows
-			SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
-				if (a_m && a_m->type == 'DWAC') {
-					Plugin::RefindHandLights();
-				}
-			});
-		} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
-			OnDataLoaded();
-		} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
-			if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
+		LightKit::Guarded("SKSE message", [a_msg]() {
+			if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame) {
+				Plugin::DropGroundLights();  // the hands and casting lights they follow are the old game's
 				Fade::OnGameLoading();
+			} else if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+				Fade::OnPluginLoad();  // the fading module: editor IDs recorded before the game reads its plugins (still before)
+				Fade::OnPostLoad();
+				// after every plugin has loaded: the hook written last runs first, and ours must run before RE::Light's
+				Install();
+				// Dynamic Wards 2.0 changes a ward's casting art from its menu; its hand light follows
+				SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
+					if (a_m && a_m->type == 'DWAC') {
+						LightKit::Guarded("Dynamic Wards message", []() { Plugin::RefindHandLights(); });
+					}
+				});
+			} else if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+				OnDataLoaded();
+			} else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
+				if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
+					// no kPreLoadGame comes before a new game: the last game's twins and fading go here
+					Plugin::DropGroundLights();
+					Fade::OnGameLoading();
+				}
+				Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back
+				Plugin::RefindHandLights();           // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
 			}
-			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back
-			Plugin::RefindHandLights();           // Dynamic Wards 2.0's ranked hand art, set at data load in whichever order
-		}
+		});
 	});
 	return true;
 }

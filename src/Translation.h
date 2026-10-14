@@ -50,6 +50,11 @@ namespace Translation
 					if (j < a_s.size() && std::string_view("diouxXeEfFgGaAcspn").find(a_s[j]) != std::string_view::npos) {
 						out.emplace_back(a_s.substr(i, j - i + 1));
 						i = j;
+					} else if (a_format) {
+						// printf reads ANY '%' as a conversion: one it does not know (a translated "50 % r", MSVC's own %S or
+						// %Z) or a '%' at the very end counts too, so it never matches the English and never reaches printf
+						out.emplace_back(a_s.substr(i, j - i + 1));
+						i = j;
 					}
 				} else if (a_s[i] == '{') {
 					const auto j = a_s.find('}', i);

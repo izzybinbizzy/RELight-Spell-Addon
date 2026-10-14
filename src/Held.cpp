@@ -6,9 +6,9 @@
 // ground, on a rack) and reaches a weapon in the hand only through its enchantment shader. The build writes the light each
 // staff and weapon config of ours gives that mesh as a `held` line; this hangs it on the drawn weapon of whoever holds it
 // (the player, in both views, and the actors near them) and takes it off when it is sheathed, unequipped or switched off.
-// One object, one light: a weapon whose enchantment shader is one of ours already wears RE::Light's enchantment light in
-// the hand, so it gets none here. The light is made the travelling-light way (Streams.cpp, ReLight's method). Nothing on
-// any record is edited.
+// One object, one light: a weapon whose enchantment shader is one of ours may wear RE::Light's enchantment light in the
+// hand, so the held light steps aside the frame that light is on its node (ReLightOn). The light is made and registered
+// the ReLight way (MakeOurLight, Streams.cpp). Nothing on any record is edited.
 
 #include "Plugin.h"
 
@@ -26,9 +26,7 @@ namespace Plugin
 			RE::NiPointer<RE::NiNode>       node;  // what it hangs on - held, so taking the light off never reaches a freed node
 			RE::NiPointer<RE::BSLight>      bs;
 			RE::NiPointer<RE::NiPointLight> light;
-			int                             element{ 0 };  // its enchantment's element: Fire / Frost / Shock color picks
 			float                           written{ -1.0f }, wroteReach{ -1.0f };
-			RE::NiColor                     wroteColor{ -1.0f, -1.0f, -1.0f };
 		};
 
 		std::vector<Live> gLive;
@@ -40,8 +38,22 @@ namespace Plugin
 			bool          left, firstPerson;
 			const Stream* held;
 			RE::NiNode*   node;
-			int           element;
 		};
+
+		// a held light that could not be made or registered: warned about once, and not tried again until that hand stops
+		// wanting it (sheathed, unequipped, another weapon)
+		struct Failed
+		{
+			RE::FormID    actor{ 0 };
+			bool          left{ false }, firstPerson{ false };
+			const Stream* held{ nullptr };
+
+			[[nodiscard]] bool Is(const Want& a_w) const
+			{
+				return a_w.actor->GetFormID() == actor && a_w.left == left && a_w.firstPerson == firstPerson && a_w.held == held;
+			}
+		};
+		std::vector<Failed> gFailed;
 
 		void TakeOff(Live& a_v, RE::ShadowSceneNode* a_scene)
 		{
@@ -75,28 +87,6 @@ namespace Plugin
 			return std::ranges::any_of(ench->effects, [](const RE::Effect* a_e) {
 				return a_e && a_e->baseEffect && OptionOfShader(a_e->baseEffect->data.enchantShader) != kNone;
 			});
-		}
-
-		// the element of the weapon's enchantment: what its effects are resisted by, 0 when there is none or they disagree
-		[[nodiscard]] int EnchantElement(RE::Actor* a_actor, bool a_left, const RE::TESObjectWEAP* a_weapon)
-		{
-			const auto* entry = a_actor->GetEquippedEntryData(a_left);
-			const auto* ench = entry ? entry->GetEnchantment() : nullptr;
-			if (!ench) {
-				ench = a_weapon->formEnchanting;
-			}
-			int element = 0;
-			if (!ench) {
-				return 0;
-			}
-			for (const auto* e : ench->effects) {
-				const int one = e ? ElementOf(e->baseEffect) : 0;
-				if (one && element && one != element) {
-					return 0;
-				}
-				element = one ? one : element;
-			}
-			return element;
 		}
 
 		// ...and has it? Measured on a Bound Sword: some games it does (its "RL" light, fadeAmount 5, on the weapon),
@@ -166,7 +156,6 @@ namespace Plugin
 					continue;
 				}
 				const bool enchanted = EnchantmentLit(a_actor, left, weapon);
-				const int  element = EnchantElement(a_actor, left, weapon);
 				for (const bool fp : { false, true }) {
 					if (fp && !isPlayer) {
 						break;
@@ -176,7 +165,7 @@ namespace Plugin
 						continue;
 					}
 					if (auto* node = NodeFor(a_actor, left, fp, weapon); node && !(enchanted && ReLightOn(node))) {
-						a_out.push_back({ a_actor, left, fp, held, node, element });
+						a_out.push_back({ a_actor, left, fp, held, node });
 					}
 				}
 			}
@@ -212,8 +201,9 @@ namespace Plugin
 			}
 			return !keep;
 		});
-		// the same Brightness x daylight factor and color rules the brightness pass gives every other light of ours (the
-		// re-score's P5: held lights missed Dim in daylight and the element colors)
+		std::erase_if(gFailed, [&](const Failed& f) { return std::ranges::none_of(want, [&f](const Want& w) { return f.Is(w); }); });
+		// the same Brightness x daylight factor the brightness pass gives every other light of ours (the re-score's P5: held
+		// lights missed Dim in daylight); the color is the light's own
 		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
 		// made for inverse square lighting, is drawn plain - the house light the hand lights take (LightKit::PlainOf: fade x 1.14,
 		// the reach drawn at 178 / 133)
@@ -224,42 +214,37 @@ namespace Plugin
 			const bool have = std::ranges::any_of(gLive, [&w](const Live& v) {
 				return w.actor->GetFormID() == v.actor && w.left == v.left && w.firstPerson == v.firstPerson;
 			});
-			if (have || gLive.size() >= kMaxLive) {
+			if (have || gLive.size() >= kMaxLive || std::ranges::any_of(gFailed, [&w](const Failed& f) { return f.Is(w); })) {
 				continue;
 			}
-			const float        fade = w.held->fade * scale;
-			const float        reach = w.held->radius * reachScale;
-			const RE::NiPoint3 at = w.held->positions.empty() ? RE::NiPoint3{} : w.held->positions.front();  // the mesh's own origin
-			RE::NiPointLight*  light = nullptr;
-			const RE::NiColor  color = DrawnColor(w.element, w.held->color);
-			auto*              bs = MakeOurLight(*w.held, color, at, fade, reach, w.node, scene, light);
+			const float       fade = w.held->fade * scale;
+			const float       reach = w.held->radius * reachScale;
+			RE::NiPointLight* light = nullptr;
+			auto*             bs = MakeOurLight(*w.held, w.held->color, w.held->at, fade, reach, w.node, scene, light);
 			if (!bs) {
-				SKSE::log::warn("[HELD] {}: the light could not be made or registered", w.held->key);
+				SKSE::log::warn("[HELD] {}: the light could not be made or registered; not tried again until that hand's weapon changes",
+					w.held->key);
+				gFailed.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held });
 				continue;
 			}
 			gLive.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held, RE::NiPointer<RE::NiNode>(w.node),
-				RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), w.element, fade, reach, color });
+				RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), fade, reach });
 			if (gTold < 16) {
 				++gTold;
 				SKSE::log::info("[HELD] {} | {:08X} {} hand, {} person | fade {:.2f} | radius {:.0f}", w.held->key, w.actor->GetFormID(),
 					w.left ? "left" : "right", w.firstPerson ? "first" : "third", fade, reach);
 			}
 		}
-		// the sliders, the daylight and the color picks reach a light already hung
+		// the sliders and the daylight reach a light already hung
 		for (auto& v : gLive) {
-			const float       fade = v.held->fade * scale;
-			const float       reach = v.held->radius * reachScale;
-			const RE::NiColor color = DrawnColor(v.element, v.held->color);
-			auto&             d = v.light->GetLightRuntimeData();
-			if (color.red != v.wroteColor.red || color.green != v.wroteColor.green || color.blue != v.wroteColor.blue) {
-				d.diffuse = color;
-				v.wroteColor = color;
-			}
+			const float fade = v.held->fade * scale;
+			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
+				auto& d = v.light->GetLightRuntimeData();
 				d.fade = fade;
 				d.radius.x = reach;
 				d.radius.y = reach;
-				if (IslShader()) {  // without it these words are ambient color (Plugin.h)
+				if (isl) {  // without it these words are ambient color (Plugin.h)
 					Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
 				}
 				v.written = fade;

@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -94,12 +94,36 @@ namespace Fade
 		return k;
 	}
 
+	void SpellHandLights(RE::Actor* a_actor, bool a_left, RE::NiAVObject* (&a_nodes)[2], RE::NiPointLight*& a_casterLight)
+	{
+		a_nodes[0] = a_nodes[1] = nullptr;
+		a_casterLight = nullptr;
+		if (!a_actor) {
+			return;
+		}
+		const auto& name = a_left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
+		for (const bool first : { false, true }) {
+			if (first && !a_actor->IsPlayerRef()) {
+				break;
+			}
+			if (auto* root = a_actor->Get3D(first)) {
+				a_nodes[first ? 1 : 0] = root->GetObjectByName(name);
+			}
+		}
+		const auto source = a_left ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
+		if (auto* caster = skyrim_cast<RE::ActorMagicCaster*>(a_actor->GetMagicCaster(source)); caster && caster->light) {
+			a_casterLight = netimmerse_cast<RE::NiPointLight*>(caster->light->light.get());
+		}
+	}
+
 	bool ReadSpellHand(RE::Actor* a_actor, bool a_left, SpellHand& a_out)
 	{
 		a_out = {};
 		auto* form = a_actor ? a_actor->GetEquippedObject(a_left) : nullptr;
 		auto* spell = form ? form->As<RE::SpellItem>() : nullptr;
-		if (!spell || spell->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect) {
+		// a spell only: a scroll (a SpellItem too) costs no magicka, so its lights have nothing to follow
+		if (!spell || spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell ||
+			spell->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect) {
 			return false;
 		}
 		a_out.spell = spell;
@@ -110,19 +134,7 @@ namespace Fade
 			            a_actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, RE::ActorValue::kMagicka);
 		}
 		a_out.fraction = a_out.max > 0.0f ? Glow::Clamp01(a_out.current / a_out.max) : 1.0f;
-		const auto& name = a_left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
-		for (const bool first : { false, true }) {
-			if (first && !a_actor->IsPlayerRef()) {
-				break;
-			}
-			if (auto* root = a_actor->Get3D(first)) {
-				a_out.nodes[first ? 1 : 0] = root->GetObjectByName(name);
-			}
-		}
-		const auto source = a_left ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
-		if (auto* caster = skyrim_cast<RE::ActorMagicCaster*>(a_actor->GetMagicCaster(source)); caster && caster->light) {
-			a_out.casterLight = netimmerse_cast<RE::NiPointLight*>(caster->light->light.get());
-		}
+		SpellHandLights(a_actor, a_left, a_out.nodes, a_out.casterLight);
 		return true;
 	}
 }

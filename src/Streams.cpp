@@ -2,8 +2,8 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// Sprays, breath shouts and beams. RE::Light lights them - the projectile's own light record, and a spray's record
-// through our `isPluginLight` config; this mod only takes that light into its menu (Brightness, Reach, the switch).
+// Sprays, breath shouts and beams. RE::Light lights them - the projectile's own light record, and a spray's or (since 2.2) a
+// beam's record through our `isPluginLight` config; this mod only takes that light into its menu (Brightness, Reach, the switch).
 // ⚠ Truman's call after the Lightning Bolt freeze: this file used to hang travelling lights of its own
 // on the projectile's 3D (from the load hook, which also runs on the game's loader threads, under a lock). All of that
 // is gone; a `stream` line in the data now only says "this projectile is ours for the menu".
@@ -27,7 +27,8 @@ namespace Plugin
 
 	// A spray is lit by its own light record, which RE::Light tunes through our `isPluginLight` config. Many of those
 	// records are shared (fireballs, casting lights, explosions, hazards, muzzle flashes), so the record is taken off
-	// every user that is not a spray, in memory - RE::Light would have switched those unconfigured lights off anyway.
+	// every user that is not a spray, in memory - RE::Light would have switched those unconfigured lights off anyway. Since 2.2
+	// a beam our data lights keeps it too (the bolts).
 	void ClaimSprayLights()
 	{
 		gSpraySet.clear();
@@ -48,7 +49,9 @@ namespace Plugin
 			if (!p) {
 				continue;
 			}
-			if (p->data.light && gSpraySet.contains(p->data.light) && !p->IsFlamethrower() && !p->IsCone()) {
+			// 2.2 (the bolts): a BEAM our data lights keeps the record too - a record of both is lit by the spray's config, never
+			// taken off the bolt (his rule: the projectile's own light, made bigger and brighter)
+			if (p->data.light && gSpraySet.contains(p->data.light) && !p->IsFlamethrower() && !p->IsCone() && !(p->IsBeam() && StreamOf(p))) {
 				p->data.light = nullptr;
 				++proj;
 			}
@@ -81,6 +84,82 @@ namespace Plugin
 			gSpraySet.size(), proj, muzzle, effects, expl, hazards);
 	}
 
+	// A beam is lit by its own light record too, made bigger and brighter by our `isPluginLight` config (his rule 2026-10-13,
+	// RE::Light's way - one light per projectile). Beam records are shared far more widely than the sprays' -
+	// MagicLightShockProjectile01 is worn by ~30 beams and by missiles, cones, explosions, hazards, arrows and muzzle flashes - so
+	// the record stays on OUR beams only (a beam projectile whose model one of our `stream` lines names) and every other user is
+	// pointed at an in-memory copy of it: the same light it had before, which RE::Light has no config for. A record that is a
+	// spray record too stays the spray's (ClaimSprayLights keeps it on our beams, lit by the spray's config).
+	void ClaimBeamLights()
+	{
+		std::unordered_set<RE::TESObjectLIGH*> beams;
+		for (const auto id : BeamLightRecords()) {
+			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id); l && !gSpraySet.contains(l)) {
+				beams.insert(l);
+			}
+		}
+		auto* dh = RE::TESDataHandler::GetSingleton();
+		if (beams.empty() || !dh) {
+			return;
+		}
+		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> copies;
+		std::size_t                                                      failed = 0;
+		const auto                                                       copyOf = [&](RE::TESObjectLIGH* a_light) {
+			auto [it, fresh] = copies.try_emplace(a_light, nullptr);
+			if (fresh) {
+				if (auto* copy = LightKit::NewForm<RE::TESObjectLIGH>()) {
+					copy->data = a_light->data;
+					copy->fade = a_light->fade;
+					it->second = copy;
+				} else {
+					++failed;  // no copy: this user keeps the record (and our config's light) - said in the log
+				}
+			}
+			return it->second ? it->second : a_light;
+		};
+		std::size_t ours = 0, proj = 0, muzzle = 0, effects = 0, expl = 0, hazards = 0;
+		for (auto* p : dh->GetFormArray<RE::BGSProjectile>()) {
+			if (!p) {
+				continue;
+			}
+			if (p->data.light && beams.contains(p->data.light)) {
+				if (p->IsBeam() && StreamOf(p)) {
+					++ours;
+				} else {
+					p->data.light = copyOf(p->data.light);
+					++proj;
+				}
+			}
+			if (p->data.muzzleFlashLight && beams.contains(p->data.muzzleFlashLight)) {
+				p->data.muzzleFlashLight = copyOf(p->data.muzzleFlashLight);
+				++muzzle;
+			}
+		}
+		for (auto* e : dh->GetFormArray<RE::EffectSetting>()) {
+			if (e && e->data.light && beams.contains(e->data.light)) {
+				e->data.light = copyOf(e->data.light);
+				++effects;
+			}
+		}
+		for (auto* x : dh->GetFormArray<RE::BGSExplosion>()) {
+			if (x && x->data.light && beams.contains(x->data.light)) {
+				x->data.light = copyOf(x->data.light);
+				++expl;
+			}
+		}
+		for (auto* h : dh->GetFormArray<RE::BGSHazard>()) {
+			if (h && h->data.light && beams.contains(h->data.light)) {
+				h->data.light = copyOf(h->data.light);
+				++hazards;
+			}
+		}
+		SKSE::log::info(
+			"beam lights: {} record(s) stay on our {} beam(s); {} copy(ies) made for the other users - {} projectile(s), {} muzzle "
+			"flash(es), {} magic effect(s), {} explosion(s), {} hazard(s){}",
+			beams.size(), ours, copies.size() - failed, proj, muzzle, effects, expl, hazards,
+			failed ? std::format("; {} copy(ies) could not be made - those users keep the record", failed) : std::string{});
+	}
+
 	bool IsSprayLight(const RE::TESObjectLIGH* a_light)
 	{
 		return a_light && gSpraySet.contains(a_light);
@@ -107,7 +186,7 @@ namespace Plugin
 		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
 		if (!IslShader()) {
 			// off Community Shaders: an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
-			// hands a plain fade and reach (Held.cpp PlainScale)
+			// hands a plain fade and reach (Held.cpp: fade x 1.14, reach x 178 / 133)
 			data.ambient = { a_colour.red * 0.1f, a_colour.green * 0.1f, a_colour.blue * 0.1f };
 		}
 		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves

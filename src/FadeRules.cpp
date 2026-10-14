@@ -1,10 +1,10 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
 // Rule files: Mod::kRulesDir\*.json (FadeConfig.h), read in file-name order (case ignored), rules in the order written.
 // Every rule that matches a weapon applies, and a later rule's setting replaces an earlier one's - so a mod author's
-// file can be overridden by a player's "zz_mine.json". The format is in docs/RULES.md.
+// file can be overridden by a player's "zz_mine.json". Every key, with its range: Fading\Examples.json.txt.
 //
 //   { "rules": [ { "name": "Dawnbreaker always glows", "weapons": ["Skyrim.esm|0x04E4EE"], "mode": "exempt" } ] }
 //
@@ -29,7 +29,6 @@ namespace Fade
 	{
 		constexpr const char*      kDir = Mod::kRulesDir;
 		constexpr std::string_view kNoFadeKeyword = "illuminated_nofade";
-		constexpr std::string_view kNoFadeKeywordOld = "waningglow_nofade";  // the older keyword name, still honoured
 
 		using RulesText::FormRef;
 		using RulesText::Rule;
@@ -62,7 +61,7 @@ namespace Fade
 		};
 		struct Match
 		{
-			bool                     noFade{ false };  // the weapon carries Illuminated_NoFade (or the older WaningGlow_NoFade)
+			bool                     noFade{ false };  // the weapon carries Illuminated_NoFade
 			std::vector<std::size_t> rules;            // the rules that match, in order
 		};
 		std::unordered_map<PairKey, Match, PairHash> gMatches;
@@ -164,7 +163,7 @@ namespace Fade
 			if (const auto it = gMatches.find(key); it != gMatches.end()) {
 				return it->second;
 			}
-			static const std::vector<std::string> noFade{ std::string(kNoFadeKeyword), std::string(kNoFadeKeywordOld) };
+			static const std::vector<std::string> noFade{ std::string(kNoFadeKeyword) };
 			Match                                 m;
 			m.noFade = HasKeyword(a_weapon, noFade);
 			for (std::size_t i = 0; i < gRules.size(); ++i) {
@@ -196,9 +195,7 @@ namespace Fade
 			// increment(ec), not a range-for: the range-for's ++ throws on an error reading the folder
 			for (auto it = std::filesystem::directory_iterator(kDir, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
 				std::error_code fileEc;
-				// Translation.json is the menu's translation file (Translation.h), not a rule file
-				if (it->is_regular_file(fileEc) && Lower(PathText(it->path().extension())) == ".json" &&
-					Lower(PathText(it->path().filename())) != "translation.json") {
+				if (it->is_regular_file(fileEc) && Lower(PathText(it->path().extension())) == ".json") {
 					files.push_back(it->path());
 				}
 			}

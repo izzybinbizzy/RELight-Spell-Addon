@@ -15,7 +15,8 @@
 // Under Community Shaders the casting light lights the ground itself: nothing is made.
 //
 // CREDIT: a light is made and registered the way ReLight by Truman does it (github.com/TrumanGIT/ReLight, GPL-3.0-or-later,
-// used with his permission): a master NiPointLight cloned for every use and handed to the shadow scene node.
+// used with his permission): a master NiPointLight cloned for every use (LightKit::CloneLight), placed and updated once,
+// then handed to the shadow scene node (LightKit::AddToScene).
 
 #include "Plugin.h"
 
@@ -37,7 +38,8 @@ namespace Plugin
 			RE::NiPointer<RE::NiAVObject>   magic;               // the nearest node above the casting light whose name holds "MagicNode", or the light's own parent when none does
 		};
 
-		std::unordered_map<std::uint64_t, Twin> gTwins;  // main thread only; key = actor form id << 1 | hand
+		std::unordered_map<std::uint64_t, Twin> gTwins;      // main thread only; key = actor form id << 1 | hand
+		std::atomic<std::size_t>                gLive{ 0 };  // its size, for the testing DLL's page (the render thread)
 
 		void Drop(Twin& a_twin, RE::ShadowSceneNode* a_scene)
 		{
@@ -53,35 +55,40 @@ namespace Plugin
 			a_twin = {};
 		}
 
-		bool Make(Twin& a_twin, RE::NiPointLight* a_source, RE::NiNode* a_hand, RE::ShadowSceneNode* a_scene)
+		// every twin let go, each source light given back (a load, the switch off, no scene)
+		void DropAll(RE::ShadowSceneNode* a_scene)
+		{
+			for (auto& entry : gTwins) {
+				Drop(entry.second, a_scene);
+			}
+			gTwins.clear();
+			gLive.store(0, std::memory_order_relaxed);
+		}
+
+		// the twin made and hung on the hand node; it joins the scene in Visit, once Follow has given it its numbers and its place
+		bool Make(Twin& a_twin, RE::NiPointLight* a_source, RE::NiNode* a_hand)
 		{
 			auto* light = LightKit::CloneLight();
 			if (!light) {
 				return false;
 			}
 			light->name = kName;
-			light->GetLightRuntimeData() = a_source->GetLightRuntimeData();
-			light->SetLightAttenuation(light->GetLightRuntimeData().radius.x);
 			light->fadeAmount = kMovingLightMark;  // RE::Light's flicker prevention lets it reach every surface (Plugin.h)
 			a_hand->AttachChild(light, true);
-			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};  // Dynamic Wards' hand light (DomeLights.cpp Make)
-			params.dynamic = true;
-			params.shadowLight = false;
-			params.portalStrict = true;
-			params.affectLand = true;
-			params.affectWater = true;
-			params.neverFades = true;
-			params.fov = 90.0f;
-			params.falloff = 1.0f;
-			params.nearDistance = 5.0f;
-			params.depthBias = 1.0f;
-			auto* bs = a_scene->AddLight(light, params);
+			a_twin = { RE::NiPointer<RE::NiPointLight>(a_source), RE::NiPointer<RE::NiNode>(a_hand), RE::NiPointer<RE::NiPointLight>(light),
+				{}, true, {}, false, {} };
+			return true;
+		}
+
+		// into the scene with Dynamic Wards' hand-light parameters (DomeLights.cpp Make: land and water lighting on); false when
+		// the scene refused it - the twin is then dropped
+		bool Register(Twin& a_twin, RE::ShadowSceneNode* a_scene)
+		{
+			auto* bs = LightKit::AddToScene(a_scene, a_twin.light.get());
 			if (!bs) {
-				a_hand->DetachChild(light);
 				return false;
 			}
-			a_twin = { RE::NiPointer<RE::NiPointLight>(a_source), RE::NiPointer<RE::NiNode>(a_hand), RE::NiPointer<RE::NiPointLight>(light),
-				RE::NiPointer<RE::BSLight>(bs), true, {}, false, {} };
+			a_twin.bs.reset(bs);
 			return true;
 		}
 
@@ -119,12 +126,14 @@ namespace Plugin
 			auto*       light = a_twin.light.get();
 			auto*       source = a_twin.source.get();
 			const auto* anchor = a_twin.anchor ? a_twin.anchor.get() : source->parent;
-			auto&       data = light->GetLightRuntimeData();
-			const float radius = data.radius.x;
-			data = source->GetLightRuntimeData();
-			if (data.radius.x != radius) {
-				light->SetLightAttenuation(data.radius.x);
+			const auto& from = source->GetLightRuntimeData();
+			if (from.radius.x != light->GetLightRuntimeData().radius.x) {
+				// first: it writes the same two words Community Shaders reads its flag and cutoff from (LightKit.h Isl), which
+				// the copy below then sets to the source's
+				light->SetLightAttenuation(from.radius.x);
 			}
+			auto& data = light->GetLightRuntimeData();
+			data = from;
 			if (WantedDark(source)) {
 				data.fade = 0.0f;
 			}
@@ -200,7 +209,7 @@ namespace Plugin
 				if (twin.light && (twin.source.get() != source || twin.parent.get() != parent)) {
 					Drop(twin, a_scene);
 				}
-				if (!twin.light && !Make(twin, source, parent, a_scene)) {
+				if (!twin.light && !Make(twin, source, parent)) {
 					continue;
 				}
 				if (twin.anchor.get() != anchor) {
@@ -209,8 +218,12 @@ namespace Plugin
 				if (twin.magic.get() != magic) {
 					twin.magic.reset(magic);
 				}
-				twin.seen = true;
 				Follow(twin);
+				if (!twin.bs && !Register(twin, a_scene)) {
+					Drop(twin, a_scene);  // not seen: let go below, tried again next frame
+					continue;
+				}
+				twin.seen = true;
 			}
 		}
 	}
@@ -222,10 +235,9 @@ namespace Plugin
 		}
 		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		if (!scene || gGroundLightsOn.load(std::memory_order_relaxed) < 0.5f) {  // switched off in the advanced settings file
-			for (auto& entry : gTwins) {
-				Drop(entry.second, scene);  // with a scene, each twin leaves its lists too (CodeRabbit, RELight #8)
-			}
-			gTwins.clear();
+			// no scene to light, or switched off: let every twin go and give each source light back (with a scene, each twin
+			// leaves its lists too - CodeRabbit, RELight #8)
+			DropAll(scene);
 			return;
 		}
 		for (auto& entry : gTwins) {
@@ -247,7 +259,10 @@ namespace Plugin
 			}
 			return false;
 		});
+		gLive.store(gTwins.size(), std::memory_order_relaxed);
 	}
 
-	std::size_t GroundLightCount() { return gTwins.size(); }
+	void DropGroundLights() { DropAll(RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]); }
+
+	std::size_t GroundLightCount() { return gLive.load(std::memory_order_relaxed); }
 }

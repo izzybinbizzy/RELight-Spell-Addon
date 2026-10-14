@@ -1,11 +1,11 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
 // Rule files as text, with nothing of the game in it (tests/test_fade.cpp reads them off the game): a file's rules,
-// every problem in it, and how a matching rule's settings lay over the ones before it. Rules.cpp finds the files,
+// every problem in it, and how a matching rule's settings lay over the ones before it. FadeRules.cpp finds the files,
 // resolves "Plugin.esp|0x123" to a form in this load order (through the Resolve it hands in), and matches weapons.
-// The format is in docs/RULES.md.
+// Every key, with its range, is listed at the top of Fading\Examples.json.txt (shipped beside the rule files).
 //
 //   { "rules": [ { "name": "Dawnbreaker always glows", "weapons": ["Skyrim.esm|0x04E4EE"], "mode": "exempt" } ] }
 
@@ -19,7 +19,6 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -46,9 +45,8 @@ namespace Fade::RulesText
 		std::optional<Mode>  mode;
 		std::optional<float> floor, reachFollows, sputterBelow, sputterStrength, pulseStrength, flareStrength, coolAmount,
 			boundFadeSeconds;
-		std::optional<Glow::Curve>    curve;
-		std::optional<Glow::CoolTint> coolTint;
-		std::optional<bool>           sputter, emptySteady, pulse, flare, cool;
+		std::optional<Glow::Curve> curve;
+		std::optional<bool>        sputter, emptySteady, pulse, flare, cool;
 	};
 
 	// the form a plugin-and-ID names in this load order, or nothing when that plugin or record is not installed
@@ -205,7 +203,9 @@ namespace Fade::RulesText
 				rd.Problem("\"name\" must be text");
 			}
 
-			// a misspelt key would otherwise do nothing, silently
+			// a misspelt key would otherwise do nothing, silently. colorCoolingTint is an older key, read past without a word:
+			// the tint is no longer a choice (his word, "the only option will be grey, ember cooling only for fire spell types
+			// that are orange" - Glow::TintFor decides)
 			static constexpr std::string_view kKnown[] = { "name", "weapons", "enchantments", "weaponKeywords", "effectKeywords", "bound",
 				"staff", "mode", "emptyBrightness", "curve", "reachFollows", "sputter", "sputterBelow", "sputterStrength", "emptySteady",
 				"hitPulse", "hitPulseStrength", "rechargeFlare", "rechargeFlareStrength", "colorCooling", "colorCoolingAmount",
@@ -226,13 +226,9 @@ namespace Fade::RulesText
 
 			r.mode = rd.Choice<Mode>(a_rule, "mode", { { "charge", Mode::kCharge }, { "exempt", Mode::kExempt }, { "bound", Mode::kBound } },
 				"charge, exempt or bound");
-			r.curve = rd.Choice<Glow::Curve>(a_rule, "curve",
-				// "steep" was a third curve in early builds: an old rule file reads it as gentle
-				{ { "linear", Glow::Curve::kLinear }, { "gentle", Glow::Curve::kGentle }, { "steep", Glow::Curve::kGentle } },
+			r.curve = rd.Choice<Glow::Curve>(a_rule, "curve", { { "linear", Glow::Curve::kLinear }, { "gentle", Glow::Curve::kGentle } },
 				"linear or gentle");
-			r.coolTint = rd.Choice<Glow::CoolTint>(a_rule, "colorCoolingTint",
-				{ { "grey", Glow::CoolTint::kGrey }, { "gray", Glow::CoolTint::kGrey }, { "ember", Glow::CoolTint::kEmber } }, "grey or ember");
-			// the same ranges as the settings file and the menu (SettingsText.h)
+			// the same ranges as the settings file and the menu (FadeSettingsText.h)
 			r.floor = rd.Percent(a_rule, "emptyBrightness", 50.0f);
 			r.reachFollows = rd.Percent(a_rule, "reachFollows");
 			if (const auto below = rd.Number(a_rule, "sputterBelow", 1.0f, 50.0f)) {
@@ -308,8 +304,9 @@ namespace Fade::RulesText
 		take(t.flareStrength, a_r.flareStrength);
 		take(t.cool, a_r.cool);
 		take(t.coolAmount, a_r.coolAmount);
-		take(t.coolTint, a_r.coolTint);
 		take(a_v.boundFadeSeconds, a_r.boundFadeSeconds);
-		a_v.why = a_r.name;
+		// the reason names the rule that set the mode; a rule that only tunes is added to the reason it leaves standing
+		a_v.why = a_r.mode ? a_r.name : a_v.why.empty() ? "tuned by " + a_r.name :
+		                                                  a_v.why + "; tuned by " + a_r.name;
 	}
 }

@@ -58,6 +58,18 @@ namespace Plugin
 		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;                     // the same key -> its light record
 		StringMap<int>                                            gElementOfKey;                   // hand key -> element, most of its effects' (0: none, or a tie)
 
+		// a Community Shaders that builds inverse square lights into Light Limit Fix: its attenuation reads each light's
+		// InverseSquare flag (Illuminated's Lighting.cpp, the same test)
+		[[nodiscard]] bool IslBuiltIntoLightLimitFix()
+		{
+			std::ifstream in("Data/Shaders/LightLimitFix/Attenuation.hlsli", std::ios::binary);
+			if (!in) {
+				return false;
+			}
+			const std::string text{ std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>() };
+			return text.find("InverseSquare") != std::string::npos;
+		}
+
 		[[nodiscard]] bool AutoKey(std::string_view a_key) { return a_key.starts_with(kAutoPrefix); }
 
 		[[nodiscard]] bool SkippedPrefix(const RE::EffectSetting* a_effect)
@@ -293,13 +305,15 @@ namespace Plugin
 	{
 		// RE::Light's own test for inverse square lighting; without it the two words DressHandLight writes are ambient colour.
 		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
-		// finds it, never picked; off Community Shaders the hand lights are drawn plain (DressHandLight) and light the ground
-		// through their twins (GroundLights.cpp)
+		// finds it (Lighting.cpp ReadLighting), never picked: the inverse square shader, or a Community Shaders that builds
+		// it into Light Limit Fix (Bottled Shaders 1.0.10 has only that), is Community Shaders. Off the shader the hand
+		// lights are drawn plain (DressHandLight) and light the ground through their twins (GroundLights.cpp) - that stays
+		// RE::Light's own test (his "relight is relight is relight")
 		std::error_code ec;
 		gIsl = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
 		const bool enb = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
-		gLighting = gIsl ? Lighting::kShaders : enb ? Lighting::kEnb :
-		                                              Lighting::kVanilla;
+		gLighting = gIsl || IslBuiltIntoLightLimitFix() ? Lighting::kShaders : enb ? Lighting::kEnb :
+		                                                                             Lighting::kVanilla;
 		SKSE::log::info("lighting: {} (detected)", LightingName(gLighting));
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{

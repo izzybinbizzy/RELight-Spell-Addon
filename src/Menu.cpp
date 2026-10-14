@@ -80,8 +80,6 @@ namespace Plugin
 		// every shown line goes through T(): Data\SKSE\Plugins\RelightSpellAddon\Translation.json (relightgen.py writes the English one)
 		using Translation::T;
 
-		// his call: as Illuminated does - when CS Light is loaded, say which of its options light the same
-		// things a second time (the option names are CS Light's own installer's, spelling included)
 #ifdef FADE_DEBUG_PAGE
 		// a printf line with three counts, for a widget that takes plain text (the testing DLL's status card)
 		[[nodiscard]] std::string Fill3(const char* a_format, std::size_t a_a, std::size_t a_b, std::size_t a_c)
@@ -92,7 +90,9 @@ namespace Plugin
 		}
 #endif
 
-		// looked up ONCE on the main thread when the pages are added (RegisterMenu), as Illuminated does - the menu draws on
+		// his call: as Illuminated does - when CS Light is loaded, say which of its options light the same
+		// things a second time (the option names are CS Light's own installer's, spelling included).
+		// Looked up ONCE on the main thread when the pages are added (RegisterMenu), as Illuminated does - the menu draws on
 		// its own thread and never touches the data handler (CodeRabbit, RELight #11)
 		const char* gCSLight = nullptr;
 
@@ -287,8 +287,7 @@ namespace Plugin
 			std::vector<std::pair<std::string, int>> values;
 		};
 		std::mutex              gPresetLock;
-		std::vector<UserPreset> gPresets;
-		bool                    gPresetsRead = false;  // under gPresetLock
+		std::vector<UserPreset> gPresets;  // read once when the pages are added (main thread), then under gPresetLock
 
 		void ReadPresetsLocked()
 		{
@@ -323,10 +322,11 @@ namespace Plugin
 					}
 				}
 			}
-			gPresetsRead = true;
 		}
 
-		void WritePresetsLocked()
+		// the caller holds gPresetLock; the file is written by an SKSE task on the main thread, from the copy it is handed
+		// (Settings.cpp's rule: no file work on the render thread)
+		void WritePresetsSoon()
 		{
 			std::ostringstream text;
 			text << "; RELight - Spell Addon - the presets you saved in the menu, one set per lighting. Written by the menu.\n";
@@ -336,21 +336,27 @@ namespace Plugin
 					text << k << "=" << v << "\n";
 				}
 			}
-			std::error_code ec;
-			std::filesystem::create_directories(std::filesystem::path(kPresetsPath).parent_path(), ec);
-			const std::string tmp = std::string(kPresetsPath) + ".tmp";
-			{
-				std::ofstream out(tmp, std::ios::trunc);
-				out << text.str();
-				if (!out.flush()) {
-					SKSE::log::warn("presets: {} could not be written", kPresetsPath);
-					return;
+			auto* tasks = SKSE::GetTaskInterface();
+			if (!tasks) {
+				return;
+			}
+			tasks->AddTask([all = std::move(text).str()]() {
+				std::error_code ec;
+				std::filesystem::create_directories(std::filesystem::path(kPresetsPath).parent_path(), ec);
+				const std::string tmp = std::string(kPresetsPath) + ".tmp";
+				{
+					std::ofstream out(tmp, std::ios::trunc);
+					out << all;
+					if (!out.flush()) {
+						SKSE::log::warn("presets: {} could not be written", kPresetsPath);
+						return;
+					}
 				}
-			}
-			if (std::filesystem::rename(tmp, kPresetsPath, ec); ec) {
-				SKSE::log::warn("presets: {} could not be replaced ({})", kPresetsPath, ec.message());
-				std::filesystem::remove(tmp, ec);
-			}
+				if (std::filesystem::rename(tmp, kPresetsPath, ec); ec) {
+					SKSE::log::warn("presets: {} could not be replaced ({})", kPresetsPath, ec.message());
+					std::filesystem::remove(tmp, ec);
+				}
+			});
 		}
 
 		// the Version heading's one line (Illuminated's DrawVersion): the lighting found, never picked (his word)
@@ -378,20 +384,14 @@ namespace Plugin
 			ImGuiMCP::BeginDisabled(typed.empty() || typed.find_first_of("[]|=") != std::string::npos);
 			if (ImGuiMCP::Button(T("Save as preset"))) {
 				std::lock_guard lock(gPresetLock);
-				if (!gPresetsRead) {
-					ReadPresetsLocked();
-				}
 				std::erase_if(gPresets, [&](const UserPreset& p) { return p.lighting == lighting && p.name == typed; });
 				gPresets.push_back({ lighting, typed, SettingsSnapshot() });
-				WritePresetsLocked();
+				WritePresetsSoon();
 				name[0] = '\0';
 			}
 			ImGuiMCP::EndDisabled();
 			ImGuiMCP::SetItemTooltip(T("Saves every setting and switch as it is now under this name, for %s."), T(lighting.c_str()));
 			std::lock_guard lock(gPresetLock);
-			if (!gPresetsRead) {
-				ReadPresetsLocked();
-			}
 			for (std::size_t i = 0; i < gPresets.size(); ++i) {
 				if (gPresets[i].lighting != lighting) {
 					continue;
@@ -408,7 +408,7 @@ namespace Plugin
 				ImGuiMCP::PopID();
 				if (gone) {
 					gPresets.erase(gPresets.begin() + static_cast<std::ptrdiff_t>(i));
-					WritePresetsLocked();
+					WritePresetsSoon();
 					break;
 				}
 			}
@@ -633,6 +633,10 @@ namespace Plugin
 		if (!SKSEMenuFramework::IsInstalled()) {
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
+		}
+		{
+			std::lock_guard lock(gPresetLock);
+			ReadPresetsLocked();  // here on the main thread, so the menu never reads a file on its own thread
 		}
 		MenuStyle::gTheme = MenuStyle::MakeTheme(0xFFD58A);  // warm spell-light gold
 		SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));

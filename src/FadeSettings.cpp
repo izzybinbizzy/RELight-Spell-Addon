@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -24,7 +24,8 @@ namespace Fade
 		void Mirror(const Settings& a_s) noexcept
 		{
 			gDebugLog.store(a_s.debugLog, std::memory_order_relaxed);
-			gHideChargeBar.store(a_s.hideChargeBar, std::memory_order_relaxed);
+			// with Fading off nothing else shows a weapon's charge, so the HUD's bar comes back (his answer 2026-10-13)
+			gHideChargeBar.store(a_s.hideChargeBar && a_s.enabled, std::memory_order_relaxed);
 		}
 	}
 
@@ -73,10 +74,10 @@ namespace Fade
 		const auto& t = s.tuning;
 		SKSE::log::info(
 			"settings: {} line(s) read from {}; enabled {}, empty brightness {}%, curve {}, reach follows {}%, "
-			"sputter {} below {}%, pulse {}, flare {}, cooling {}, staves {}, bound {} ({} s), who {}, dim glow {}, hide charge bar {}, own light {}",
+			"sputter {} below {}%, pulse {}, flare {}, cooling {}, staves {}, bound {} ({} s), who {}, dim glow {}, hide charge bar {}",
 			read.taken, Mod::kSettingsPath, s.enabled, SettingsText::ToPct(t.floor), static_cast<int>(t.curve), SettingsText::ToPct(t.reachFollows),
 			t.sputter, SettingsText::ToPct(t.sputterBelow), t.pulse, t.flare, t.cool, s.staves, s.bound, s.boundFadeSeconds,
-			static_cast<int>(s.who), s.dimShader, s.hideChargeBar, Mod::kOwnLight ? (s.ownLight ? "on" : "off") : "not offered");
+			static_cast<int>(s.who), s.dimShader, s.hideChargeBar);
 	}
 
 	void SaveSettings()

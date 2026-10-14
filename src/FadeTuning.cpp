@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -21,6 +21,7 @@ namespace Fade::Tuning
 		struct Knob
 		{
 			std::string         section, key, note;
+			std::string         was;  // the key's old name, still read (empty: never renamed)
 			float               def{ 0.0f }, lo{ 0.0f }, hi{ 0.0f };
 			std::atomic<float>* value{ nullptr };
 		};
@@ -32,21 +33,33 @@ namespace Fade::Tuning
 	}
 
 	void Register(std::string_view a_section, std::string_view a_key, float a_default, float a_lo, float a_hi, std::string_view a_note,
-		std::atomic<float>& a_value)
+		std::atomic<float>& a_value, std::string_view a_was)
 	{
 		a_value.store(a_default, std::memory_order_relaxed);
-		Knobs().push_back({ std::string(a_section), std::string(a_key), std::string(a_note), a_default, a_lo, a_hi, &a_value });
+		Knobs().push_back({ std::string(a_section), std::string(a_key), std::string(a_note), std::string(a_was), a_default, a_lo, a_hi, &a_value });
 	}
 
 	void Load()
 	{
-		auto&                              knobs = Knobs();
-		std::map<std::string, std::string> found;  // "section|key" lower case -> the value as written
+		auto& knobs = Knobs();
+		struct Found
+		{
+			std::string value;  // as written
+			std::string shown;  // "[Section] Key" as written, for a warning
+			bool        used{ false };
+		};
+		std::map<std::string, Found> found;  // "section|key" lower case
 		{
 			std::ifstream in(Mod::kAdvancedPath);
-			std::string   line, section;
+			std::string   line, section, sectionShown;
+			bool          first = true;
 			while (std::getline(in, line)) {
-				auto t = SettingsText::Trim(line);
+				std::string_view l = line;
+				if (first && l.starts_with("\xEF\xBB\xBF")) {
+					l.remove_prefix(3);  // a UTF-8 byte order mark (Notepad's)
+				}
+				first = false;
+				auto t = SettingsText::Trim(l);
 				if (const auto c = t.find_first_of(";#"); c != std::string_view::npos) {
 					t = SettingsText::Trim(t.substr(0, c));
 				}
@@ -54,23 +67,42 @@ namespace Fade::Tuning
 					continue;
 				}
 				if (t.front() == '[' && t.back() == ']') {
-					section = Lower(SettingsText::Trim(t.substr(1, t.size() - 2)));
+					sectionShown = std::string(SettingsText::Trim(t.substr(1, t.size() - 2)));
+					section = Lower(sectionShown);
 					continue;
 				}
 				if (const auto eq = t.find('='); eq != std::string_view::npos) {
-					found[section + "|" + Lower(SettingsText::Trim(t.substr(0, eq)))] = std::string(SettingsText::Trim(t.substr(eq + 1)));
+					const auto key = SettingsText::Trim(t.substr(0, eq));
+					found[section + "|" + Lower(key)] = { std::string(SettingsText::Trim(t.substr(eq + 1))),
+						"[" + sectionShown + "] " + std::string(key) };
 				}
 			}
 		}
 		std::size_t taken = 0;
 		for (auto& k : knobs) {
-			const auto it = found.find(Lower(k.section) + "|" + Lower(k.key));
+			auto it = found.find(Lower(k.section) + "|" + Lower(k.key));
+			if (it == found.end() && !k.was.empty()) {
+				// the key's old name (a renamed setting): its value is kept, and the file is written back under the new name
+				it = found.find(Lower(k.section) + "|" + Lower(k.was));
+				if (it != found.end()) {
+					SKSE::log::info("advanced settings: {} is read as [{}] {} (its new name)", it->second.shown, k.section, k.key);
+				}
+			}
 			if (it == found.end()) {
 				continue;
 			}
+			// both names written: the new one wins, the old one is passed over quietly
+			if (!k.was.empty()) {
+				if (const auto old = found.find(Lower(k.section) + "|" + Lower(k.was)); old != found.end()) {
+					old->second.used = true;
+				}
+			}
+			it->second.used = true;
 			float       v = 0.0f;
-			const auto& s = it->second;
-			if (std::from_chars(s.data(), s.data() + s.size(), v).ec != std::errc{} || !std::isfinite(v)) {
+			const auto& s = it->second.value;
+			// the whole value is a number: "0,35" or "300px" is not (from_chars stops at the first character it cannot use)
+			const auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+			if (s.empty() || ec != std::errc{} || end != s.data() + s.size() || !std::isfinite(v)) {
 				SKSE::log::warn("advanced settings: [{}] {}={} is not a number; the default {} stays", k.section, k.key, s, k.def);
 				continue;
 			}
@@ -80,6 +112,11 @@ namespace Fade::Tuning
 			}
 			k.value->store(v, std::memory_order_relaxed);
 			++taken;
+		}
+		for (const auto& [key, f] : found) {
+			if (!f.used) {
+				SKSE::log::warn("advanced settings: {} is not a setting; it is left out of the rewritten file", f.shown);
+			}
 		}
 		// the whole file again: every knob, in its section, with its note - the "dump" (his word)
 		std::ostringstream text;

@@ -10,10 +10,10 @@
 //   NewForm      a form made in memory by the game's own factory; IsCallAt, a call site's check before it is hooked
 //   Isl          the two words Community Shaders' inverse-square lighting reads off a light
 //   CloneLight   a new light for the scene, and AddToScene to register it (ReLight's method, Truman's permission)
-//   NamedColor   one of the ten named colors as the game's color
 //   Daylight     how much dimmer the lights are by day and in bright rooms: the "Dim in daylight" setting
 //   FleshFx      which flesh spells wear FleshFX's look, and the color their lights then take
-// The plain-number helpers (Lower, CutoffFor, the named colors, ToScreen, KeyAt ...) are in LightMath.h, tested off the game.
+//   Guarded      runs a hook's or a frame's own work and lets no exception out into the game
+// The plain-number helpers (Lower, CutoffFor, PlainOf, ToScreen, KeyAt ...) are in LightMath.h, tested off the game.
 
 #pragma once
 
@@ -120,6 +120,26 @@ namespace LightKit
 		}
 	}
 
+	// Runs a_work and lets no exception out: inside a hook, a game callback or per-frame code one would end the game (his C++
+	// rule). The first failure at each place is logged, later ones there are skipped quietly. One flag per call site - each
+	// a_work is a lambda of its own type, so each call site has its own instance of this function.
+	template <class F>
+	inline void Guarded(const char* a_where, F&& a_work) noexcept
+	{
+		static std::atomic<bool> told{ false };
+		try {
+			std::forward<F>(a_work)();
+		} catch (const std::exception& e) {
+			if (!told.exchange(true)) {
+				SKSE::log::error("{}: stopped by an error ({}); later ones here are skipped quietly", a_where, e.what());
+			}
+		} catch (...) {
+			if (!told.exchange(true)) {
+				SKSE::log::error("{}: stopped by an unknown error; later ones here are skipped quietly", a_where);
+			}
+		}
+	}
+
 	// A new light for the scene, cloned from one master light made once: ReLight found that a freshly made light, attached
 	// straight away, crashes. nullptr when the game could not make one. Main thread.
 	[[nodiscard]] inline RE::NiPointLight* CloneLight()
@@ -137,14 +157,15 @@ namespace LightKit
 	}
 
 	// Registers a light already attached under a node and updated once: a dynamic light that casts no shadow, as ReLight
-	// registers its own (field of view 90, the one a shadowless light is given). nullptr when the scene refused it - the
-	// caller then detaches it. Main thread.
-	[[nodiscard]] inline RE::BSLight* AddToScene(RE::ShadowSceneNode* a_scene, RE::NiPointLight* a_light, float a_falloff = 1.0f)
+	// registers its own (field of view 90, the one a shadowless light is given). a_portalStrict false: a row that lets its
+	// light through portals. nullptr when the scene refused it - the caller then detaches it. Main thread.
+	[[nodiscard]] inline RE::BSLight* AddToScene(RE::ShadowSceneNode* a_scene, RE::NiPointLight* a_light, float a_falloff = 1.0f,
+		bool a_portalStrict = true)
 	{
 		RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
 		params.dynamic = true;
 		params.shadowLight = false;
-		params.portalStrict = true;
+		params.portalStrict = a_portalStrict;
 		params.affectLand = true;
 		params.affectWater = true;
 		params.neverFades = true;
@@ -156,13 +177,6 @@ namespace LightKit
 		params.restrictedNode = nullptr;
 		params.lensFlareData = nullptr;
 		return a_scene && a_light ? a_scene->AddLight(a_light, params) : nullptr;
-	}
-
-	[[nodiscard]] inline RE::NiColor NamedColor(int a_pick) noexcept
-	{
-		const auto c = NamedColorRgb(a_pick);
-		return { static_cast<float>((c >> 16) & 0xFF) / 255.0f, static_cast<float>((c >> 8) & 0xFF) / 255.0f,
-			static_cast<float>(c & 0xFF) / 255.0f };
 	}
 
 	// "Dim in daylight" (LightMath.h's DaylightShare): 1 at night and in the dark; a_pick 0 off, 1 a little, 2 more. Main thread:

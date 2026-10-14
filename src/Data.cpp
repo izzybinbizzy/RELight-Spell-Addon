@@ -10,6 +10,8 @@
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
 //   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
 //   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
+//   beamlight <0xID~Plugin>    a light record a beam makes; RE::Light lights it through our config, kept on our beams
+//                              only (Streams.cpp ClaimBeamLights)
 //   handfx <key> <pulse|flicker> <per second> <intensity>   a hand light's Dynamic Lighting (installed with it)
 //   menugroup <category> <author or ->   where a patch sits on the Patches page
 //   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
@@ -49,7 +51,7 @@ namespace Plugin
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>                gHands;
 		std::unordered_set<RE::FormID>              gSprayLights;
-		std::unordered_map<RE::FormID, std::size_t> gSprayOwner;  // spray light record -> the option that lights it
+		std::unordered_set<RE::FormID>              gBeamLights;  // a beam's own light record, lit through our config
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
 		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
@@ -142,7 +144,7 @@ namespace Plugin
 				s.radius = v[4];
 				s.size = v[5];
 				s.cutoff = v[6];
-				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
+				s.at = { v[7], v[8], v[9] };
 				return s;
 			};
 			std::vector<Stream> streams, helds;
@@ -169,23 +171,22 @@ namespace Plugin
 			for (const auto id : bases) {
 				own(gBaseOwner, id);
 			}
-			// lines for one mesh in one file are one ladder; a later layer replaces an earlier layer's whole ladder
-			std::unordered_set<std::string> fresh;
+			// a later layer takes a stream over (RE::Light lights it; the line only makes its object ours for the menu)
 			for (auto& s : streams) {
 				s.order = opt.order;
 				s.option = idx;
 				own(gMeshOwner, s.key);  // a stream's object is ours too, for the slider and the switch
-				auto it = gStreams.find(s.key);
-				if (it != gStreams.end() && it->second.order == s.order && fresh.contains(s.key)) {
-					it->second.positions.push_back(s.positions.front());
-				} else if (it == gStreams.end() || it->second.order <= s.order) {
-					fresh.insert(s.key);
+				if (auto it = gStreams.find(s.key); it == gStreams.end() || it->second.order <= s.order) {
 					gStreams.insert_or_assign(s.key, std::move(s));
 				}
 			}
 			for (const auto id : sprays) {
 				gSprayLights.insert(id);
-				own(gSprayOwner, id);
+			}
+			for (const auto& b : file.beams) {
+				if (const auto id = ResolveBase(b)) {
+					gBeamLights.insert(id);
+				}
 			}
 			for (auto& s : helds) {
 				s.order = opt.order;
@@ -361,7 +362,7 @@ namespace Plugin
 		gHeldBase.clear();
 		gHands.clear();
 		gSprayLights.clear();
-		gSprayOwner.clear();
+		gBeamLights.clear();
 		gHandFx.clear();
 		gMeshTints.clear();
 		gBaseTints.clear();
@@ -504,14 +505,9 @@ namespace Plugin
 		});
 	}
 
-	std::size_t OptionOfSprayLight(const RE::TESObjectLIGH* a_light)
-	{
-		const auto it = a_light ? gSprayOwner.find(a_light->GetFormID()) : gSprayOwner.end();
-		return it != gSprayOwner.end() ? it->second : kNone;
-	}
-
 	const StringMap<std::vector<Hand>>&   Hands() { return gHands; }
 	const std::unordered_set<RE::FormID>& SprayLightRecords() { return gSprayLights; }
+	const std::unordered_set<RE::FormID>& BeamLightRecords() { return gBeamLights; }
 
 	const HandFx* HandFxOf(std::string_view a_key)
 	{

@@ -1,13 +1,14 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
 // Editor IDs, recorded as each form loads, because the game throws most of them away. The ONE recorder in the plugin:
 // SetFormEditorID (vtable slot 0x33) is hooked per form type at SKSE's post-load, before the game reads its plugins.
-// The fading module needs weapons, enchantments and magic effects (rule files may name them by editor ID; keywords keep
-// their own); a plugin that needs more types asks for them with RecordEditorIDs<T>() (Fade.h). After the data has
-// loaded, ForgetPassEditorIDs() lets go of every editor ID the rule files cannot name - the passes that needed them have
-// run - so the table holds only what a rule reload can ask for. EditorID() hands out a copy.
+// The fading module needs weapons and enchantments (rule files may name them by editor ID; keywords keep their own) and
+// magic effects (the soul trap test, FadeSpells.cpp, and the plugins' own readers look at them while the game runs); a
+// plugin that needs more types asks for them with RecordEditorIDs<T>() (Fade.h). After the data has loaded,
+// ForgetPassEditorIDs() lets go of every other editor ID - the passes that needed them have run - so the table holds
+// only those three types. EditorID() hands out a copy.
 
 #include "Fade.h"
 
@@ -18,7 +19,8 @@ namespace Fade
 		std::unordered_map<const RE::TESForm*, std::string> gEditorIDs;
 		RE::BSSpinLock                                      gLock;
 
-		// the form types a rule file can name: kept for the whole session
+		// the form types kept for the whole session: weapons and enchantments (rule files name them), magic effects (read
+		// while the game runs: the soul trap test and the plugins' own readers)
 		[[nodiscard]] bool RuleType(const RE::TESForm* a_form) noexcept
 		{
 			return a_form->Is(RE::FormType::Weapon, RE::FormType::Enchantment, RE::FormType::MagicEffect);
