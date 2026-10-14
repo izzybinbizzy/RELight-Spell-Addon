@@ -5,7 +5,7 @@
 // The light on the caster's hands - no plugin, no script.
 //
 // Casting art hangs off the actor, so no RE::Light mesh config reaches it. Instead each magic effect whose casting
-// art is a mesh this mod lights is pointed, in memory, at its casting light: a light record made here in the colour,
+// art is a mesh this mod lights is pointed, in memory, at its casting light: a light record made here in the color,
 // strength and reach the installed layers give that mesh. RE::Light switches off casting lights it has no config for,
 // and an in-memory record can have none, so main.cpp's hook makes these lights itself and never hands them on.
 // Nothing is saved; take the mod out and every effect keeps its own light.
@@ -52,41 +52,8 @@ namespace Plugin
 		std::unordered_map<std::string, RE::TESObjectLIGH*>       gCopies;
 		std::unordered_map<const RE::TESObjectLIGH*, const Hand*> gInUse;
 		std::size_t                                               gLit = 0, gAutoLit = 0;
-		bool                                                      gIsl = false;
-		Lighting                                                  gLighting = Lighting::kVanilla;  // found at data load (MakeHandLights)
-		std::map<std::string, Hand, std::less<>>                  gAutoHands;                      // "auto r,g,b" -> its hand (stable: a map's nodes never move)
-		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;                     // the same key -> its light record
-		StringMap<int>                                            gElementOfKey;                   // hand key -> element, most of its effects' (0: none, or a tie)
-
-		// a Community Shaders that builds inverse square lights into Light Limit Fix: its attenuation reads each light's
-		// InverseSquare flag (Illuminated's Lighting.cpp, the same test)
-		[[nodiscard]] bool IslBuiltIntoLightLimitFix()
-		{
-			std::ifstream in("Data/Shaders/LightLimitFix/Attenuation.hlsli", std::ios::binary);
-			if (!in) {
-				return false;
-			}
-			const std::string text{ std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>() };
-			return text.find("InverseSquare") != std::string::npos;
-		}
-
-		// Community Shaders (or a fork that keeps its DLL name - Bottled Shaders) is running. Its Light Limit Fix reads the
-		// first two words of EVERY light as its own flags and cutoff (LLFCommon::RuntimeLightDataExt), whether or not a
-		// shader file says so: the plain lights' ambient color written there was read as flags - 2.1 USER REPORT 2026-10-14
-		// (Bottled Shaders + KittyVFX): a red of 81-122 sets bit 9, Disabled, so the frost and shock hands lit nothing
-		[[nodiscard]] bool CommunityShadersLoaded() { return REX::W32::GetModuleHandleA("CommunityShaders.dll") != nullptr; }
-
-		// an ENB that is running, not its settings left in the game folder (the same report: leftover enbseries.ini read
-		// as ENB beside Bottled Shaders). ENB's d3d11.dll exports its SDK
-		[[nodiscard]] bool EnbLoaded()
-		{
-			for (const char* dll : { "d3d11.dll", "dxgi.dll", "d3d9.dll" }) {
-				if (const auto handle = REX::W32::GetModuleHandleA(dll); handle && REX::W32::GetProcAddress(handle, "ENBGetSDKVersion")) {
-					return true;
-				}
-			}
-			return false;
-		}
+		std::map<std::string, Hand, std::less<>>                  gAutoHands;     // "auto r,g,b" -> its hand (stable: a map's nodes never move)
+		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;    // the same key -> its light record
 
 		[[nodiscard]] bool AutoKey(std::string_view a_key) { return a_key.starts_with(kAutoPrefix); }
 
@@ -116,10 +83,12 @@ namespace Plugin
 			return nullptr;
 		}
 
-		// the ward colour pick (Wards.cpp): White gives the ward's hand light white, in the layer's own strength and reach
+		// the ward color pick (Wards.cpp): White gives the ward's hand light white, in the layer's own strength and reach.
+		// Not while Dynamic Wards is loaded: it colors the wards and the menu hides the pick, so a White left in the settings
+		// file must not whiten the hand light under its color (the audit, 2026-10-14)
 		const Hand* Picked(const Hand* a_hand)
 		{
-			if (!a_hand || WardColour() != 1 || MeshKey(a_hand->key) != "wardinhandfx") {
+			if (!a_hand || WardsSteppedDown() || WardColor() != 1 || MeshKey(a_hand->key) != "wardinhandfx") {
 				return a_hand;
 			}
 			static std::unordered_map<const Hand*, Hand> white;  // under gLock, like every caller
@@ -131,7 +100,7 @@ namespace Plugin
 			return &it->second;
 		}
 
-		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's colour, reach and strength
+		// vanilla MagicLightFrostHand01's shape (falloff 1, field of view 90, near clip 1) with the layer's color, reach and strength
 		void Fill(RE::TESObjectLIGH* a_light, const Hand& a_hand)
 		{
 			auto& d = a_light->data;
@@ -175,7 +144,6 @@ namespace Plugin
 				ours.insert(c);
 			}
 			gTargets.clear();
-			gElementOfKey.clear();
 			std::size_t                     byPath = 0;
 			std::vector<RE::EffectSetting*> uncovered;
 			const auto                      ownOf = [&](RE::EffectSetting* a_effect) {
@@ -186,15 +154,6 @@ namespace Plugin
 					mine = nullptr;
 				}
 				return mine;
-			};
-			// a key's element: the one most of the effects wearing it carry (fire, frost or shock); an effect of no element
-			// does not count - measured: Flames' hand art is shared with effects of none, and "all must agree" left
-			// the Fire color off Flames' own hand. A tie gives none.
-			StringMap<std::array<std::size_t, 4>> votes;
-			const auto                            noteElement = [&](const std::string& a_key, int a_element) {
-				if (a_element > 0 && a_element < 4) {
-					++votes[a_key][static_cast<std::size_t>(a_element)];
-				}
 			};
 			for (auto* effect : LightKit::FormsOf<RE::EffectSetting>()) {
 				if (!effect || !effect->data.castingArt) {
@@ -215,7 +174,6 @@ namespace Plugin
 					uncovered.push_back(effect);
 					continue;
 				}
-				noteElement(key, ElementOf(effect));
 				gTargets.push_back({ effect, ownOf(effect), std::move(key) });
 			}
 			// the automatic hand lights: the middle of the tuned hand lights (by fade x radius²), and each element's color
@@ -270,13 +228,7 @@ namespace Plugin
 					gAutoCopies.emplace(key, copy);
 					gAutoHands.emplace(key, std::move(h));
 				}
-				noteElement(key, ElementOf(effect));
 				gTargets.push_back({ effect, ownOf(effect), std::move(key), true });
-			}
-			for (const auto& [key, v] : votes) {
-				const auto best = std::ranges::max_element(v.begin() + 1, v.end());
-				const auto ties = std::ranges::count(v.begin() + 1, v.end(), *best);
-				gElementOfKey.emplace(key, ties == 1 ? static_cast<int>(best - v.begin()) : 0);
 			}
 			// an effect whose casting art moved to a mesh no layer lights is no target now: it gets its own light back,
 			// or it would keep our light for the art it no longer wears
@@ -305,45 +257,10 @@ namespace Plugin
 		ApplyHandLights(true);
 	}
 
-	Lighting LightingFound() { return gLighting; }
-
-	const char* LightingName(Lighting a_lighting)
-	{
-		switch (a_lighting) {
-		case Lighting::kEnb:
-			return "ENB";
-		case Lighting::kVanilla:
-			return "Vanilla";
-		default:
-			return "Community Shaders";
-		}
-	}
-
 	void MakeHandLights()
 	{
-		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): the lighting is found, as Illuminated
-		// finds it (Lighting.cpp ReadLighting), never picked. Off Community Shaders the hand lights are drawn plain
-		// (DressHandLight) and light the ground through their twins (GroundLights.cpp).
-		// 🔁 2.2 (the 2.1 user report, Bottled Shaders + KittyVFX): inverse square words are written whenever Community
-		// Shaders runs - RE::Light's own test (the separate shader file) alone missed Bottled Shaders 1.0.10+, which builds
-		// it into Light Limit Fix, and the plain branch's ambient then landed in Light Limit Fix's flags (CommunityShadersLoaded)
-		std::error_code ec;
-		const bool islFile = std::filesystem::exists("Data/Shaders/InverseSquareLighting/InverseSquareLighting.hlsli", ec);
-		const bool islInLlf = IslBuiltIntoLightLimitFix();
-		const bool cs = CommunityShadersLoaded();
-		const bool enbRunning = EnbLoaded();
-		// ENB's settings in the game folder still count when Community Shaders is not running: an ENB loaded through an
-		// injector under another module name has no d3d11.dll export to find (2.2's code review); with Community Shaders
-		// running, leftover settings never make it ENB (the 2.1 report)
-		const bool enbFiles = std::filesystem::exists("enbseries.ini", ec) || std::filesystem::exists("enblocal.ini", ec);
-		gIsl = islFile || islInLlf || cs;
-		gLighting = gIsl ? Lighting::kShaders : enbRunning || enbFiles ? Lighting::kEnb :
-		                                                                Lighting::kVanilla;
-		SKSE::log::info(
-			"lighting: {} (detected - CommunityShaders.dll {}, inverse square shader {}, in Light Limit Fix {}, ENB running {}, ENB "
-			"settings in the game folder {})",
-			LightingName(gLighting), cs ? "loaded" : "not loaded", islFile ? "found" : "not found", islInLlf ? "yes" : "no",
-			enbRunning ? "yes" : "no", enbFiles ? "yes" : "no");
+		// the lighting was read just before (Lighting.cpp ReadLighting): off Community Shaders the hand lights are drawn plain
+		// (DressHandLight) and light the ground through their twins (GroundLights.cpp)
 		std::size_t made = 0, failed = 0, byPath = 0;
 		{
 			std::lock_guard l{ gLock };
@@ -367,7 +284,7 @@ namespace Plugin
 		SKSE::log::info(
 			"hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
 			"their full art path); inverse square lighting {}",
-			made, failed, gTargets.size(), byPath, gIsl ? "found" : "not found");
+			made, failed, gTargets.size(), byPath, InverseSquare() ? "found" : "not found");
 		{
 			std::lock_guard l{ gLock };
 			const auto      autos = std::ranges::count_if(gTargets, [](const Target& t) { return t.automatic; });
@@ -431,8 +348,7 @@ namespace Plugin
 						live.heldOut = false;
 					}
 					DressHandLight(live.light, *h);
-					const auto e = gElementOfKey.find(live.key);  // gLock is held here: not ElementOfHandKey, which takes it
-					RememberLight(live.light, HandFxOf(h->key), e == gElementOfKey.end() || e->second < 0 ? 0 : e->second);
+					RememberLight(live.light, HandFxOf(h->key));
 				} else if (!live.heldOut) {
 					live.light->SetAppCulled(true);
 					live.heldOut = true;
@@ -444,8 +360,6 @@ namespace Plugin
 		}
 	}
 
-	bool IslShader() { return gIsl; }
-
 	const Hand* HandOfLight(const RE::TESObjectLIGH* a_light)
 	{
 		if (!a_light) {
@@ -456,7 +370,7 @@ namespace Plugin
 		return it == gInUse.end() ? nullptr : it->second;
 	}
 
-	// dressed as RE::Light dresses a plugin light: fade, reach with the size in z, colour, and under Community Shaders
+	// dressed as RE::Light dresses a plugin light: fade, reach with the size in z, color, and under Community Shaders
 	// the inverse square flag and cutoff
 	void DressHandLight(RE::NiLight* a_light, const Hand& a_hand)
 	{
@@ -466,7 +380,7 @@ namespace Plugin
 		a_light->fadeAmount = kMovingLightMark;
 		auto& data = a_light->GetLightRuntimeData();
 		data.diffuse = a_hand.color;
-		if (gIsl) {
+		if (InverseSquare()) {
 			data.fade = a_hand.fade;
 			data.radius = { a_hand.radius, a_hand.radius, a_hand.size };
 			if (a_hand.inverseSquare) {
@@ -529,10 +443,4 @@ namespace Plugin
 		return gAutoLit;
 	}
 
-	int ElementOfHandKey(std::string_view a_key)
-	{
-		std::lock_guard l{ gLock };
-		const auto      it = gElementOfKey.find(a_key);
-		return it == gElementOfKey.end() || it->second < 0 ? 0 : it->second;
-	}
 }

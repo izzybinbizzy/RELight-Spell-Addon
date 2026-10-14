@@ -19,9 +19,9 @@
 // (ReapplyAll, this frame's numbers again - every hand, as a light may be animated in a cell its actor has since left; RELight
 // 2.2's code review) - and each light keeps Glow::Scaled's
 // "what we wrote / what it was" pair, so running twice, or on a light nobody rewrites, never compounds. The Brightness
-// slider scales the same lights just before (the plugin's Brightness pass): each fade written here is reported to it
-// (Plugin::NoteFadeWrite), and it reports a slider change on a steady light back (Rebase), so neither takes the other's
-// write for a new value.
+// slider scales the same lights just before (the plugin's Brightness pass): each fade and each reach written here is
+// reported to it (Plugin::NoteFadeWrite, Plugin::NoteReachWrite), and it reports a slider change on a steady light back
+// (Rebase), so neither takes the other's write for a new value.
 //
 // When a light stops being under a tracked hand (weapon put away into the inventory, swapped, charge refilled on an
 // exempt weapon) it is put back as we found it, unless someone else has written it since.
@@ -181,9 +181,11 @@ namespace Fade
 			data.fade = seen.fade.Apply(before, a_hand.out.brightness);
 			Plugin::NoteFadeWrite(a_light, before, data.fade);
 			if (t.reachFollows > 0.0f || seen.radius.Written()) {
-				const float r = seen.radius.Apply(data.radius.x, a_hand.out.reach);
+				const float reachBefore = data.radius.x;
+				const float r = seen.radius.Apply(reachBefore, a_hand.out.reach);
 				data.radius.x = r;  // x and y are the reach, z is the size
 				data.radius.y = r;
+				Plugin::NoteReachWrite(a_light, reachBefore, r);  // the reach handshake, as the fade's (a plugin's Reach slider)
 			}
 			if (a_hand.out.cool > 0.0f || seen.color.touched) {
 				data.diffuse = seen.color.Apply(data.diffuse, a_hand.fire, a_hand.out.cool);
@@ -202,9 +204,11 @@ namespace Fade
 			data.fade = a_seen.fade.Restore(before);
 			Plugin::NoteFadeWrite(a_seen.light.get(), before, data.fade);
 			if (a_seen.radius.Written()) {
-				const float r = a_seen.radius.Restore(data.radius.x);
+				const float reachBefore = data.radius.x;
+				const float r = a_seen.radius.Restore(reachBefore);
 				data.radius.x = r;
 				data.radius.y = r;
+				Plugin::NoteReachWrite(a_seen.light.get(), reachBefore, r);
 			}
 			data.diffuse = a_seen.color.Restore(data.diffuse);
 		}
@@ -896,16 +900,44 @@ namespace Fade
 		return nullptr;
 	}
 
+	// an ACTIVE weapon hand's roots are the ones the reference-effect hooks keep. While Fading is off or the weapon is exempt the
+	// pass keeps none, so the game's own list of magic effects is walked for that hand's enchantment effects instead: Lights by
+	// Item reaches an enchantment's glow whatever the fading state (his answer 2026-10-14 "Fix it in 2.2", CodeRabbit on
+	// RELight #16). Main thread (Items::Apply), under gLock.
 	std::vector<RE::NiAVObject*> EffectRootsOf(const RE::Actor* a_actor, bool a_left)
 	{
 		std::vector<RE::NiAVObject*> out;
-		if (const auto* hand = ActiveHand(a_actor, a_left)) {
+		if (const auto* hand = ActiveHand(a_actor, a_left); hand && !hand->effectRoots.empty()) {
 			for (const auto& root : hand->effectRoots) {
 				if (root.node) {
 					out.push_back(root.node.get());
 				}
 			}
+			return out;
 		}
+		auto* lists = a_actor ? RE::ProcessLists::GetSingleton() : nullptr;
+		if (!lists) {
+			return out;
+		}
+		const auto add = [&out](RE::NiAVObject* a_node) {
+			if (a_node && std::ranges::find(out, a_node) == out.end()) {
+				out.push_back(a_node);
+			}
+		};
+		lists->ForEachMagicTempEffect([&](RE::BSTempEffect* a_temp) {
+			auto*           effect = netimmerse_cast<RE::ReferenceEffect*>(a_temp);
+			RE::Actor*      actor = nullptr;
+			bool            left = false;
+			RE::NiAVObject* root = nullptr;
+			if (effect && HandOfEffect(effect, actor, left, root) && actor == a_actor && left == a_left) {
+				add(root);  // Light Placer hangs an enchantment art's lights there
+				// an art effect's own model, as AfterReferenceEffect takes it - never a shader effect's 3D, which is the whole actor
+				if (netimmerse_cast<RE::ModelReferenceEffect*>(effect)) {
+					add(effect->Get3D());
+				}
+			}
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
 		return out;
 	}
 

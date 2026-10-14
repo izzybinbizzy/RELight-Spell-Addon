@@ -433,18 +433,18 @@ namespace Plugin
 #endif
 			GlowHeading("Presets", Icon::kBulb);
 			// Illuminated's presets, the same three (his word: "remove performance preset, only subtle default and cinematic"):
-			// one click sets the two sliders and the light budget (-1 leaves the budget as it is), and the player's own presets
-			// are kept per lighting
+			// one click sets the two sliders, the light budget and Dim in daylight (-1 leaves one as it is); Default puts back all
+			// four as the mod ships them, as its tip says. The player's own presets are kept per lighting
 			struct Preset
 			{
 				const char* name;
 				const char* tip;
-				int         brightness, reach, hands;
+				int         brightness, reach, hands, daylight;
 			};
 			const Preset presets[] = {
-				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1 },
-				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0 },
-				{ T("Cinematic"), T("Brighter lights that reach further."), 150, 120, -1 },
+				{ T("Subtle"), T("Softer lights that stay close to the spell."), 75, 80, -1, -1 },
+				{ T("Default"), T("The lights as the mod was made."), 100, 100, 0, 1 },  // Dim in daylight too, as its tip says (the audit)
+				{ T("Cinematic"), T("Brighter lights that reach further."), 150, 120, -1, -1 },
 			};
 			for (std::size_t i = 0; i < std::size(presets); ++i) {
 				const auto& p = presets[i];
@@ -456,6 +456,9 @@ namespace Plugin
 					SetReachPercent(p.reach);
 					if (p.hands >= 0) {
 						SetHandLightsFor(p.hands);
+					}
+					if (p.daylight >= 0) {
+						SetDimInDaylight(p.daylight);
 					}
 					SaveSettings();
 				}
@@ -534,10 +537,10 @@ namespace Plugin
 			if (WardsSteppedDown()) {
 				ImGuiMCP::TextDisabled("%s", T("Dynamic Wards is installed - it colors the wards, so this setting stands aside."));
 			} else {
-				const char* const kColours[] = { T("Vanilla blue"), T("White") };
-				int               c = WardColour();
-				if (ImGuiMCP::Combo(T("Ward color"), &c, kColours, 2)) {
-					SetWardColour(c);
+				const char* const kColors[] = { T("Vanilla blue"), T("White") };
+				int               c = WardColor();
+				if (ImGuiMCP::Combo(T("Ward color"), &c, kColors, 2)) {
+					SetWardColor(c);
 					SaveSettings();
 					// the art forms and lights are changed on the game's main thread; the next cast shows it
 					if (auto* tasks = SKSE::GetTaskInterface()) {
@@ -612,7 +615,7 @@ namespace Plugin
 		{
 			const GlowStyle style;
 			GlowHeading("Found", Icon::kBulb);
-			ImGuiMCP::Text(T("Lighting: %s (the inverse square shader: %s)"), T(LightingName(LightingFound())), IslShader() ? T("yes") : T("no"));
+			ImGuiMCP::Text(T("Lighting: %s (the inverse square shader: %s)"), T(LightingName(LightingFound())), InverseSquare() ? T("yes") : T("no"));
 			const auto* cs = CSLightLoaded();
 			ImGuiMCP::Text(T("CS Light: %s"), cs ? cs : T("not loaded"));
 			ImGuiMCP::Text(T("Data files: %zu, options: %zu, hand keys: %zu, spray light records: %zu"), DataFiles(), Options().size(), Hands().size(),

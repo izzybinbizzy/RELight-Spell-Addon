@@ -56,6 +56,7 @@ namespace LightKit
 	namespace Isl
 	{
 		inline constexpr std::uint32_t kFlag = 1u << 10;
+		inline constexpr std::uint32_t kInitialised = 1u << 8;  // Light Limit Fix marks every light it makes so (LightFlags::Initialised)
 		inline constexpr float         kLowestCutoff = 0.01f, kHighestCutoff = 0.99f;
 	}
 

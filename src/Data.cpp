@@ -16,7 +16,7 @@
 //   menugroup <category> <author or ->   where a patch sits on the Patches page
 //   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
 //   download <Spells|Weapons>   the download the file came in (a file with no line: its `file` download)
-//   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's colour for the lights on an object (highest order wins)
+//   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's color for the lights on an object (highest order wins)
 //   held <key or 0xID~Plugin> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a weapon's own light while it is
 //        drawn (Held.cpp); a key is matched exactly against the weapon's model (its full path key, then its bare name), or
 //        its first-person model in first person
@@ -66,7 +66,7 @@ namespace Plugin
 		std::unordered_map<RE::FormID, const RE::NiColor*> gTintCache;
 		std::unordered_map<RE::FormID, const Stream*>      gHeldCache[2];  // [first person]: asked every frame per drawn weapon
 
-		[[nodiscard]] RE::NiColor Colour(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
+		[[nodiscard]] RE::NiColor ColorOf(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
 
 		[[nodiscard]] RE::FormID ResolveBase(std::string_view a_text)
 		{
@@ -139,7 +139,7 @@ namespace Plugin
 				Stream      s;
 				s.key = a_text.key;
 				s.node = a_text.node;
-				s.color = Colour(v[0], v[1], v[2]);
+				s.color = ColorOf(v[0], v[1], v[2]);
 				s.fade = v[3];
 				s.radius = v[4];
 				s.size = v[5];
@@ -203,7 +203,7 @@ namespace Plugin
 			}
 			for (const auto& tint : file.tints) {
 				const auto& key = tint.key;
-				const Tint  t{ Colour(tint.rgb[0], tint.rgb[1], tint.rgb[2]), opt.order };
+				const Tint  t{ ColorOf(tint.rgb[0], tint.rgb[1], tint.rgb[2]), opt.order };
 				if (const auto id = key.find('~') != std::string::npos ? ResolveBase(key) : 0) {
 					KeepHighest(gBaseTints, id, t, opt.order);
 				} else {
@@ -217,7 +217,7 @@ namespace Plugin
 				for (std::size_t i = 0; i < 3; ++i) {
 					h.rgb[i] = static_cast<std::uint8_t>(std::clamp(v[i], 0.0f, 255.0f));
 				}
-				h.color = Colour(v[0], v[1], v[2]);
+				h.color = ColorOf(v[0], v[1], v[2]);
 				h.fade = v[3];
 				h.radius = v[4];
 				h.size = v[5];
@@ -306,11 +306,16 @@ namespace Plugin
 				REX::W32::GetModuleHandleW(L"po3_Tweaks") ? "loaded" : "NOT loaded");
 		}
 
-		// a per-form answer, worked out once and cached
+		// a per-form answer, worked out once and cached. A form made while the game runs (its ID starts FF) is never cached:
+		// those IDs are handed out again to other forms after a load, so a cached answer could be another form's (the audit,
+		// 2026-10-14)
 		template <class V, class F>
 		[[nodiscard]] V Cached(std::unordered_map<RE::FormID, V>& a_cache, const RE::TESForm* a_base, F&& a_work)
 		{
 			const auto id = a_base->GetFormID();
+			if ((id >> 24) == 0xFF) {
+				return a_work();
+			}
 			{
 				std::lock_guard l{ gCacheLock };
 				if (auto it = a_cache.find(id); it != a_cache.end()) {

@@ -118,6 +118,16 @@ namespace LightKit
 			w[1] = std::bit_cast<std::uint32_t>(std::clamp(a_cutoff, a_lowest, a_highest));
 			Write(a_light, w);
 		}
+		// a light of our OWN (cloned, never made by the game's GenDynamic, so Community Shaders set none of its words), after
+		// SetLightAttenuation: the flag word written whole - Initialised, as Light Limit Fix marks every light it makes, and
+		// InverseSquare (the attenuation's float left there could read as Disabled: RELight 2.1's Bottled Shaders report) - and
+		// the third word, Community Shaders' light-record id (a clone carries 1.0f there, which it would look up as a form),
+		// cleared. Then SetCutoff. (Dynamic Wards' review, 2026-10-14; Open Shaders' LightLimitFix.cpp / PointLightFlags.h)
+		inline void SetOwn(RE::NiLight* a_light) noexcept
+		{
+			Write(a_light, { kFlag | kInitialised, 0u });
+			a_light->GetLightRuntimeData().ambient.blue = 0.0f;
+		}
 	}
 
 	// Runs a_work and lets no exception out: inside a hook, a game callback or per-frame code one would end the game (his C++

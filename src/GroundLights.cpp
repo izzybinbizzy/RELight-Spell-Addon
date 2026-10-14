@@ -38,8 +38,9 @@ namespace Plugin
 			RE::NiPointer<RE::NiAVObject>   magic;               // the nearest node above the casting light whose name holds "MagicNode", or the light's own parent when none does
 		};
 
-		std::unordered_map<std::uint64_t, Twin> gTwins;      // main thread only; key = actor form id << 1 | hand
-		std::atomic<std::size_t>                gLive{ 0 };  // its size, for the testing DLL's page (the render thread)
+		std::unordered_map<std::uint64_t, Twin> gTwins;  // main thread only; key = actor form id << 1 | hand
+		// the counts the testing DLL's page and DevBench read, from the render thread too: gTwins itself is the main thread's
+		std::atomic<std::size_t> gLive{ 0 }, gMade{ 0 };
 		// a twin the scene refused: not made again until this tick (about a second later), so a full light list is not met
 		// with a light made, hung and dropped every frame (2.2's code review); main thread only
 		std::unordered_map<std::uint64_t, std::uint32_t> gRefused;
@@ -80,6 +81,9 @@ namespace Plugin
 			}
 			light->name = kName;
 			light->fadeAmount = kMovingLightMark;  // RE::Light's flicker prevention lets it reach every surface (Plugin.h)
+			// no radius yet: the first Follow always sees a change and sets the attenuation (the clone's own may equal the source's;
+			// Illuminated's code review, c863073)
+			light->GetLightRuntimeData().radius.x = -1.0f;
 			a_hand->AttachChild(light, true);
 			a_twin = { RE::NiPointer<RE::NiPointLight>(a_source), RE::NiPointer<RE::NiNode>(a_hand), RE::NiPointer<RE::NiPointLight>(light),
 				{}, true, {}, false, {} };
@@ -95,6 +99,7 @@ namespace Plugin
 				return false;
 			}
 			a_twin.bs.reset(bs);
+			gMade.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -250,7 +255,7 @@ namespace Plugin
 
 	void TickGroundLights()
 	{
-		if (IslShader()) {
+		if (InverseSquare()) {
 			return;  // Community Shaders: the casting light lights the ground itself
 		}
 		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -287,4 +292,5 @@ namespace Plugin
 	void DropGroundLights() { DropAll(RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]); }
 
 	std::size_t GroundLightCount() { return gLive.load(std::memory_order_relaxed); }
+	std::size_t GroundLightsMade() { return gMade.load(std::memory_order_relaxed); }
 }

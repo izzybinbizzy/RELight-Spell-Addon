@@ -6,13 +6,8 @@
 // beam's record through our `isPluginLight` config; this mod only takes that light into its menu (Brightness, Reach, the switch).
 // ⚠ Truman's call after the Lightning Bolt freeze: this file used to hang travelling lights of its own
 // on the projectile's 3D (from the load hook, which also runs on the game's loader threads, under a lock). All of that
-// is gone; a `stream` line in the data now only says "this projectile is ours for the menu".
-//
-// CREDIT: how a light is made and registered here (for Held.cpp) follows ReLight by Truman (github.com/TrumanGIT/ReLight),
-// GPL-3.0-or-later, with his permission and kept under the same license. From ReLight: one master NiPointLight made once
-// and cloned for every use (a freshly made light attached straight away crashes), the light's size carried in the
-// radius' z, the create parameters a non-shadow light needs (field of view 90, portal-strict, never fades), and handing
-// the light to the shadow scene node, which is what renders it.
+// is gone; a `stream` line in the data now only says "this projectile is ours for the menu". (The ReLight way of making a
+// light, which lived here for the travelling lights, is in Held.cpp now, its one user.)
 
 #include "Plugin.h"
 
@@ -20,8 +15,6 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr const char* kLightName = "RSAStream";
-
 		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
 
 		// how many of each kind of user a claim changed
@@ -139,8 +132,11 @@ namespace Plugin
 				++ours;  // one of our beams: it keeps the record our config raises
 				return false;
 			}
-			a_light = copyOf(a_light);
-			return true;
+			// counted only when the field really changed: a copy that could not be made leaves the user on the record (CodeRabbit, #16)
+			auto* const to = copyOf(a_light);
+			const bool  changed = to != a_light;
+			a_light = to;
+			return changed;
 		});
 		SKSE::log::info(
 			"beam lights: {} record(s) stay on our {} beam(s); {} copy(ies) made for the other users - {} projectile(s), {} muzzle "
@@ -157,48 +153,5 @@ namespace Plugin
 	bool IsStreamObject(const RE::TESObjectREFR* a_ref)
 	{
 		return a_ref && StreamOf(a_ref->GetBaseObject()) != nullptr;
-	}
-
-	RE::BSLight* MakeOurLight(const Stream& a_s, const RE::NiColor& a_colour, const RE::NiPoint3& a_at, float a_fade, float a_reach,
-		RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene, RE::NiPointLight*& a_made)
-	{
-		auto* light = LightKit::CloneLight();
-		if (!light) {
-			return nullptr;
-		}
-		light->name = kLightName;
-		light->fadeAmount = kMovingLightMark;
-		auto& data = light->GetLightRuntimeData();
-		data.diffuse = a_colour;
-		data.fade = a_fade;
-		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
-		light->SetLightAttenuation(a_reach);           // without it the light has no attenuation and lights nothing
-		if (!IslShader()) {
-			// off Community Shaders: an ambient of a tenth of its color, RE::Light's rule (Truman); the caller
-			// hands a plain fade and reach (Held.cpp: fade x 1.14, reach x 178 / 133)
-			data.ambient = { a_colour.red * 0.1f, a_colour.green * 0.1f, a_colour.blue * 0.1f };
-		}
-		// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves
-		// the peak with the reach held (at 100%/100% it equals the file's). Only when RE::Light's own test finds inverse
-		// square lighting (IslShader), as the hand lights - no lighting pick of our own (his "relight is relight is relight")
-		if (IslShader()) {
-			// a light of our own, never made by the game's GenDynamic, so Community Shaders set none of its flags: the flag word
-			// is ours whole - the attenuation's float left there could read as Disabled (2.2's code review, the hand-light fix)
-			Isl::Write(light, { Isl::kFlag, 0u });
-			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
-		}
-		light->local.translate = a_at;
-		light->local.scale = 1.0f;
-		const RE::NiPointer<RE::NiPointLight> hold(light);  // freed here if it is never registered
-		a_parent->AttachChild(light, true);
-		RE::NiUpdateData update{};
-		light->Update(update);
-		auto* bs = LightKit::AddToScene(a_scene, light);
-		if (!bs) {
-			a_parent->DetachChild(light);
-			return nullptr;
-		}
-		a_made = light;
-		return bs;
 	}
 }
