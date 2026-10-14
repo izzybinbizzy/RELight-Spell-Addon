@@ -35,7 +35,7 @@ namespace Plugin
 		constexpr const char* kLlfAttenuation = "Data/Shaders/LightLimitFix/Attenuation.hlsli";
 		constexpr const char* kEnbFiles[] = { "enbseries.ini", "enblocal.ini" };
 
-		std::atomic<Lighting> gFound{ Lighting::kShaders };
+		std::atomic<Lighting> gFound{ Lighting::kVanilla };  // until ReadLighting (RELight's default before 2.2; Illuminated's is kShaders)
 		std::atomic<bool>     gIslShader{ false };  // the lights are written in Community Shaders' inverse square words
 		std::atomic<bool>     gCsLoaded{ false }, gEnbRunning{ false }, gEnbFiles{ false };
 

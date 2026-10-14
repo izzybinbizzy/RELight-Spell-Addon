@@ -130,7 +130,7 @@ namespace Fade
 	[[nodiscard]] RE::NiAVObject* WeaponPart(RE::Actor* a_actor, bool a_firstPerson, bool a_left, const RE::TESForm* a_weapon);
 	void                          UpdateHands(float a_delta);  // every frame, from the player's update
 	// the roots an actor's weapon-hand enchantment effects hang their lights on - the fading pass's own, or (Fading off, the
-	// weapon exempt) read off the game's magic effects (under its lock: Lights by Item asks from inside the pass)
+	// weapon exempt) Lights by Item's own record the effect hooks keep (under its lock: Lights by Item asks from inside the pass)
 	[[nodiscard]] std::vector<RE::NiAVObject*> EffectRootsOf(const RE::Actor* a_actor, bool a_left);
 	void                                       AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D);  // after the effect's own update; a_own3D: search
 																												   // the effect's own model too

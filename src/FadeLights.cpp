@@ -149,6 +149,13 @@ namespace Fade
 		// this frame's switches, for the effect hooks, which run for every effect in the world and must not lock and copy
 		// the settings each time
 		std::atomic<bool> gEnabled{ false }, gDimShader{ false };
+		// Lights by Item's own record of each weapon hand's enchantment-effect roots, for a hand the fading pass does not follow
+		// (Fading off, the weapon exempt): filled by the effect hooks, under gLock, only while Items asked for it the frame before
+		// (gItemRootsWanted, set by EffectRootsOf, cleared by UpdateHands). Never filled by walking the game's own list of magic
+		// effects from inside the pass - that takes the game's lock while gLock is held, the effect hooks take them the other way
+		// round (RELight 2.2's code review: a freeze)
+		std::unordered_map<std::uint64_t, std::vector<Root>> gItemRoots;
+		std::atomic<bool>                                    gItemRootsWanted{ false };
 		// the HUD's copy (Fade.h HudState): written at the end of each UpdateHands, read by the render thread. Its own small
 		// lock, held only while a few dozen bytes are copied - the render thread never waits on the per-frame pass (gLock)
 		std::mutex gHudLock;
@@ -161,6 +168,22 @@ namespace Fade
 
 		// a hand holding a spell: never the same key as the weapon hand, which the effect hooks look up by Key
 		[[nodiscard]] std::uint64_t SpellKey(RE::ActorHandle a_actor, bool a_left) { return Key(a_actor, a_left) | (1ull << 63); }
+
+		// gItemRoots' key: the actor by its address (the effect hooks may run off the main thread, where no handle is made)
+		[[nodiscard]] std::uint64_t ItemKey(const RE::Actor* a_actor, bool a_left)
+		{
+			return (static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(a_actor)) << 1) | (a_left ? 1u : 0u);
+		}
+
+		void NoteRoot(std::vector<Root>& a_roots, RE::NiAVObject* a_node)
+		{
+			auto kept = std::ranges::find_if(a_roots, [a_node](const Root& r) { return r.node.get() == a_node; });
+			if (kept == a_roots.end()) {
+				a_roots.push_back({ RE::NiPointer<RE::NiAVObject>(a_node), gFrame });
+			} else {
+				kept->frame = gFrame;
+			}
+		}
 
 		// a_found: the light was found under the hand this frame (a re-apply of this frame's numbers does not count, or a
 		// light that has left the weapon would never be let go)
@@ -636,6 +659,15 @@ namespace Fade
 	{
 		std::lock_guard lock(gLock);
 		++gFrame;
+		// Lights by Item asks again this frame if it still needs its own roots (EffectRootsOf); a hand's roots not seen for a
+		// few frames are let go (they hold the effects' 3D)
+		gItemRootsWanted.store(false, std::memory_order_relaxed);
+		if (gFrame % 60 == 0) {
+			for (auto it = gItemRoots.begin(); it != gItemRoots.end();) {
+				std::erase_if(it->second, [](const Root& r) { return !r.node || gFrame - r.frame > kKeepFrames; });
+				it = it->second.empty() ? gItemRoots.erase(it) : std::next(it);
+			}
+		}
 		const Settings s = Config();  // one copy for the frame
 		gEnabled = s.enabled;
 		gDimShader = s.dimShader;
@@ -754,7 +786,8 @@ namespace Fade
 
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
 	{
-		if (gActiveHands.load(std::memory_order_relaxed) == 0) {
+		const bool items = gItemRootsWanted.load(std::memory_order_relaxed);
+		if (gActiveHands.load(std::memory_order_relaxed) == 0 && !items) {
 			return;
 		}
 		RE::Actor*      actor = nullptr;
@@ -764,6 +797,17 @@ namespace Fade
 			return;
 		}
 		std::lock_guard lock(gLock);
+		// the root the effect hangs on (Light Placer hangs its lights there), and an art effect's own model. Not a shader
+		// effect's own 3D: that is the whole actor it glows over, torch and armour lights and all
+		std::array<RE::NiAVObject*, 2> nodes{ root, a_own3D ? a_effect->Get3D() : nullptr };
+		if (items) {  // Lights by Item's own record, whatever the fading state (EffectRootsOf)
+			auto& roots = gItemRoots[ItemKey(actor, left)];
+			for (auto* node : nodes) {
+				if (node) {
+					NoteRoot(roots, node);
+				}
+			}
+		}
 		if (!gEnabled) {
 			return;
 		}
@@ -772,19 +816,11 @@ namespace Fade
 			return;
 		}
 		auto& hand = *found;
-		// the root the effect hangs on (Light Placer hangs its lights there), and an art effect's own model. Not a shader
-		// effect's own 3D: that is the whole actor it glows over, torch and armour lights and all
-		std::array<RE::NiAVObject*, 2> nodes{ root, a_own3D ? a_effect->Get3D() : nullptr };
 		for (auto* node : nodes) {
 			if (!node) {
 				continue;
 			}
-			auto kept = std::ranges::find_if(hand.effectRoots, [node](const Root& r) { return r.node.get() == node; });
-			if (kept == hand.effectRoots.end()) {
-				hand.effectRoots.push_back({ RE::NiPointer<RE::NiAVObject>(node), gFrame });
-			} else {
-				kept->frame = gFrame;
-			}
+			NoteRoot(hand.effectRoots, node);
 			ApplyUnder(node, hand);  // right after Light Placer wrote this frame's values for this effect
 		}
 		if (nodes[1] && gDimShader.load(std::memory_order_relaxed)) {
@@ -878,6 +914,7 @@ namespace Fade
 		RestoreAll();
 		Items::Release();
 		gActors.clear();
+		gItemRoots.clear();  // the old game's effects' 3D
 	}
 
 	RE::NiAVObject* WeaponPart(RE::Actor* a_actor, bool a_firstPerson, bool a_left, const RE::TESForm* a_weapon)
@@ -900,10 +937,10 @@ namespace Fade
 		return nullptr;
 	}
 
-	// an ACTIVE weapon hand's roots are the ones the reference-effect hooks keep. While Fading is off or the weapon is exempt the
-	// pass keeps none, so the game's own list of magic effects is walked for that hand's enchantment effects instead: Lights by
-	// Item reaches an enchantment's glow whatever the fading state (his answer 2026-10-14 "Fix it in 2.2", CodeRabbit on
-	// RELight #16). Main thread (Items::Apply), under gLock.
+	// an ACTIVE weapon hand's roots are the ones the fading pass keeps. While Fading is off or the weapon is exempt it keeps
+	// none, so Lights by Item's own record is read instead (gItemRoots - the effect hooks fill it from the next frame on): an
+	// item's choice reaches an enchantment's glow whatever the fading state (his answer 2026-10-14 "Fix it in 2.2", CodeRabbit
+	// on RELight #16). Main thread (Items::Apply), under gLock.
 	std::vector<RE::NiAVObject*> EffectRootsOf(const RE::Actor* a_actor, bool a_left)
 	{
 		std::vector<RE::NiAVObject*> out;
@@ -915,29 +952,14 @@ namespace Fade
 			}
 			return out;
 		}
-		auto* lists = a_actor ? RE::ProcessLists::GetSingleton() : nullptr;
-		if (!lists) {
-			return out;
-		}
-		const auto add = [&out](RE::NiAVObject* a_node) {
-			if (a_node && std::ranges::find(out, a_node) == out.end()) {
-				out.push_back(a_node);
-			}
-		};
-		lists->ForEachMagicTempEffect([&](RE::BSTempEffect* a_temp) {
-			auto*           effect = netimmerse_cast<RE::ReferenceEffect*>(a_temp);
-			RE::Actor*      actor = nullptr;
-			bool            left = false;
-			RE::NiAVObject* root = nullptr;
-			if (effect && HandOfEffect(effect, actor, left, root) && actor == a_actor && left == a_left) {
-				add(root);  // Light Placer hangs an enchantment art's lights there
-				// an art effect's own model, as AfterReferenceEffect takes it - never a shader effect's 3D, which is the whole actor
-				if (netimmerse_cast<RE::ModelReferenceEffect*>(effect)) {
-					add(effect->Get3D());
+		gItemRootsWanted.store(true, std::memory_order_relaxed);
+		if (const auto it = gItemRoots.find(ItemKey(a_actor, a_left)); it != gItemRoots.end()) {
+			for (const auto& root : it->second) {
+				if (root.node && gFrame - root.frame <= kKeepFrames) {
+					out.push_back(root.node.get());
 				}
 			}
-			return RE::BSContainer::ForEachResult::kContinue;
-		});
+		}
 		return out;
 	}
 
