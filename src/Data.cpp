@@ -50,10 +50,17 @@ namespace Plugin
 		StringMap<Stream>                           gHeld;       // weapon mesh key -> its held light (highest order wins)
 		std::unordered_map<RE::FormID, Stream>      gHeldBase;   // weapon form -> its held light (highest order wins)
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
-		StringMap<std::vector<Hand>>                gHands;
-		std::unordered_set<RE::FormID>              gSprayLights;
-		std::unordered_set<RE::FormID>              gBeamLights;    // a beam's own light record (Streams.cpp raises a copy of it)
-		std::unordered_map<RE::FormID, RE::Color>   gRecordColors;  // his color for a spray / beam record, where the data names one
+		StringMap<std::vector<Hand>>   gHands;
+		std::unordered_set<RE::FormID> gSprayLights;
+		std::unordered_set<RE::FormID> gBeamLights;  // a beam's own light record (Streams.cpp raises a copy of it)
+		struct RecordTint
+		{
+			RE::Color color;
+			int       order{ 0 };
+		};
+		// his color for a spray / beam record, where the data names one (highest order wins, as every other per-key line -
+		// CodeRabbit on #18: the file read last decided it before)
+		std::unordered_map<RE::FormID, RecordTint>  gRecordColors;
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
 		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
@@ -188,7 +195,8 @@ namespace Plugin
 			}
 			for (const auto& [form, c] : file.recordColors) {
 				if (const auto id = ResolveBase(form)) {
-					gRecordColors.insert_or_assign(id, RE::Color(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]), static_cast<std::uint8_t>(c[2]), 0));
+					const RecordTint tint{ RE::Color(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]), static_cast<std::uint8_t>(c[2]), 0), opt.order };
+					KeepHighest(gRecordColors, id, tint, opt.order);
 				}
 			}
 			for (auto& s : helds) {
@@ -521,7 +529,7 @@ namespace Plugin
 	std::optional<RE::Color> RecordColor(RE::FormID a_record)
 	{
 		const auto it = gRecordColors.find(a_record);
-		return it == gRecordColors.end() ? std::nullopt : std::optional<RE::Color>(it->second);
+		return it == gRecordColors.end() ? std::nullopt : std::optional<RE::Color>(it->second.color);
 	}
 
 	const HandFx* HandFxOf(std::string_view a_key)
