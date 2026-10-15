@@ -43,9 +43,9 @@ namespace Plugin
 		std::atomic<std::size_t> gLive{ 0 }, gMade{ 0 };
 		// a twin the scene refused: not made again until this tick (about a second later), so a full light list is not met
 		// with a light made, hung and dropped every frame (2.2's code review); main thread only
-		std::unordered_map<std::uint64_t, std::uint32_t> gRefused;
-		std::uint32_t                                    gTick{ 0 };  // TickGroundLights calls
-		constexpr std::uint32_t                          kRetryTicks = 60;
+		std::unordered_map<std::uint64_t, std::uint64_t> gRefused;
+		std::uint64_t                                    gTick{ 0 };  // TickGroundLights calls; 64 bits, so a retry deadline never wraps
+		constexpr std::uint64_t                          kRetryTicks = 60;
 
 		void Drop(Twin& a_twin, RE::ShadowSceneNode* a_scene)
 		{

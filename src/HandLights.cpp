@@ -52,8 +52,8 @@ namespace Plugin
 		std::unordered_map<std::string, RE::TESObjectLIGH*>       gCopies;
 		std::unordered_map<const RE::TESObjectLIGH*, const Hand*> gInUse;
 		std::size_t                                               gLit = 0, gAutoLit = 0;
-		std::map<std::string, Hand, std::less<>>                  gAutoHands;     // "auto r,g,b" -> its hand (stable: a map's nodes never move)
-		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;    // the same key -> its light record
+		std::map<std::string, Hand, std::less<>>                  gAutoHands;   // "auto r,g,b" -> its hand (stable: a map's nodes never move)
+		std::unordered_map<std::string, RE::TESObjectLIGH*>       gAutoCopies;  // the same key -> its light record
 
 		[[nodiscard]] bool AutoKey(std::string_view a_key) { return a_key.starts_with(kAutoPrefix); }
 

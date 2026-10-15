@@ -26,6 +26,7 @@
 
 #include "DataText.h"
 #include "Fade.h"
+#include "FadeFormText.h"
 #include "Plugin.h"
 
 namespace Plugin
@@ -75,13 +76,8 @@ namespace Plugin
 			if (tilde == std::string_view::npos || tilde < 3) {
 				return 0;
 			}
-			auto hex = a_text.substr(0, tilde);
-			if (hex.starts_with("0x") || hex.starts_with("0X")) {
-				hex.remove_prefix(2);
-			}
 			std::uint32_t local = 0;
-			if (const auto parsed = std::from_chars(hex.data(), hex.data() + hex.size(), local, 16);
-				parsed.ec != std::errc{} || parsed.ptr != hex.data() + hex.size()) {  // the whole text is the number (2.2's CodeRabbit round)
+			if (!FormText::ParseHex(a_text.substr(0, tilde), local)) {  // the whole text is the number (2.2's CodeRabbit round)
 				return 0;
 			}
 			auto* dh = RE::TESDataHandler::GetSingleton();

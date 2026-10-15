@@ -123,7 +123,7 @@ namespace Plugin
 		kEnb = 1,
 		kVanilla = 2
 	};
-	void                      ReadLighting();   // data load, after the settings, before the hand lights
+	void                      ReadLighting();  // data load, after the settings, before the hand lights
 	[[nodiscard]] Lighting    LightingFound();
 	[[nodiscard]] const char* LightingName(Lighting a_lighting);
 	// the lights are written in Community Shaders' inverse square words (a flag and the cutoff in two words of a light - LightKit.h
@@ -178,7 +178,7 @@ namespace Plugin
 	[[nodiscard]] bool        HandLightHeldOut(const RE::NiLight* a_light);                   // put out by a switch until the next cast
 	[[nodiscard]] std::size_t HandLightsMade();
 	[[nodiscard]] std::size_t HandEffects();
-	[[nodiscard]] std::size_t AutoHandEffects();                         // spells lit by an automatic hand light now
+	[[nodiscard]] std::size_t AutoHandEffects();  // spells lit by an automatic hand light now
 
 	// ------------------------------------------------------------------ Settings.cpp: the settings file
 	void                LoadSettings();

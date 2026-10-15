@@ -51,15 +51,15 @@ namespace Plugin
 		// a held light that could not be made or registered: warned about once, and tried again every kRetryUpdates updates
 		// while that hand still wants it - the scene may refuse a light for a while (the ground twins' retry, 2.2's CodeRabbit
 		// round); forgotten when the hand stops wanting it (sheathed, unequipped, another weapon)
-		constexpr std::uint32_t kRetryUpdates = 60;
-		std::uint32_t           gUpdate = 0;  // UpdateHeldLights calls
+		constexpr std::uint64_t kRetryUpdates = 60;
+		std::uint64_t           gUpdate = 0;  // UpdateHeldLights calls; 64 bits, so a retry deadline never wraps
 
 		struct Failed
 		{
 			RE::FormID    actor{ 0 };
 			bool          left{ false }, firstPerson{ false };
 			const Stream* held{ nullptr };
-			std::uint32_t retryAt{ 0 };
+			std::uint64_t retryAt{ 0 };
 
 			[[nodiscard]] bool Is(const Want& a_w) const
 			{
