@@ -34,7 +34,7 @@ namespace Translation
 		// space and ' flags count too ("% d" takes an argument there); otherwise "100% is" stays plain text.
 		inline std::vector<std::string> Placeholders(std::string_view a_s, bool a_format = false)
 		{
-			const std::string_view   flags = a_format ? std::string_view("-+#0123456789.lhzjtL* '") : std::string_view("-+#0123456789.lhzjtL*");
+			const std::string_view   flags = a_format ? std::string_view("-+#0123456789.lhzjtLIw* '") : std::string_view("-+#0123456789.lhzjtLIw*");
 			std::vector<std::string> out;
 			for (std::size_t i = 0; i < a_s.size(); ++i) {
 				if (a_s[i] == '%') {
@@ -42,12 +42,16 @@ namespace Translation
 						++i;
 						continue;
 					}
-					// a conversion is flags/width/length then one conversion letter
+					// a conversion is flags/width/length then one conversion letter - MSVC's own %S, %C, %Z and its I, I32,
+					// I64 and w sizes included ("%I64u" is one conversion, not "%I" and text)
 					std::size_t j = i + 1;
 					while (j < a_s.size() && flags.find(a_s[j]) != std::string_view::npos) {
 						++j;
 					}
-					if (j < a_s.size() && std::string_view("diouxXeEfFgGaAcspn").find(a_s[j]) != std::string_view::npos) {
+					const bool known = j < a_s.size() && std::string_view("diouxXeEfFgGaAcspnSCZ").find(a_s[j]) != std::string_view::npos;
+					// printf reads ANY '%' as a conversion: one it does not know (a translated "50 % r") or a '%' at the very
+					// end counts too, so it never matches the English and never reaches printf
+					if (known || a_format) {
 						out.emplace_back(a_s.substr(i, j - i + 1));
 						i = j;
 					}
@@ -278,9 +282,10 @@ namespace Translation
 				++same;
 				continue;
 			}
-			// an English line with a conversion is printed through printf: read both sides by printf's own rules
+			// an English line with a conversion or a "%%" is printed through printf: read both sides by printf's own rules
 			const auto lenient = Detail::Placeholders(en);
-			const bool format = std::ranges::any_of(lenient, [](const std::string& p) { return p.starts_with('%'); });
+			const bool format = en.find("%%") != std::string::npos ||
+			                    std::ranges::any_of(lenient, [](const std::string& p) { return p.starts_with('%'); });
 			if (Detail::Placeholders(en, format) != Detail::Placeholders(tr, format)) {
 				++bad;
 				if (badLines.size() < 400) {

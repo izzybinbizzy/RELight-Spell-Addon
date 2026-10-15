@@ -10,14 +10,15 @@
 //   LightsOffWhileSneaking=0
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
-//   WardColour=0                0 vanilla blue, 1 white - the ward's art and light (Wards.cpp)
+//   WardColor=0                 0 vanilla blue, 1 white - the ward's art and light (Wards.cpp); an older file's WardColour is read too
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
 //   [Switches]
-//   Spells - Runes=1            one line per switch; a switch with no line is on
-// Keys match case-insensitively. A value that is not a whole number keeps its default and is named in the log. An old [Brightness] section (the per-option
-// sliders, retired) is passed over.
+//   Spells - Runes=1            one line per switch; a switch with no line is on. A line for an option that is not
+//                               installed now is kept as it is, so reinstalling the option brings its switch back
+// Keys and sections match case-insensitively. A value that is not a whole number keeps its default and is named in the log. An old
+// [Brightness] section (the per-option sliders, retired) is passed over; any other section is named in the log.
 //
 // Threads: the menu changes a setting on the render thread while the hooks read it on the main thread and on the game's
 // loader threads, so each one is an atomic (relaxed: no setting depends on another being written first). The file is written
@@ -81,15 +82,23 @@ namespace Plugin
 			{ "LightsOffWhileSneaking", [] { return gSneak ? 1 : 0; }, [](int v) { gSneak = v != 0; } },
 			{ "HandLights", [] { return gHands ? 1 : 0; }, [](int v) { gHands = v != 0; } },
 			{ "WeaponLights", [] { return gWeapons ? 1 : 0; }, [](int v) { gWeapons = v != 0; } },
-			{ "WardColour", [] { return gWard.load(); }, [](int v) { gWard = std::clamp(v, 0, 1); } },
+			{ "WardColor", [] { return gWard.load(); }, [](int v) { gWard = std::clamp(v, 0, 1); } },
 			{ "DimInDaylight", [] { return gDaylight.load(); }, [](int v) { gDaylight = std::clamp(v, 0, 2); } },
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 		};
 
+		// [Switches] lines for options that are not installed now, as read: written back unchanged, so an option taken out
+		// and put back keeps its switch (the audit, 2026-10-14: the line was dropped at the next save and the switch came
+		// back on). Main thread (LoadSettings, then the save task)
+		std::vector<std::pair<std::string, int>> gOtherSwitches;
+
 		// one [Settings] line; false when the key is not one of ours
 		bool ApplySetting(std::string_view a_key, int a_v)
 		{
+			if (SameText(a_key, "WardColour")) {
+				a_key = "WardColor";  // the key's spelling before 2.2 (his rule: color, never colour, in a file a player reads)
+			}
 			for (const auto& k : kKeys) {
 				if (SameText(a_key, k.name)) {
 					k.set(a_v);
@@ -114,6 +123,9 @@ namespace Plugin
 					text << o.id << "=" << (o.on ? 1 : 0) << "\n";
 				}
 			}
+			for (const auto& [id, v] : gOtherSwitches) {
+				text << id << "=" << v << "\n";
+			}
 			const std::string tmp = std::string(kPath) + ".tmp";
 			std::error_code   ec;
 			std::ofstream     out(tmp, std::ios::trunc);
@@ -134,11 +146,13 @@ namespace Plugin
 
 	void LoadSettings()
 	{
+		gOtherSwitches.clear();
 		std::ifstream            in(kPath);
 		std::string              line;
 		std::string              section;
 		std::size_t              read = 0;
 		std::vector<std::string> problems;
+		std::vector<std::string> unknown;  // each unknown section named once
 		while (in && std::getline(in, line)) {
 			const auto l = Trim(line);
 			if (l.empty() || l.front() == ';' || l.front() == '#') {
@@ -154,8 +168,13 @@ namespace Plugin
 			}
 			const auto key = Trim(l.substr(0, eq));
 			const auto val = Trim(l.substr(eq + 1));
-			if (section != "Settings" && section != "Switches") {
-				continue;  // the retired [Brightness] section, or a section of someone else's
+			const bool settings = SameText(section, "Settings"), switches = SameText(section, "Switches");
+			if (!settings && !switches) {
+				if (!SameText(section, "Brightness") && std::ranges::find(unknown, section) == unknown.end()) {
+					unknown.push_back(section);  // the retired [Brightness] section is passed over quietly
+					problems.push_back(std::format("[{}]: not a section this mod reads; its lines are passed over", section));
+				}
+				continue;
 			}
 			const auto v = WholeNumber(val);
 			if (!v) {
@@ -163,15 +182,20 @@ namespace Plugin
 				continue;
 			}
 			++read;
-			if (section == "Settings") {
+			if (settings) {
 				if (!ApplySetting(key, *v)) {
 					problems.push_back(std::format("{}: not a setting", key));
 				}
 			} else {
+				bool installed = false;
 				for (auto& o : Options()) {
 					if (o.switchable && SameText(o.id, key)) {
 						o.on = *v != 0;
+						installed = true;
 					}
+				}
+				if (!installed) {
+					gOtherSwitches.emplace_back(std::string(key), *v);
 				}
 			}
 		}
@@ -258,13 +282,13 @@ namespace Plugin
 		}
 	}
 
-	int WardColour() { return gWard; }
+	int WardColor() { return gWard; }
 
-	void SetWardColour(int a_colour)
+	void SetWardColor(int a_color)
 	{
-		a_colour = std::clamp(a_colour, 0, 1);
-		if (gWard.exchange(a_colour) != a_colour) {
-			SKSE::log::info("ward color set to {}", a_colour == 1 ? "white" : "vanilla blue");
+		a_color = std::clamp(a_color, 0, 1);
+		if (gWard.exchange(a_color) != a_color) {
+			SKSE::log::info("ward color set to {}", a_color == 1 ? "white" : "vanilla blue");
 		}
 	}
 

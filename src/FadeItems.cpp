@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -11,13 +11,16 @@
 // An item's choice is applied where its light is: once a frame on the main thread, at the end of the fading module's pass (so
 // after the sliders and the fading, before a ground twin copies the hand light), on every light at the hand that holds it -
 // a spell's: under the hand's magic nodes and the game's casting light; a weapon's (staves and bound weapons too): under its
-// 3D in the hand. Off puts the light out (fade 0), a color recolors it; the fade and color it had are kept, and given back the
-// moment the item is set to Auto again (unless something else wrote the light since). Every lighting mod's light at that hand
-// is reached - Light Placer's, RE::Light's, the game's own, ours - since the choice is about the item, not the light's maker.
+// 3D in the hand, and for a staff also its hand's magic nodes and casting light, and for an enchanted weapon the roots its
+// enchantment effects hang lights on (Fading on or off). Off puts the light out (fade 0), a color
+// recolors it; the fade and color it had are kept, and given back the moment the item is set to Auto again (unless something
+// else wrote the light since). Every lighting mod's light at that hand is reached - Light Placer's, RE::Light's, the game's
+// own, ours - since the choice is about the item, not the light's maker.
 // The choices live in Mod::kItemsPath, one line per item that is not Auto, keyed "Plugin.esp|0x00ABCD" (the item's own file
-// and local id, so they survive a load order change).
+// and local id, so they survive a load order change); only an item of the list (the catalog) can be given a choice.
 
 #include "Fade.h"
+#include "FadeFormText.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #	define WIN32_LEAN_AND_MEAN
@@ -69,7 +72,8 @@ namespace Fade::Items
 		};
 
 		std::vector<Item>                      gCatalog;
-		std::mutex                             gLock;  // the choices: the menu (render thread) changes them, the main thread applies
+		std::unordered_set<RE::FormID>         gCatalogIds;  // the same items, to refuse a choice for anything else (read-only after load)
+		std::mutex                             gLock;        // the choices: the menu (render thread) changes them, the main thread applies
 		std::unordered_map<RE::FormID, Choice> gChoices;
 		std::atomic<std::uint32_t>             gGeneration{ 0 };  // bumped on every change; the main thread copies on a change
 		std::array<std::atomic<RE::FormID>, 2> gInHands{};        // the player's left / right item now, for "in my hands now"
@@ -116,10 +120,8 @@ namespace Fade::Items
 				return 0;
 			}
 			const auto    file = std::string(a_key.substr(0, bar));
-			const auto    hex = a_key.substr(bar + 1);
 			std::uint32_t local = 0;
-			const auto    digits = hex.starts_with("0x") || hex.starts_with("0X") ? hex.substr(2) : hex;
-			if (std::from_chars(digits.data(), digits.data() + digits.size(), local, 16).ec != std::errc{}) {
+			if (!FormText::ParseHex(a_key.substr(bar + 1), local)) {  // the whole text is the number: "0x12junk" names nothing
 				return 0;
 			}
 			auto*       dh = RE::TESDataHandler::GetSingleton();
@@ -127,25 +129,56 @@ namespace Fade::Items
 			return form ? form->GetFormID() : 0;
 		}
 
-		// a copy of the choices, written outside every lock (main thread)
+		// one choice as the file and DevBench write it: "auto", "off", "r,g,b" or "off,r,g,b" (off, keeping the color picked
+		// for when it is switched back on). nullopt: not a choice
+		[[nodiscard]] std::optional<Choice> ParseChoice(std::string_view a_text)
+		{
+			Choice c;
+			auto   rest = SettingsText::Trim(a_text);
+			if (SettingsText::SameText(rest, "auto")) {
+				return c;
+			}
+			if (SettingsText::SameText(rest, "off")) {
+				c.off = true;
+				return c;
+			}
+			if (const auto comma = rest.find(','); comma != std::string_view::npos && SettingsText::SameText(SettingsText::Trim(rest.substr(0, comma)), "off")) {
+				c.off = true;
+				rest = rest.substr(comma + 1);
+			}
+			int rgb[3]{};
+			for (int& v : rgb) {
+				const auto comma = rest.find(',');
+				if (!SettingsText::ReadInt(SettingsText::Trim(rest.substr(0, comma)), v)) {
+					return std::nullopt;
+				}
+				rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+			}
+			c.colored = true;
+			c.color = { std::clamp(rgb[0], 0, 255) / 255.0f, std::clamp(rgb[1], 0, 255) / 255.0f, std::clamp(rgb[2], 0, 255) / 255.0f };
+			return c;
+		}
+
+		// a copy of the choices, written outside every lock (main thread, an SKSE task)
 		void Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
 		{
 			std::ostringstream text;
 			text << "; " << Mod::kName << " - Lights by Item, written by its menu. One line per item that is not Auto:\n"
 				 << ";   Plugin.esp|0x00ABCD=off           its light is off\n"
-				 << ";   Plugin.esp|0x00ABCD=255,128,0     its light in this color\n[Items]\n";
+				 << ";   Plugin.esp|0x00ABCD=255,128,0     its light in this color\n"
+				 << ";   Plugin.esp|0x00ABCD=off,255,128,0 off, and in this color when it is switched on again\n[Items]\n";
 			for (const auto& item : gCatalog) {
 				const auto it = a_choices.find(item.id);
 				if (it == a_choices.end() || it->second.Auto()) {
 					continue;
 				}
 				const auto& c = it->second;
+				const auto  rgb = std::format("{},{},{}", std::lround(c.color.red * 255.0f), std::lround(c.color.green * 255.0f), std::lround(c.color.blue * 255.0f));
+				std::string value = rgb;
 				if (c.off) {
-					text << item.key << "=off\n";
-				} else {
-					text << std::format("{}={},{},{}\n", item.key, std::lround(c.color.red * 255.0f), std::lround(c.color.green * 255.0f),
-						std::lround(c.color.blue * 255.0f));
+					value = c.colored ? "off," + rgb : std::string("off");  // off, and the color it takes when switched on again
 				}
+				text << item.key << "=" << value << "\n";
 			}
 			std::error_code ec;
 			std::filesystem::create_directories(std::filesystem::path(Mod::kItemsPath).parent_path(), ec);
@@ -184,7 +217,8 @@ namespace Fade::Items
 			MarkChanged();
 		}
 
-		// main thread: the file, once the choices have not moved for kSaveQuietMs (or at once, a_now)
+		// main thread: the file, once the choices have not moved for kSaveQuietMs (or at once, a_now) - written by an SKSE task
+		// from a copy, never under the fading pass's per-frame lock (this is called from inside it, UpdateHands)
 		void SaveIfSettled(bool a_now)
 		{
 			if (!gDirty.load(std::memory_order_acquire) || (!a_now && NowMs() - gChangedAt.load(std::memory_order_relaxed) < kSaveQuietMs)) {
@@ -196,30 +230,12 @@ namespace Fade::Items
 				std::lock_guard lock(gLock);
 				copy = gChoices;
 			}
-			Save(copy);
+			if (auto* tasks = SKSE::GetTaskInterface()) {
+				tasks->AddTask([c = std::move(copy)]() { Save(c); });
+			}
 		}
 
 		// ------------------------------------------------------------------ applying, main thread
-		RE::NiAVObject* WeaponPart(RE::Actor* a_actor, bool a_firstPerson, bool a_left, const RE::TESForm* a_weapon)
-		{
-			const auto& biped = a_actor->GetBiped(a_firstPerson);
-			if (!biped || !a_weapon) {
-				return nullptr;
-			}
-			using B = RE::BIPED_OBJECT;
-			if (a_left) {
-				const auto& shield = biped->objects[B::kShield];
-				return shield.item == a_weapon && shield.partClone ? shield.partClone.get() : nullptr;
-			}
-			for (auto slot = static_cast<std::uint32_t>(B::kHandToHandMelee); slot <= static_cast<std::uint32_t>(B::kCrossbow); ++slot) {
-				const auto& obj = biped->objects[slot];
-				if (obj.item == a_weapon && obj.partClone) {
-					return obj.partClone.get();
-				}
-			}
-			return nullptr;
-		}
-
 		void Touch(RE::NiPointLight* a_light, const Choice& a_choice)
 		{
 			if (!a_light) {
@@ -295,23 +311,30 @@ namespace Fade::Items
 					continue;
 				}
 				const auto& choice = it->second;
+				// the hand's magic nodes and casting light: a spell's lights - and a staff's in use (FadeSpells.cpp)
+				const auto magicHand = [&]() {
+					RE::NiAVObject*   nodes[2]{};
+					RE::NiPointLight* caster = nullptr;
+					SpellHandLights(a_actor, left, nodes, caster);
+					for (auto* node : nodes) {
+						TouchUnder(node, choice);
+					}
+					Touch(caster, choice);
+				};
 				if (form->As<RE::SpellItem>()) {
-					const auto& name = left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
-					for (const bool first : { false, true }) {
-						if (first && !player) {
-							break;
-						}
-						auto* root = a_actor->Get3D(first);
-						TouchUnder(root ? root->GetObjectByName(name) : nullptr, choice);
-					}
-					const auto source = left ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
-					if (auto* caster = skyrim_cast<RE::ActorMagicCaster*>(a_actor->GetMagicCaster(source)); caster && caster->light) {
-						Touch(netimmerse_cast<RE::NiPointLight*>(caster->light->light.get()), choice);
-					}
-				} else if (form->As<RE::TESObjectWEAP>()) {
+					magicHand();
+				} else if (const auto* weapon = form->As<RE::TESObjectWEAP>()) {
 					TouchUnder(WeaponPart(a_actor, false, left, form), choice);
 					if (player) {
 						TouchUnder(WeaponPart(a_actor, true, left, form), choice);
+					}
+					if (weapon->IsStaff()) {
+						magicHand();
+					}
+					// its enchantment's lights: the roots the fading pass keeps, or - Fading off, a weapon the rules exempt - the
+					// game's own list of that hand's enchantment effects (FadeLights.cpp EffectRootsOf; CodeRabbit on RELight #16)
+					for (auto* root : EffectRootsOf(a_actor, left)) {
+						TouchUnder(root, choice);
 					}
 				}
 			}
@@ -335,35 +358,19 @@ namespace Fade::Items
 				continue;
 			}
 			const auto id = FormOfKey(SettingsText::Trim(t.substr(0, eq)));
-			const auto val = SettingsText::Trim(t.substr(eq + 1));
-			if (!id) {
-				++missing;
+			if (!id || !gCatalogIds.contains(id)) {
+				++missing;  // not in this load order, or not an item the list holds
 				continue;
 			}
-			Choice c;
-			if (SettingsText::SameText(val, "off")) {
-				c.off = true;
-			} else {
-				int  rgb[3]{};
-				auto rest = val;
-				bool ok = true;
-				for (int& v : rgb) {
-					const auto comma = rest.find(',');
-					const auto part = SettingsText::Trim(rest.substr(0, comma));
-					ok = ok && SettingsText::ReadInt(part, v);
-					rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-				}
-				if (!ok) {
-					continue;
-				}
-				c.colored = true;
-				c.color = { std::clamp(rgb[0], 0, 255) / 255.0f, std::clamp(rgb[1], 0, 255) / 255.0f, std::clamp(rgb[2], 0, 255) / 255.0f };
+			const auto c = ParseChoice(t.substr(eq + 1));
+			if (!c || c->Auto()) {
+				continue;
 			}
-			gChoices[id] = c;
+			gChoices[id] = *c;
 			++read;
 		}
 		gGeneration.fetch_add(1, std::memory_order_relaxed);
-		SKSE::log::info("lights by item: {} choice(s) read from {} ({} name an item not in this load order)", read, Mod::kItemsPath, missing);
+		SKSE::log::info("lights by item: {} choice(s) read from {} ({} name an item not in this load order's list)", read, Mod::kItemsPath, missing);
 	}
 
 	void BuildCatalog()
@@ -408,6 +415,10 @@ namespace Fade::Items
 				false });
 		}
 		std::ranges::sort(gCatalog, [](const Item& a, const Item& b) { return std::make_tuple(!a.spell, a.group, a.lower) < std::make_tuple(!b.spell, b.group, b.lower); });
+		gCatalogIds.clear();
+		for (const auto& item : gCatalog) {
+			gCatalogIds.insert(item.id);
+		}
 		SKSE::log::info("lights by item: {} spells and weapons in the list", gCatalog.size());
 	}
 
@@ -453,24 +464,11 @@ namespace Fade::Items
 
 	bool SetFromText(RE::FormID a_id, std::string_view a_choice)
 	{
-		Choice     c;
-		const auto t = SettingsText::Trim(a_choice);
-		if (SettingsText::SameText(t, "off")) {
-			c.off = true;
-		} else if (!SettingsText::SameText(t, "auto")) {
-			int  rgb[3]{};
-			auto rest = t;
-			for (int& v : rgb) {
-				const auto comma = rest.find(',');
-				if (!SettingsText::ReadInt(SettingsText::Trim(rest.substr(0, comma)), v)) {
-					return false;
-				}
-				rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-			}
-			c.colored = true;
-			c.color = { std::clamp(rgb[0], 0, 255) / 255.0f, std::clamp(rgb[1], 0, 255) / 255.0f, std::clamp(rgb[2], 0, 255) / 255.0f };
+		const auto c = ParseChoice(a_choice);
+		if (!c || !gCatalogIds.contains(a_id)) {
+			return false;  // not a choice, or an item the page could not show (the list is the catalog)
 		}
-		Set(a_id, c);
+		Set(a_id, *c);
 		return true;
 	}
 

@@ -1,6 +1,6 @@
-// MenuStyle.h - the shared look of izzydoingit's SKSE Menu Framework pages (one identical copy per plugin, like
-// Translation.h). Each mod passes its own accent; the layout, the icon headers, the notes, the colour picker with its
-// spectrum bar and the HUD panel are the same everywhere.
+// MenuStyle.h - the shared look of izzydoingit's SKSE Menu Framework pages (one identical copy in each live plugin, like
+// Translation.h; a parked plugin keeps the copy it was built with). Each mod passes its own accent; the layout, the icon headers, the notes and the color picker with its
+// spectrum bar are the same everywhere.
 // Copyright (C) 2026 izzydoingit. GPL-3.0-or-later.
 //
 // Include after SKSEMenuFramework.h. Everything here is drawn on the menu's own thread.
@@ -8,7 +8,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -26,10 +25,9 @@ namespace MenuStyle
 	namespace Icon
 	{
 		inline constexpr unsigned kPalette = 0xF53F, kShield = 0xF3ED, kBulb = 0xF0EB, kPuzzle = 0xF12E, kEye = 0xF06E,
-								  kGear = 0xF013, kBolt = 0xF0E7, kFire = 0xF06D, kSnow = 0xF2DC, kWand = 0xF0D0, kSun = 0xF185,
-								  kMoon = 0xF186, kStar = 0xF005, kBug = 0xF188, kGauge = 0xF625, kHand = 0xF256, kTarget = 0xF05B,
-								  kGhost = 0xF6E2, kFlask = 0xF0C3, kList = 0xF03A, kInfo = 0xF05A, kSliders = 0xF1DE, kDisplay = 0xF108,
-								  kBook = 0xF02D, kSkull = 0xF54C, kTemp = 0xF2C9, kWater = 0xF773, kGem = 0xF3A5;
+								  kBolt = 0xF0E7, kFire = 0xF06D, kSnow = 0xF2DC, kWand = 0xF0D0, kSun = 0xF185, kMoon = 0xF186,
+								  kStar = 0xF005, kGauge = 0xF625, kHand = 0xF256, kTarget = 0xF05B, kGhost = 0xF6E2, kList = 0xF03A,
+								  kDisplay = 0xF108, kBook = 0xF02D, kSkull = 0xF54C, kTemp = 0xF2C9, kGem = 0xF3A5;
 	}
 
 	struct Theme
@@ -38,7 +36,6 @@ namespace MenuStyle
 		ImVec4 accentDim;
 	};
 
-	inline const ImVec4 kNote{ 1.0f, 0.85f, 0.4f, 1.0f };
 	inline const ImVec4 kMuted{ 0.62f, 0.62f, 0.68f, 1.0f };
 	inline const ImVec4 kGood{ 0.45f, 0.85f, 0.5f, 1.0f };
 	inline const ImVec4 kBad{ 1.0f, 0.45f, 0.4f, 1.0f };
@@ -182,16 +179,5 @@ namespace MenuStyle
 		done |= SpectrumBar("##spectrum", a_rgb);
 		PopID();
 		return done;
-	}
-
-	// a slider that reports true once let go (the drag shows live through a_value; save and apply on true)
-	inline bool SliderDone() { return ImGuiMCP::IsItemDeactivatedAfterEdit(); }
-
-	// the HUD panel every mod's HUD element draws in: a dark rounded plate with an accent edge
-	inline void HudPlate(ImDrawList* a_dl, ImVec2 a_min, ImVec2 a_max)
-	{
-		using namespace ImGuiMCP;
-		ImDrawListManager::AddRectFilled(a_dl, a_min, a_max, IM_COL32(10, 9, 16, 150), 6.0f, 0);
-		ImDrawListManager::AddRect(a_dl, a_min, a_max, U32(gTheme.accent, 0.45f), 6.0f, 0, 1.0f);
 	}
 }

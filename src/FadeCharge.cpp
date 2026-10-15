@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -105,7 +105,7 @@ namespace Fade
 			r.tracked = true;
 			r.current = (std::max)(visitor.time.duration - visitor.time.elapsed, 0.0f);
 			r.max = visitor.time.duration;
-			// its fraction is the time left over the fade window a rule may change: Lights.cpp works it out with the verdict
+			// its fraction is the time left over the fade window a rule may change: FadeLights.cpp works it out with the verdict
 			return r;
 		}
 

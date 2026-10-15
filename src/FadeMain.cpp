@@ -1,18 +1,18 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h is what differs)
+// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
 // An enchanted weapon's light follows its charge, a spell hand's light and glow follow the caster's magicka: full when
 // charged, dimmer as it is used, a sputter near empty, a pulse when a hit spends charge, a flare when a soul gem refills
-// it, a cooler colour near empty. A bound weapon follows the time its spell has left. Where FadeConfig.h offers it
-// (Mod::kOwnLight), a weapon no light mod lights gets a simple light of its own. Its settings: the menu's "Fading" pages
-// and Mod::kSettingsPath; its rule files: Mod::kRulesDir\*.json. The plugin's main.cpp calls the four entry points below.
+// it, a cooler color near empty. A bound weapon follows the time its spell has left. Its settings: the menu's "Fading"
+// pages and Mod::kSettingsPath; its rule files: Mod::kRulesDir\*.json. The plugin's main.cpp calls the four entry points below.
 //
-// THE FILES: FadeConfig.h (the mod's own names - the one file that differs between the two mods), FadeGlow.h (the
-// behaviour as plain numbers), FadeFormText.h / FadeSettingsText.h / FadeRulesText.h (text), FadeCharge.cpp (what a hand
-// holds), FadeSpells.cpp (spells in hand), FadeLights.cpp (the lights found and scaled every frame; the HUD state),
-// FadeOwnLight.cpp (our own light where none is), FadeRules.cpp, FadeSettings.cpp, FadeEditorIDs.cpp, FadeMenu.cpp,
-// FadeDevBench.cpp, Fade.h (what they share), FadeMain.cpp (this file: its own hooks and the order).
+// THE FILES: FadeConfig.h (the mod's own names) and FadeDevBench.cpp (its DevBench glue) - the two each mod has its own
+// of; FadeGlow.h (the behaviour as plain numbers), FadeFormText.h / FadeSettingsText.h / FadeRulesText.h (text),
+// FadeCharge.cpp (what a hand holds), FadeSpells.cpp (spells in hand), FadeLights.cpp (the lights found and scaled every
+// frame; the HUD state), FadeItems.cpp (Lights by Item), FadeTuning.cpp (the all-in-one advanced settings file),
+// FadeRules.cpp, FadeSettings.cpp, FadeEditorIDs.cpp, FadeMenu.cpp, Fade.h (what they share), FadeMain.cpp (this file:
+// its own hooks and the order).
 
 #include "Fade.h"
 #include "LightKit.h"
@@ -30,7 +30,7 @@ namespace
 		static bool thunk(RE::ShaderReferenceEffect* a_this, float a_delta)
 		{
 			const bool result = func(a_this, a_delta);
-			Fade::AfterShaderEffect(a_this);
+			LightKit::Guarded("fading: effect shader update", [a_this]() { Fade::AfterShaderEffect(a_this); });
 			return result;
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -138,10 +138,14 @@ namespace Fade
 		Register("Fading", "RiseSeconds", 0.35f, 0.0f, 3.0f, "how quickly the light follows a rising charge, in seconds", gRiseSeconds);
 		Register("HUD", "GemDistance", 215.0f, 40.0f, 900.0f, "how far each charge gem sits from the middle of the screen, in pixels at 1080p", gGemDistance);
 		Register("HUD", "GemHeight", 62.0f, 0.0f, 1000.0f, "how far above the bottom of the screen the charge gems sit, in pixels at 1080p", gGemHeight);
-		Register("HUD", "ReticleGap", 30.0f, 5.0f, 300.0f, "how far each reticle bar sits from the crosshair, in pixels", gReticleGap);
-		Register("HUD", "ReticleLength", 56.0f, 10.0f, 400.0f, "how long each reticle bar is, in pixels", gReticleLength);
-		Register("HUD", "CrossfireBarWidth", 300.0f, 80.0f, 1200.0f, "how wide the Crossfire bar is, in pixels", gBarWidth);
-		Register("HUD", "CrossfireBarDrop", 70.0f, -400.0f, 600.0f, "how far below the crosshair the Crossfire bar sits, in pixels", gBarDrop);
+		// the reticle grows with the screen like the gems (his answer 2026-10-13): its sizes are pixels at 1080p
+		Register("HUD", "ReticleGap", 30.0f, 5.0f, 300.0f, "how far each reticle bar sits from the crosshair, in pixels at 1080p", gReticleGap);
+		Register("HUD", "ReticleLength", 56.0f, 10.0f, 400.0f, "how long each reticle bar is, in pixels at 1080p", gReticleLength);
+		// "Crossfire bar" renamed "Bar under the crosshair" (his answer 2026-10-13): the old key names are still read
+		Register("HUD", "CrosshairBarWidth", 300.0f, 80.0f, 1200.0f, "how wide the bar under the crosshair is, in pixels at 1080p", gBarWidth,
+			"CrossfireBarWidth");
+		Register("HUD", "CrosshairBarDrop", 70.0f, -400.0f, 600.0f, "how far below the crosshair the bar under the crosshair sits, in pixels at 1080p",
+			gBarDrop, "CrossfireBarDrop");
 		Register("HUD", "EmptyPulseSpeed", 2.6f, 0.5f, 10.0f, "how fast the reticle breathes while you are out of magicka", gEmptyPulseSpeed);
 		Register("HUD", "FullPulseSeconds", 0.9f, 0.2f, 3.0f, "how long the reticle's swell lasts when your magicka is full again, in seconds", gFullPulseSeconds);
 		Register("HUD", "ReticleHoldSeconds", 1.0f, 0.2f, 5.0f, "how long the reticle stays at empty or full before it fades out, in seconds", gReticleHold);

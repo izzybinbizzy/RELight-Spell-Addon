@@ -263,6 +263,11 @@ namespace Plugin
 			if (!Off(h.option)) {
 				if (MayGiveBack(h)) {
 					h.light->SetAppCulled(false);
+				} else if (std::ranges::find(gSheathedOut, h.light) == gSheathedOut.end()) {
+					// the switch came back on while the weapon is put away: the light joins the sheathed net, which lights it
+					// the moment the weapon is drawn (the audit, 2026-10-14: it fell out of every list and stayed dark until
+					// the weapon was equipped again). Keep.cpp already holds it (HoldOut)
+					gSheathedOut.push_back(h.light);
 				}
 				gHeldSet.erase(h.light);
 				return true;

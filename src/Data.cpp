@@ -10,11 +10,13 @@
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
 //   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
 //   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
+//   beamlight <0xID~Plugin>    a light record a beam makes; RE::Light lights it through our config, kept on our beams
+//                              only (Streams.cpp ClaimBeamLights)
 //   handfx <key> <pulse|flicker> <per second> <intensity>   a hand light's Dynamic Lighting (installed with it)
 //   menugroup <category> <author or ->   where a patch sits on the Patches page
 //   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
 //   download <Spells|Weapons>   the download the file came in (a file with no line: its `file` download)
-//   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's colour for the lights on an object (highest order wins)
+//   tint <key or 0xID~Plugin> <r> <g> <b>   an art pick's color for the lights on an object (highest order wins)
 //   held <key or 0xID~Plugin> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a weapon's own light while it is
 //        drawn (Held.cpp); a key is matched exactly against the weapon's model (its full path key, then its bare name), or
 //        its first-person model in first person
@@ -24,6 +26,7 @@
 
 #include "DataText.h"
 #include "Fade.h"
+#include "FadeFormText.h"
 #include "Plugin.h"
 
 namespace Plugin
@@ -49,7 +52,7 @@ namespace Plugin
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>                gHands;
 		std::unordered_set<RE::FormID>              gSprayLights;
-		std::unordered_map<RE::FormID, std::size_t> gSprayOwner;  // spray light record -> the option that lights it
+		std::unordered_set<RE::FormID>              gBeamLights;  // a beam's own light record, lit through our config
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
 		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
@@ -64,7 +67,7 @@ namespace Plugin
 		std::unordered_map<RE::FormID, const RE::NiColor*> gTintCache;
 		std::unordered_map<RE::FormID, const Stream*>      gHeldCache[2];  // [first person]: asked every frame per drawn weapon
 
-		[[nodiscard]] RE::NiColor Colour(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
+		[[nodiscard]] RE::NiColor ColorOf(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
 
 		[[nodiscard]] RE::FormID ResolveBase(std::string_view a_text)
 		{
@@ -73,12 +76,8 @@ namespace Plugin
 			if (tilde == std::string_view::npos || tilde < 3) {
 				return 0;
 			}
-			auto hex = a_text.substr(0, tilde);
-			if (hex.starts_with("0x") || hex.starts_with("0X")) {
-				hex.remove_prefix(2);
-			}
 			std::uint32_t local = 0;
-			if (std::from_chars(hex.data(), hex.data() + hex.size(), local, 16).ec != std::errc{}) {
+			if (!FormText::ParseHex(a_text.substr(0, tilde), local)) {  // the whole text is the number (2.2's CodeRabbit round)
 				return 0;
 			}
 			auto* dh = RE::TESDataHandler::GetSingleton();
@@ -137,12 +136,12 @@ namespace Plugin
 				Stream      s;
 				s.key = a_text.key;
 				s.node = a_text.node;
-				s.color = Colour(v[0], v[1], v[2]);
+				s.color = ColorOf(v[0], v[1], v[2]);
 				s.fade = v[3];
 				s.radius = v[4];
 				s.size = v[5];
 				s.cutoff = v[6];
-				s.positions = { RE::NiPoint3{ v[7], v[8], v[9] } };
+				s.at = { v[7], v[8], v[9] };
 				return s;
 			};
 			std::vector<Stream> streams, helds;
@@ -169,23 +168,22 @@ namespace Plugin
 			for (const auto id : bases) {
 				own(gBaseOwner, id);
 			}
-			// lines for one mesh in one file are one ladder; a later layer replaces an earlier layer's whole ladder
-			std::unordered_set<std::string> fresh;
+			// a later layer takes a stream over (RE::Light lights it; the line only makes its object ours for the menu)
 			for (auto& s : streams) {
 				s.order = opt.order;
 				s.option = idx;
 				own(gMeshOwner, s.key);  // a stream's object is ours too, for the slider and the switch
-				auto it = gStreams.find(s.key);
-				if (it != gStreams.end() && it->second.order == s.order && fresh.contains(s.key)) {
-					it->second.positions.push_back(s.positions.front());
-				} else if (it == gStreams.end() || it->second.order <= s.order) {
-					fresh.insert(s.key);
+				if (auto it = gStreams.find(s.key); it == gStreams.end() || it->second.order <= s.order) {
 					gStreams.insert_or_assign(s.key, std::move(s));
 				}
 			}
 			for (const auto id : sprays) {
 				gSprayLights.insert(id);
-				own(gSprayOwner, id);
+			}
+			for (const auto& b : file.beams) {
+				if (const auto id = ResolveBase(b)) {
+					gBeamLights.insert(id);
+				}
 			}
 			for (auto& s : helds) {
 				s.order = opt.order;
@@ -202,7 +200,7 @@ namespace Plugin
 			}
 			for (const auto& tint : file.tints) {
 				const auto& key = tint.key;
-				const Tint  t{ Colour(tint.rgb[0], tint.rgb[1], tint.rgb[2]), opt.order };
+				const Tint  t{ ColorOf(tint.rgb[0], tint.rgb[1], tint.rgb[2]), opt.order };
 				if (const auto id = key.find('~') != std::string::npos ? ResolveBase(key) : 0) {
 					KeepHighest(gBaseTints, id, t, opt.order);
 				} else {
@@ -216,7 +214,7 @@ namespace Plugin
 				for (std::size_t i = 0; i < 3; ++i) {
 					h.rgb[i] = static_cast<std::uint8_t>(std::clamp(v[i], 0.0f, 255.0f));
 				}
-				h.color = Colour(v[0], v[1], v[2]);
+				h.color = ColorOf(v[0], v[1], v[2]);
 				h.fade = v[3];
 				h.radius = v[4];
 				h.size = v[5];
@@ -305,11 +303,16 @@ namespace Plugin
 				REX::W32::GetModuleHandleW(L"po3_Tweaks") ? "loaded" : "NOT loaded");
 		}
 
-		// a per-form answer, worked out once and cached
+		// a per-form answer, worked out once and cached. A form made while the game runs (its ID starts FF) is never cached:
+		// those IDs are handed out again to other forms after a load, so a cached answer could be another form's (the audit,
+		// 2026-10-14)
 		template <class V, class F>
 		[[nodiscard]] V Cached(std::unordered_map<RE::FormID, V>& a_cache, const RE::TESForm* a_base, F&& a_work)
 		{
 			const auto id = a_base->GetFormID();
+			if ((id >> 24) == 0xFF) {
+				return a_work();
+			}
 			{
 				std::lock_guard l{ gCacheLock };
 				if (auto it = a_cache.find(id); it != a_cache.end()) {
@@ -361,7 +364,7 @@ namespace Plugin
 		gHeldBase.clear();
 		gHands.clear();
 		gSprayLights.clear();
-		gSprayOwner.clear();
+		gBeamLights.clear();
 		gHandFx.clear();
 		gMeshTints.clear();
 		gBaseTints.clear();
@@ -504,14 +507,9 @@ namespace Plugin
 		});
 	}
 
-	std::size_t OptionOfSprayLight(const RE::TESObjectLIGH* a_light)
-	{
-		const auto it = a_light ? gSprayOwner.find(a_light->GetFormID()) : gSprayOwner.end();
-		return it != gSprayOwner.end() ? it->second : kNone;
-	}
-
 	const StringMap<std::vector<Hand>>&   Hands() { return gHands; }
 	const std::unordered_set<RE::FormID>& SprayLightRecords() { return gSprayLights; }
+	const std::unordered_set<RE::FormID>& BeamLightRecords() { return gBeamLights; }
 
 	const HandFx* HandFxOf(std::string_view a_key)
 	{

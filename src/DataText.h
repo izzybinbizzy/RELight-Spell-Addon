@@ -103,7 +103,7 @@ namespace DataText
 	struct File
 	{
 		OptionText               option;
-		std::vector<std::string> meshes, bases, sprays;  // bases / sprays: forms as written
+		std::vector<std::string> meshes, bases, sprays, beams;  // bases / sprays / beams: forms as written
 		std::vector<LightText>   streams, helds;
 		std::vector<HandText>    hands;
 		std::vector<FxText>      fx;
@@ -172,6 +172,10 @@ namespace DataText
 		}
 		if (kind == "spraylight" && p.size() >= 2) {
 			a_file.sprays.emplace_back(p[1]);
+			return true;
+		}
+		if (kind == "beamlight" && p.size() >= 2) {
+			a_file.beams.emplace_back(p[1]);
 			return true;
 		}
 		if (kind == "stream" && p.size() == 13) {

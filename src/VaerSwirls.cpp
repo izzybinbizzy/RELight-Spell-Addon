@@ -18,8 +18,8 @@
 // download is installed: its enchantment lights are keyed by VAER's shaders, so without it the swap would leave the weapon
 // unlit.
 //
-// The table is the one list Let There Be Glow's ESL and Illuminated share (gen.VAER_SWIRL_FORMS); relightgen's selftest
-// refuses a table here that is not that list, row for row.
+// The table is gen.VAER_SWIRL_FORMS (Illuminated carries the same rows); relightgen's selftest refuses a table here that is
+// not that list, row for row.
 
 #include "Plugin.h"
 
@@ -111,20 +111,40 @@ namespace Plugin
 			return dh && (dh->LookupLoadedModByName(a_name) || dh->LookupLoadedLightModByName(a_name));
 		}
 
+		// A patch a tool writes (Synthesis, Mator Smash, Wrye Bash, xEdit's merged patch) lists every plugin before it as a
+		// master, VAER's too, without knowing VAER: its change is the winning plugin's carried forward, never one made for VAER
+		[[nodiscard]] bool GeneratedPatch(std::string_view a_file)
+		{
+			const auto low = LightKit::Lower(a_file);
+			return low == "synthesis.esp" || low == "smashed patch.esp" || low.starts_with("bashed patch") || low == "merged patch.esp";
+		}
+
 		// The plugin that changed this effect last, when it knows VAER (VAEReborn.esp is one of its masters) - its change is
 		// deliberate and stays. Measured (his Precision magic trails report, Illuminated's same pass): VAER's own Vibrant
 		// Weapons patch (VAER_EAE.esp) takes the swirl off six fire / frost / shock effects and gives them the vanilla shader so
 		// Enchantment Art Extender dresses the weapon, and this pass was putting VAER's swirl back over it.
+		// A generated patch that won only carries an earlier plugin's change forward, so the judge is the newest plugin before it
+		// that is not one (the code review of 2.2: VAER_EAE.esp's change carried by Synthesis.esp is still VAER's own patch's).
 		[[nodiscard]] const RE::TESFile* VaerAwareChange(const RE::EffectSetting* a_effect)
 		{
-			const auto* last = a_effect ? a_effect->GetFile(-1) : nullptr;
-			if (!last || _stricmp(last->fileName, "VAEReborn.esp") == 0) {
+			const auto* files = a_effect ? a_effect->sourceFiles.array : nullptr;
+			if (!files) {
 				return nullptr;
 			}
-			for (std::uint32_t i = 0; last->masterPtrs && i < last->masterCount; ++i) {
-				if (const auto* master = last->masterPtrs[i]; master && _stricmp(master->fileName, "VAEReborn.esp") == 0) {
-					return last;
+			for (auto n = files->size(); n-- > 0;) {
+				const auto* last = (*files)[n];
+				if (!last || GeneratedPatch(last->fileName)) {
+					continue;
 				}
+				if (_stricmp(last->fileName, "VAEReborn.esp") == 0) {
+					return nullptr;
+				}
+				for (std::uint32_t i = 0; last->masterPtrs && i < last->masterCount; ++i) {
+					if (const auto* master = last->masterPtrs[i]; master && _stricmp(master->fileName, "VAEReborn.esp") == 0) {
+						return last;
+					}
+				}
+				return nullptr;
 			}
 			return nullptr;
 		}
