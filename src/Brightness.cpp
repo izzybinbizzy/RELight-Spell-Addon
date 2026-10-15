@@ -125,11 +125,13 @@ namespace Plugin
 			return ref ? ref->GetBaseObject() : nullptr;
 		}
 
-		// a spray's light, however RE::Light made it: it hangs on a flame or cone projectile whose light is a spray record
+		// a spray's or (2.3) a bolt's light, however it was made: it hangs on a flame, cone or beam projectile that wears one of
+		// our raised copies (or a spray record, where no copy could be made) - a beam's light is made where our hook does not
+		// see it, so this walk is what brings it to the sliders
 		[[nodiscard]] bool IsSprayProjectileLight(const RE::TESBoundObject* a_base)
 		{
 			const auto* proj = a_base ? a_base->As<RE::BGSProjectile>() : nullptr;
-			return proj && (proj->IsFlamethrower() || proj->IsCone()) && IsSprayLight(proj->data.light);
+			return proj && (proj->IsFlamethrower() || proj->IsCone() || proj->IsBeam()) && IsSprayLight(proj->data.light);
 		}
 
 		// RE::Light names every light it makes from a config "RL" + the node it hung it on. An enchantment light hangs on
@@ -301,6 +303,11 @@ namespace Plugin
 					continue;
 				}
 				gNotOurs.erase(niLight);
+				// a spray's or bolt's light made where our hook did not dress it moves with its projectile all the same: the
+				// moving-light mark, so RE::Light's flicker prevention lets it reach every surface (Streams.cpp DressStreamLight)
+				if (IsSprayProjectileLight(base)) {
+					niLight->fadeAmount = kMovingLightMark;
+				}
 				KeepLight(niLight);
 				it = gSeen.emplace(niLight, Seen{ .tint = TintOf(base) }).first;
 			}

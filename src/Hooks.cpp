@@ -223,6 +223,12 @@ namespace
 			made = netimmerse_cast<RE::NiPointLight*>(
 				a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
 			Plugin::DressHandLight(made, *hand);  // only writes the fresh light's own fields
+		} else if (Plugin::IsOurLight(a_light)) {
+			// 2.3: a spray's / bolt's raised copy, or a beam record's other users' plain copy (Streams.cpp) - the game's own
+			// function too, so RE::Light set to switch off game lights it has no config for never switches these off
+			made = netimmerse_cast<RE::NiPointLight*>(
+				a_light->GenDynamic(a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly));
+			Plugin::DressStreamLight(made, a_light);
 		} else {
 			made = a_next(a_light, a_ref, a_node, a_forceDynamic, a_useLightRadius, a_affectRequesterOnly);
 		}

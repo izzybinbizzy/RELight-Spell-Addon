@@ -63,8 +63,7 @@ namespace
 		Plugin::LoadData();
 		Plugin::LoadSettings();
 		Plugin::ReadLighting();             // before the hand lights: off Community Shaders they are drawn plain
-		Plugin::ClaimSprayLights();         // before the hand lights remember each effect's own light
-		Plugin::ClaimBeamLights();          // the same for the beams (2.2) - after the sprays: a record of both is the spray's
+		Plugin::RaiseStreamLights();        // 2.3: the sprays' and bolts' raised copies - before the hand lights remember each effect's own light
 		Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
 		Plugin::MakeHandLights();
 		Plugin::FindSpellBases();   // before the late hooks: the 3D-load hooks read it from loader threads

@@ -56,6 +56,7 @@ namespace Plugin
 			out["keptLights"] = KeptLights();
 			out["sprayRecords"] = SprayLightRecords().size();
 			out["beamRecords"] = BeamLightRecords().size();
+			out["streamCopies"] = { { "raised", RaisedLights() }, { "plain", PlainLights() } };
 			out["wardsSteppedDown"] = WardsSteppedDown();
 			out["options"] = json::array();
 			for (const auto& o : Options()) {
