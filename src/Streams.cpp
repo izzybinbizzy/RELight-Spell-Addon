@@ -98,13 +98,23 @@ namespace Plugin
 			const float limit = std::sqrt((std::max)(LightKit::kK * d.fade / kOwnLowestCutoff - kOwnSize * kOwnSize, 1.0f));
 			d.reach = std::clamp(std::isfinite(a_range) ? a_range * kOwnEndReach : kOwnShortestReach, kOwnShortestReach, limit);
 			d.isl = InverseSquare();
+			// the record itself carries the raised light too, as Illuminated's Raise writes it: a light the game makes from it
+			// anywhere our hook does not see (a beam's - RE::Light's hook on the same call sites never configured one, measured
+			// 2.2) is drawn the same as one DressStreamLight dresses
 			if (d.isl) {
+				// Community Shaders draws a record carrying the inverse-square flag by its fade and cutoff - the falloff field IS
+				// the cutoff then, the field of view its size
 				d.cutoff = LightKit::kK * d.fade / (d.reach * d.reach + kOwnSize * kOwnSize);
+				a_copy->data.flags = static_cast<RE::TES_LIGHT_FLAGS>(a_copy->data.flags.underlying() | LightKit::kRecordInverseSquare);
+				a_copy->data.fallofExponent = d.cutoff;
+				a_copy->data.fov = kOwnSize;
 			} else {
-				// ENB and Vanilla: the same reach drawn plain by the game's own lighting (Illuminated's LightKit::PlainAt)
+				// ENB and Vanilla: the same reach drawn plain by the game's own lighting (Illuminated's LightKit::PlainAt), the
+				// falloff left as the record has it
 				const auto plain = LightKit::PlainAt(d.fade, 0.0f, d.reach);
 				d.fade = plain.fade;
 				d.reach = plain.radius;
+				a_copy->data.flags = static_cast<RE::TES_LIGHT_FLAGS>(a_copy->data.flags.underlying() & ~LightKit::kRecordInverseSquare);
 			}
 			if (const auto his = RecordColor(a_base->GetFormID())) {
 				a_copy->data.color.red = his->red;
@@ -117,12 +127,14 @@ namespace Plugin
 		}
 	}
 
+	// once a session: the hooks read these sets from any thread once gReady is set, and a second walk would find every field
+	// already wearing its copy - so it is never redone
 	void RaiseStreamLights()
 	{
-		gReady.store(false, std::memory_order_release);
-		gSpraySet.clear();
-		gRaised.clear();
-		gPlain.clear();
+		if (gReady.load(std::memory_order_acquire)) {
+			SKSE::log::warn("stream lights: already raised this session - left as they are");
+			return;
+		}
 		std::unordered_set<const RE::TESObjectLIGH*> beams;
 		for (const auto id : SprayLightRecords()) {
 			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id)) {
@@ -202,10 +214,12 @@ namespace Plugin
 		if (!a_light || !a_record || !gReady.load(std::memory_order_acquire)) {
 			return;
 		}
-		a_light->fadeAmount = kMovingLightMark;  // it moves with its projectile: RE::Light's flicker prevention lets it reach every surface
+		// the moving-light mark on every copy, plain ones included - as RE::Light's own hook marks the magic lights it passes, so
+		// its flicker prevention lets them reach every surface
+		a_light->fadeAmount = kMovingLightMark;
 		const auto it = gRaised.find(a_record);
 		if (it == gRaised.end()) {
-			return;  // a plain copy: the light the game made, as it made it
+			return;  // a plain copy: otherwise the light the game made, as it made it
 		}
 		const auto& d = it->second;
 		auto&       data = a_light->GetLightRuntimeData();
