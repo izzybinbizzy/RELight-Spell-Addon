@@ -153,7 +153,8 @@ namespace Plugin
 	[[nodiscard]] std::string                           PathKey(std::string_view a_path);
 	[[nodiscard]] const StringMap<std::vector<Hand>>&   Hands();                           // hand key -> the layers that light it, highest order first
 	[[nodiscard]] const std::unordered_set<RE::FormID>& SprayLightRecords();               // spray light records, lit through our configs
-	[[nodiscard]] const std::unordered_set<RE::FormID>& BeamLightRecords();                // beam light records, lit through our configs
+	[[nodiscard]] const std::unordered_set<RE::FormID>& BeamLightRecords();                // beam light records (2.3: raised copies, Streams.cpp)
+	[[nodiscard]] std::optional<RE::Color>              RecordColor(RE::FormID a_record);  // his color for a spray / beam record, if the data names one
 	[[nodiscard]] const HandFx*                         HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
 	// nullptr unless we light this weapon in the hand: its form first, then (first person) its first-person model, then its model
 	[[nodiscard]] const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson);
@@ -246,9 +247,14 @@ namespace Plugin
 	[[nodiscard]] float DaylightFactor();
 
 	// ------------------------------------------------------------------ Streams.cpp: sprays, beams, breath shouts
-	void               ClaimSprayLights();  // once, after the data is read, BEFORE MakeHandLights
-	void               ClaimBeamLights();   // once, right after ClaimSprayLights (a record of both stays the spray's)
-	[[nodiscard]] bool IsSprayLight(const RE::TESObjectLIGH* a_light);
+	void RaiseStreamLights();  // once, after the data is read and the lighting found, BEFORE MakeHandLights
+	// a light record of ours (a spray's / bolt's raised copy, a beam record's other users' plain copy): made by the game's own
+	// function, never RE::Light's (Hooks.cpp), and dressed by DressStreamLight - any thread
+	[[nodiscard]] bool        IsOurLight(const RE::TESObjectLIGH* a_light);
+	void                      DressStreamLight(RE::NiLight* a_light, const RE::TESObjectLIGH* a_record);
+	[[nodiscard]] std::size_t RaisedLights();  // raised copies made
+	[[nodiscard]] std::size_t PlainLights();   // plain copies made for the beam records' other users
+	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	// the light RE::Light (or the game) makes for a projectile a `stream` line names: ours for the sliders
 	[[nodiscard]] bool IsStreamObject(const RE::TESObjectREFR* a_ref);
 

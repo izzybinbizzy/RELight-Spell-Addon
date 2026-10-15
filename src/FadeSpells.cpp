@@ -98,10 +98,11 @@ namespace Fade
 	{
 		a_nodes[0] = a_nodes[1] = nullptr;
 		a_casterLight = nullptr;
-		if (!a_actor) {
+		const auto* strings = RE::FixedStrings::GetSingleton();
+		if (!a_actor || !strings) {
 			return;
 		}
-		const auto& name = a_left ? RE::FixedStrings::GetSingleton()->npcLMagicNode : RE::FixedStrings::GetSingleton()->npcRMagicNode;
+		const auto& name = a_left ? strings->npcLMagicNode : strings->npcRMagicNode;
 		for (const bool first : { false, true }) {
 			if (first && !a_actor->IsPlayerRef()) {
 				break;

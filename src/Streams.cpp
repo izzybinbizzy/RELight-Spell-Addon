@@ -2,12 +2,20 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// Sprays, breath shouts and beams. RE::Light lights them - the projectile's own light record, and a spray's or (since 2.2) a
-// beam's record through our `isPluginLight` config; this mod only takes that light into its menu (Brightness, Reach, the switch).
-// ⚠ Truman's call after the Lightning Bolt freeze: this file used to hang travelling lights of its own
-// on the projectile's 3D (from the load hook, which also runs on the game's loader threads, under a lock). All of that
-// is gone; a `stream` line in the data now only says "this projectile is ours for the menu". (The ReLight way of making a
-// light, which lived here for the travelling lights, is in Held.cpp now, its one user.)
+// Sprays, breath shouts and beams. 2.3 - HIS ANSWER 2026-10-14 ~23:55, asked whether a spray or a bolt may carry a second light:
+// "do it like illuminated, i checked there and it looks good". So each spray, flamethrower and beam projectile our data lights
+// wears an in-memory COPY of its own light record, raised the way Illuminated's merged Streams raise it (its StreamLights.cpp):
+// brightness 1.72 at size 2.5, reach the projectile's whole length plus 15 %, bounded by what one light carries at a cutoff of
+// 0.01, never under the hand reach, never dimmer than its own original - ONE light per projectile, never lights hung along it.
+// (RE::Light's spray config of 2.1 / 2.2 reached only part of a spray - his finding 2026-10-14 - and RE::Light does not apply a
+// config to a beam's light at all, measured 2.2.) The copy is made by the game's own light function, never by RE::Light's hook,
+// and dressed here (Hooks.cpp MakeMagicLight, as the hand lights are): the moving-light mark, under Community Shaders the
+// inverse square words, off it the same reach drawn plain.
+// The records' OTHER users: a spray record is taken off them, as in 2.1 / 2.2 (RE::Light's own configs light those objects - a
+// second light would double them); a beam record's other users (a lightning arrow, a shock explosion ...) wear a plain copy - the
+// light they had - made by the game's own function too, so they keep it even where RE::Light is set to switch off game lights it
+// has no config for (his call 2026-10-14 ~11:40: "fix it for later update").
+// ⚠ Truman's call after the Lightning Bolt freeze still stands: nothing here hangs a light on a projectile's 3D.
 
 #include "Plugin.h"
 
@@ -15,7 +23,24 @@ namespace Plugin
 {
 	namespace
 	{
-		std::unordered_set<const RE::TESObjectLIGH*> gSpraySet;
+		// Illuminated's numbers (StreamLights.cpp): the house hand light's peak at the spray size, the end plus 15 %
+		constexpr float kOwnSize = 2.5f;
+		constexpr float kOwnFade = 1077.69f * kOwnSize * kOwnSize / LightKit::kK;
+		constexpr float kOwnEndReach = 1.15f;
+		constexpr float kOwnShortestReach = 133.0f;
+		constexpr float kOwnLowestCutoff = 0.01f;
+
+		// how a raised copy's light is drawn - worked out once, read from any thread once gReady is set
+		struct Dress
+		{
+			float fade{ 0.0f }, reach{ 0.0f }, cutoff{ 0.0f };
+			bool  isl{ false };
+		};
+
+		std::unordered_set<const RE::TESObjectLIGH*>        gSpraySet;  // the data's spray records
+		std::unordered_map<const RE::TESObjectLIGH*, Dress> gRaised;    // our raised copies, one per spray / bolt projectile
+		std::unordered_set<const RE::TESObjectLIGH*>        gPlain;     // the beam records' other users' plain copies
+		std::atomic<bool>                                   gReady{ false };
 
 		// how many of each kind of user a claim changed
 		struct LightUsers
@@ -25,8 +50,7 @@ namespace Plugin
 
 		// every record field that names a light record - a projectile's own light and its muzzle flash, a magic effect's, an
 		// explosion's, a hazard's - handed to a_change(the projectile whose own light it is, or nullptr; the field), which returns
-		// true when it changed that field. One walk for both claims, so a user kind is never in one and missing from the other
-		// (2.2's code review)
+		// true when it changed that field. One walk, so a user kind is never in one claim and missing from another (2.2's review)
 		template <class F>
 		LightUsers ForEachLightField(RE::TESDataHandler& a_dh, F&& a_change)
 		{
@@ -48,106 +72,164 @@ namespace Plugin
 			}
 			return n;
 		}
+
+		// the whole light as its user had it: look, sound, emittance, lens flare and model (Illuminated's FormCopies.cpp CopyLight)
+		RE::TESObjectLIGH* CopyOf(const RE::TESObjectLIGH* a_light)
+		{
+			auto* copy = a_light ? LightKit::NewForm<RE::TESObjectLIGH>() : nullptr;
+			if (!copy) {
+				return nullptr;
+			}
+			copy->data = a_light->data;
+			copy->fade = a_light->fade;
+			copy->sound = a_light->sound;
+			copy->emittanceColor = a_light->emittanceColor;
+			copy->lensFlare = a_light->lensFlare;
+			copy->SetModel(a_light->GetModel());
+			return copy;
+		}
+
+		// a_copy raised from a_base as Illuminated raises a stream's own light, its color his where the data names one
+		Dress Raise(RE::TESObjectLIGH* a_copy, const RE::TESObjectLIGH* a_base, float a_range)
+		{
+			const bool ownIsl = (a_base->data.flags.underlying() & LightKit::kRecordInverseSquare) != 0;
+			Dress      d;
+			d.fade = LightKit::NeverDimmer(kOwnFade, kOwnSize, a_base->fade, ownIsl ? LightKit::LightPlacerSize(a_base->data.fov) : 0.0f);
+			const float limit = std::sqrt((std::max)(LightKit::kK * d.fade / kOwnLowestCutoff - kOwnSize * kOwnSize, 1.0f));
+			d.reach = std::clamp(std::isfinite(a_range) ? a_range * kOwnEndReach : kOwnShortestReach, kOwnShortestReach, limit);
+			d.isl = InverseSquare();
+			if (d.isl) {
+				d.cutoff = LightKit::kK * d.fade / (d.reach * d.reach + kOwnSize * kOwnSize);
+			} else {
+				// ENB and Vanilla: the same reach drawn plain by the game's own lighting (Illuminated's LightKit::PlainAt)
+				const auto plain = LightKit::PlainAt(d.fade, 0.0f, d.reach);
+				d.fade = plain.fade;
+				d.reach = plain.radius;
+			}
+			if (const auto his = RecordColor(a_base->GetFormID())) {
+				a_copy->data.color.red = his->red;
+				a_copy->data.color.green = his->green;
+				a_copy->data.color.blue = his->blue;
+			}
+			a_copy->fade = d.fade;
+			a_copy->data.radius = static_cast<std::uint32_t>(std::lround(d.reach));
+			return d;
+		}
 	}
 
-	// A spray is lit by its own light record, which RE::Light tunes through our `isPluginLight` config. Many of those
-	// records are shared (fireballs, casting lights, explosions, hazards, muzzle flashes), so the record is taken off
-	// every user that is not a spray, in memory - RE::Light would have switched those unconfigured lights off anyway. Since 2.2
-	// a beam our data lights keeps it too (the bolts).
-	void ClaimSprayLights()
+	void RaiseStreamLights()
 	{
+		gReady.store(false, std::memory_order_release);
 		gSpraySet.clear();
+		gRaised.clear();
+		gPlain.clear();
+		std::unordered_set<const RE::TESObjectLIGH*> beams;
 		for (const auto id : SprayLightRecords()) {
 			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id)) {
 				gSpraySet.insert(l);
 			}
 		}
-		auto* dh = RE::TESDataHandler::GetSingleton();
-		if (gSpraySet.empty() || !dh) {
-			return;
-		}
-		const auto n = ForEachLightField(*dh, [](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
-			if (!a_light || !gSpraySet.contains(a_light)) {
-				return false;
-			}
-			// a spray (flamethrower or cone) keeps its own record - and since 2.2 (the bolts) a BEAM our data lights keeps it too: a
-			// record of both is lit by the spray's config, never taken off the bolt (his rule: the projectile's own light, made
-			// bigger and brighter)
-			if (a_proj && (a_proj->IsFlamethrower() || a_proj->IsCone() || (a_proj->IsBeam() && StreamOf(a_proj)))) {
-				return false;
-			}
-			a_light = nullptr;
-			return true;
-		});
-		SKSE::log::info(
-			"spray lights: {} record(s) are the sprays' alone now - taken off {} projectile(s), {} muzzle flash(es), "
-			"{} magic effect(s), {} explosion(s), {} hazard(s)",
-			gSpraySet.size(), n.projectiles, n.muzzles, n.effects, n.explosions, n.hazards);
-	}
-
-	// A beam is lit by its own light record too, made bigger and brighter by our `isPluginLight` config (his rule 2026-10-13,
-	// RE::Light's way - one light per projectile). Beam records are shared far more widely than the sprays' -
-	// MagicLightShockProjectile01 is worn by ~30 beams and by missiles, cones, explosions, hazards, arrows and muzzle flashes - so
-	// the record stays on OUR beams only (a beam projectile whose model one of our `stream` lines names) and every other user is
-	// pointed at an in-memory copy of it: the same light it had before, which RE::Light has no config for. A record that is a
-	// spray record too stays the spray's (ClaimSprayLights keeps it on our beams, lit by the spray's config).
-	void ClaimBeamLights()
-	{
-		std::unordered_set<const RE::TESObjectLIGH*> beams;
 		for (const auto id : BeamLightRecords()) {
 			if (auto* l = RE::TESForm::LookupByID<RE::TESObjectLIGH>(id); l && !gSpraySet.contains(l)) {
 				beams.insert(l);
 			}
 		}
 		auto* dh = RE::TESDataHandler::GetSingleton();
-		if (beams.empty() || !dh) {
+		if ((gSpraySet.empty() && beams.empty()) || !dh) {
+			gReady.store(true, std::memory_order_release);
 			return;
 		}
-		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> copies;
-		std::size_t                                                      failed = 0, ours = 0;
-		const auto                                                       copyOf = [&](RE::TESObjectLIGH* a_light) {
-			auto [it, fresh] = copies.try_emplace(a_light, nullptr);
+		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> plainOf;
+		std::size_t                                                      sprays = 0, bolts = 0, failed = 0, dark = 0;
+		const auto                                                       n = ForEachLightField(*dh, [&](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
+			const bool sprayRecord = a_light && gSpraySet.contains(a_light);
+			if (!a_light || (!sprayRecord && !beams.contains(a_light))) {
+				return false;
+			}
+			// a spray (flamethrower or cone) on a spray record, or a beam our data lights: its own raised copy
+			const bool spray = a_proj && sprayRecord && (a_proj->IsFlamethrower() || a_proj->IsCone());
+			const bool bolt = a_proj && a_proj->IsBeam() && StreamOf(a_proj);
+			if (spray || bolt) {
+				auto* copy = CopyOf(a_light);
+				if (!copy) {
+					++failed;  // no copy: it keeps its record (and RE::Light's config) as in 2.2 - said in the log
+					return false;
+				}
+				gRaised.emplace(copy, Raise(copy, a_light, a_proj->data.range));
+				a_light = copy;
+				(spray ? sprays : bolts) += 1;
+				return true;
+			}
+			// anything else on a spray record goes dark, as in 2.1 / 2.2 (RE::Light's own configs light those objects)
+			if (sprayRecord) {
+				a_light = nullptr;
+				++dark;
+				return true;
+			}
+			// anything else on a beam record keeps the light it had, made by the game's own function (Hooks.cpp)
+			auto [it, fresh] = plainOf.try_emplace(a_light, nullptr);
 			if (fresh) {
-				if (auto* copy = LightKit::NewForm<RE::TESObjectLIGH>()) {
-					// the whole light as the user had it: its look, sound, emittance, lens flare and model (2.2's code review;
-					// Illuminated's FormCopies.cpp CopyLight copies the same)
-					copy->data = a_light->data;
-					copy->fade = a_light->fade;
-					copy->sound = a_light->sound;
-					copy->emittanceColor = a_light->emittanceColor;
-					copy->lensFlare = a_light->lensFlare;
-					copy->SetModel(a_light->GetModel());
-					it->second = copy;
+				it->second = CopyOf(a_light);
+				if (it->second) {
+					gPlain.insert(it->second);
 				} else {
-					++failed;  // no copy: this user keeps the record (and our config's light) - said in the log
+					++failed;
 				}
 			}
-			return it->second ? it->second : a_light;
-		};
-		const auto n = ForEachLightField(*dh, [&](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
-			if (!a_light || !beams.contains(a_light)) {
+			if (!it->second) {
 				return false;
 			}
-			if (a_proj && a_proj->IsBeam() && StreamOf(a_proj)) {
-				++ours;  // one of our beams: it keeps the record our config raises
-				return false;
-			}
-			// counted only when the field really changed: a copy that could not be made leaves the user on the record (CodeRabbit, #16)
-			auto* const to = copyOf(a_light);
-			const bool  changed = to != a_light;
-			a_light = to;
-			return changed;
+			a_light = it->second;
+			return true;
 		});
+		gReady.store(true, std::memory_order_release);
 		SKSE::log::info(
-			"beam lights: {} record(s) stay on our {} beam(s); {} copy(ies) made for the other users - {} projectile(s), {} muzzle "
-			"flash(es), {} magic effect(s), {} explosion(s), {} hazard(s){}",
-			beams.size(), ours, copies.size() - failed, n.projectiles, n.muzzles, n.effects, n.explosions, n.hazards,
+			"stream lights: {} spray(s) and {} bolt(s) wear a raised copy of their own light ({} drawn {}); the records' other users - "
+			"{} projectile(s), {} muzzle flash(es), {} magic effect(s), {} explosion(s), {} hazard(s): {} on a spray record left dark, "
+			"the rest on {} plain copy(ies) of a beam record{}",
+			sprays, bolts, gRaised.size(), InverseSquare() ? "inverse square" : "plain", n.projectiles - sprays - bolts, n.muzzles,
+			n.effects, n.explosions, n.hazards, dark, gPlain.size(),
 			failed ? std::format("; {} copy(ies) could not be made - those users keep the record", failed) : std::string{});
 	}
 
+	bool IsOurLight(const RE::TESObjectLIGH* a_light)
+	{
+		return a_light && gReady.load(std::memory_order_acquire) && (gRaised.contains(a_light) || gPlain.contains(a_light));
+	}
+
+	void DressStreamLight(RE::NiLight* a_light, const RE::TESObjectLIGH* a_record)
+	{
+		if (!a_light || !a_record || !gReady.load(std::memory_order_acquire)) {
+			return;
+		}
+		a_light->fadeAmount = kMovingLightMark;  // it moves with its projectile: RE::Light's flicker prevention lets it reach every surface
+		const auto it = gRaised.find(a_record);
+		if (it == gRaised.end()) {
+			return;  // a plain copy: the light the game made, as it made it
+		}
+		const auto& d = it->second;
+		auto&       data = a_light->GetLightRuntimeData();
+		data.fade = d.fade;
+		if (d.isl) {
+			data.radius = { d.reach, d.reach, kOwnSize };
+			Isl::SetOn(a_light);
+			Isl::SetCutoff(a_light, d.cutoff);
+			return;
+		}
+		data.radius = { d.reach, d.reach, LightKit::kLightSize };
+		if (auto* point = netimmerse_cast<RE::NiPointLight*>(a_light)) {
+			point->SetLightAttenuation(d.reach);
+		}
+		const RE::NiColor c{ a_record->data.color.red / 255.0f, a_record->data.color.green / 255.0f, a_record->data.color.blue / 255.0f };
+		data.ambient = { c.red * 0.1f, c.green * 0.1f, c.blue * 0.1f };  // after the attenuation's words (RE::Light's rule, Truman)
+	}
+
+	std::size_t RaisedLights() { return gRaised.size(); }
+	std::size_t PlainLights() { return gPlain.size(); }
+
 	bool IsSprayLight(const RE::TESObjectLIGH* a_light)
 	{
-		return a_light && gSpraySet.contains(a_light);
+		return a_light && (gSpraySet.contains(a_light) || (gReady.load(std::memory_order_acquire) && gRaised.contains(a_light)));
 	}
 
 	bool IsStreamObject(const RE::TESObjectREFR* a_ref)

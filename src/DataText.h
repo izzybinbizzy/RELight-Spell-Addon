@@ -104,11 +104,13 @@ namespace DataText
 	{
 		OptionText               option;
 		std::vector<std::string> meshes, bases, sprays, beams;  // bases / sprays / beams: forms as written
-		std::vector<LightText>   streams, helds;
-		std::vector<HandText>    hands;
-		std::vector<FxText>      fx;
-		std::vector<TintText>    tints;
-		bool                     sawVersion{ false }, sawFile{ false }, sawMenu{ false }, sawDownload{ false };
+		// a spray's or beam's light record that carries his color (2.3): the form as written, and its color 0-255
+		std::vector<std::pair<std::string, std::array<int, 3>>> recordColors;
+		std::vector<LightText>                                  streams, helds;
+		std::vector<HandText>                                   hands;
+		std::vector<FxText>                                     fx;
+		std::vector<TintText>                                   tints;
+		bool                                                    sawVersion{ false }, sawFile{ false }, sawMenu{ false }, sawDownload{ false };
 	};
 
 	// one line into `a_file`; false when it does not read
@@ -170,12 +172,18 @@ namespace DataText
 			a_file.bases.emplace_back(p[1]);
 			return true;
 		}
-		if (kind == "spraylight" && p.size() >= 2) {
-			a_file.sprays.emplace_back(p[1]);
-			return true;
-		}
-		if (kind == "beamlight" && p.size() >= 2) {
-			a_file.beams.emplace_back(p[1]);
+		// spraylight / beamlight <0xID~Plugin> [<r> <g> <b>] - the color only where his eye set one (2.3)
+		if ((kind == "spraylight" || kind == "beamlight") && (p.size() == 2 || p.size() == 5)) {
+			if (p.size() == 5) {
+				std::array<int, 3> c{};
+				for (std::size_t i = 0; i < 3; ++i) {
+					if (!Number(p[2 + i], c[i]) || c[i] < 0 || c[i] > 255) {
+						return false;
+					}
+				}
+				a_file.recordColors.emplace_back(std::string(p[1]), c);
+			}
+			(kind == "spraylight" ? a_file.sprays : a_file.beams).emplace_back(p[1]);
 			return true;
 		}
 		if (kind == "stream" && p.size() == 13) {

@@ -9,9 +9,9 @@
 //   version 1 | file <download> <option> | order <n> | menu <n> | switch <0|1> | mesh <key> | base <0xID~Plugin>
 //   stream <key> <node> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>
 //   hand <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <inverse square 0|1> <portal strict 0|1>
-//   spraylight <0xID~Plugin>   a light record a spray makes; RE::Light lights it through our config
-//   beamlight <0xID~Plugin>    a light record a beam makes; RE::Light lights it through our config, kept on our beams
-//                              only (Streams.cpp ClaimBeamLights)
+//   spraylight <0xID~Plugin> [<r> <g> <b>]   a light record a spray makes; since 2.3 each spray wears a raised copy of it
+//                              (Streams.cpp); the color only where his eye set one, else the record's own
+//   beamlight <0xID~Plugin> [<r> <g> <b>]    the same for a beam our data lights (the bolts)
 //   handfx <key> <pulse|flicker> <per second> <intensity>   a hand light's Dynamic Lighting (installed with it)
 //   menugroup <category> <author or ->   where a patch sits on the Patches page
 //   desc <text>   what the option lights, broadly - the menu shows it over the option's switch
@@ -52,7 +52,8 @@ namespace Plugin
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>                gHands;
 		std::unordered_set<RE::FormID>              gSprayLights;
-		std::unordered_set<RE::FormID>              gBeamLights;  // a beam's own light record, lit through our config
+		std::unordered_set<RE::FormID>              gBeamLights;    // a beam's own light record (Streams.cpp raises a copy of it)
+		std::unordered_map<RE::FormID, RE::Color>   gRecordColors;  // his color for a spray / beam record, where the data names one
 		StringMap<HandFx>                           gHandFx;
 		StringMap<Tint>                             gMeshTints;
 		std::unordered_map<RE::FormID, std::size_t> gShaderOwner;  // effect shader -> option, by its editor ID (enchantments)
@@ -183,6 +184,11 @@ namespace Plugin
 			for (const auto& b : file.beams) {
 				if (const auto id = ResolveBase(b)) {
 					gBeamLights.insert(id);
+				}
+			}
+			for (const auto& [form, c] : file.recordColors) {
+				if (const auto id = ResolveBase(form)) {
+					gRecordColors.insert_or_assign(id, RE::Color(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]), static_cast<std::uint8_t>(c[2]), 0));
 				}
 			}
 			for (auto& s : helds) {
@@ -365,6 +371,7 @@ namespace Plugin
 		gHands.clear();
 		gSprayLights.clear();
 		gBeamLights.clear();
+		gRecordColors.clear();
 		gHandFx.clear();
 		gMeshTints.clear();
 		gBaseTints.clear();
@@ -510,6 +517,12 @@ namespace Plugin
 	const StringMap<std::vector<Hand>>&   Hands() { return gHands; }
 	const std::unordered_set<RE::FormID>& SprayLightRecords() { return gSprayLights; }
 	const std::unordered_set<RE::FormID>& BeamLightRecords() { return gBeamLights; }
+
+	std::optional<RE::Color> RecordColor(RE::FormID a_record)
+	{
+		const auto it = gRecordColors.find(a_record);
+		return it == gRecordColors.end() ? std::nullopt : std::optional<RE::Color>(it->second);
+	}
 
 	const HandFx* HandFxOf(std::string_view a_key)
 	{
