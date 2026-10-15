@@ -48,13 +48,18 @@ namespace Plugin
 			RE::NiNode*   node;
 		};
 
-		// a held light that could not be made or registered: warned about once, and not tried again until that hand stops
-		// wanting it (sheathed, unequipped, another weapon)
+		// a held light that could not be made or registered: warned about once, and tried again every kRetryUpdates updates
+		// while that hand still wants it - the scene may refuse a light for a while (the ground twins' retry, 2.2's CodeRabbit
+		// round); forgotten when the hand stops wanting it (sheathed, unequipped, another weapon)
+		constexpr std::uint32_t kRetryUpdates = 60;
+		std::uint32_t           gUpdate = 0;  // UpdateHeldLights calls
+
 		struct Failed
 		{
 			RE::FormID    actor{ 0 };
 			bool          left{ false }, firstPerson{ false };
 			const Stream* held{ nullptr };
+			std::uint32_t retryAt{ 0 };
 
 			[[nodiscard]] bool Is(const Want& a_w) const
 			{
@@ -238,6 +243,7 @@ namespace Plugin
 		if (!scene || !player) {
 			return;
 		}
+		++gUpdate;
 		const bool               hidden = SneakOn() && player->IsSneaking();
 		static std::vector<Want> want;  // main thread; kept between frames so its storage is not made again each one
 		want.clear();
@@ -273,7 +279,7 @@ namespace Plugin
 			const bool have = std::ranges::any_of(gLive, [&w](const Live& v) {
 				return w.actor->GetFormID() == v.actor && w.left == v.left && w.firstPerson == v.firstPerson;
 			});
-			if (have || std::ranges::any_of(gFailed, [&w](const Failed& f) { return f.Is(w); })) {
+			if (have || std::ranges::any_of(gFailed, [&w](const Failed& f) { return f.Is(w) && gUpdate < f.retryAt; })) {
 				continue;
 			}
 			if (gLive.size() >= kMaxLive) {
@@ -289,11 +295,16 @@ namespace Plugin
 			RE::NiPointLight* light = nullptr;
 			auto*             bs = MakeHeldLight(*w.held, fade, reach, w.node, scene, light);
 			if (!bs) {
-				SKSE::log::warn("[HELD] {}: the light could not be made or registered; not tried again until that hand's weapon changes",
-					w.held->key);
-				gFailed.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held });
+				if (const auto failed = std::ranges::find_if(gFailed, [&w](const Failed& f) { return f.Is(w); }); failed != gFailed.end()) {
+					failed->retryAt = gUpdate + kRetryUpdates;
+				} else {
+					SKSE::log::warn("[HELD] {}: the light could not be made or registered; tried again every {} updates while that hand wants it",
+						w.held->key, kRetryUpdates);
+					gFailed.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held, gUpdate + kRetryUpdates });
+				}
 				continue;
 			}
+			std::erase_if(gFailed, [&w](const Failed& f) { return f.Is(w); });  // made at last: a later failure warns again
 			gLive.push_back({ w.actor->GetFormID(), w.left, w.firstPerson, w.held, RE::NiPointer<RE::NiNode>(w.node),
 				RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), fade, reach });
 			if (gTold < 16) {

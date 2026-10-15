@@ -80,7 +80,8 @@ namespace Plugin
 				hex.remove_prefix(2);
 			}
 			std::uint32_t local = 0;
-			if (std::from_chars(hex.data(), hex.data() + hex.size(), local, 16).ec != std::errc{}) {
+			if (const auto parsed = std::from_chars(hex.data(), hex.data() + hex.size(), local, 16);
+				parsed.ec != std::errc{} || parsed.ptr != hex.data() + hex.size()) {  // the whole text is the number (2.2's CodeRabbit round)
 				return 0;
 			}
 			auto* dh = RE::TESDataHandler::GetSingleton();

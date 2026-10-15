@@ -122,7 +122,9 @@ namespace Fade::Items
 			const auto    hex = a_key.substr(bar + 1);
 			std::uint32_t local = 0;
 			const auto    digits = hex.starts_with("0x") || hex.starts_with("0X") ? hex.substr(2) : hex;
-			if (std::from_chars(digits.data(), digits.data() + digits.size(), local, 16).ec != std::errc{}) {
+			// the whole text must be the number, or "0x12junk" names form 0x12 (2.2's CodeRabbit round)
+			const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), local, 16);
+			if (parsed.ec != std::errc{} || parsed.ptr != digits.data() + digits.size()) {
 				return 0;
 			}
 			auto*       dh = RE::TESDataHandler::GetSingleton();
