@@ -541,8 +541,8 @@ namespace Fade
 		// charge; three sizes, because the loader reads only the top mip (no mip maps), so a sheet squeezed far below its own
 		// size shimmers as the gem turns - the one nearest the drawn size is used (the gem's cell is drawn ~45 px tall at
 		// 1080p, ~60 at 1440p, ~90 at 4K at Gem size 100 %, up to ~225). BC7, ~0.9 MB in all, loaded on the render thread (the
-		// HUD callback, as Arcane Overdrive's bar sheets) the first time a gem shows - tried again a few times when nothing
-		// loaded. Missing or wrong-sized sheets: the drawn gem below. The constants below are measured off the renders; the
+		// HUD callback, as Arcane Overdrive's bar sheets) the first time a gem shows - a sheet that did not load is tried again
+		// a few times. Missing or wrong-sized sheets: the drawn gem below. The constants below are measured off the renders; the
 		// sheet tool refuses renders that no longer match kBody.
 		struct GemArt
 		{
@@ -566,24 +566,28 @@ namespace Fade
 			struct Sheets
 			{
 				ImGuiMCP::ImTextureID empty{ nullptr }, charge{ nullptr };
+				bool                  refused{ false };  // a sheet came back at another size: a wrong install, never tried again
 				[[nodiscard]] bool    Ready() const noexcept { return empty && charge; }
+				[[nodiscard]] bool    Missing() const noexcept { return !Ready() && !refused; }
 			};
 			std::array<Sheets, kSizes.size()> sheets{};
 
-			[[nodiscard]] int Ready() const noexcept
+			[[nodiscard]] int ReadySizes() const noexcept
 			{
 				return static_cast<int>(std::count_if(sheets.begin(), sheets.end(), [](const Sheets& a_s) { return a_s.Ready(); }));
 			}
 
-			// the render thread only (the HUD callback): loads every sheet on the first call; while no size is ready (a loader
-			// not up yet, a file briefly locked) it tries again every kRetrySeconds, kTries times in all
+			// the render thread only (the HUD callback): loads every sheet on the first call; while a size is missing (a loader
+			// not up yet, a file briefly locked) its missing sheets are tried again every kRetrySeconds, kTries times in all -
+			// never a size whose sheet was refused for its size
 			[[nodiscard]] static const GemArt& Get(double a_now)
 			{
 				static GemArt art;
 				static int    attempts = 0;
 				static double nextTry = 0.0;
-				if (art.Ready() == 0 && attempts < kTries && (attempts == 0 || a_now >= nextTry)) {
-					art = Load(++attempts);
+				const bool    missing = std::any_of(art.sheets.begin(), art.sheets.end(), [](const Sheets& a_s) { return a_s.Missing(); });
+				if (missing && attempts < kTries && (attempts == 0 || a_now >= nextTry)) {
+					art.Load(++attempts);
 					nextTry = a_now + kRetrySeconds;
 				}
 				return art;
@@ -591,8 +595,9 @@ namespace Fade
 
 		private:
 			// SKSE Menu Framework's LoadTexture, asked for the size it read as well (the header's wrapper drops it). A size it
-			// reports that is not the sheet's own means another layout - not drawn, so no cell can come out misaligned.
-			[[nodiscard]] static ImGuiMCP::ImTextureID LoadSheet(const std::string& a_path, float a_w, float a_h)
+			// reports that is not the sheet's own means another layout - not drawn (a_refused set), so no cell can come out
+			// misaligned.
+			[[nodiscard]] static ImGuiMCP::ImTextureID LoadSheet(const std::string& a_path, float a_w, float a_h, bool& a_refused)
 			{
 				static const auto load = ::GetMenuFrameworkFunction<SKSEMenuFramework::Model::LoadTextureFuction>("LoadTexture");
 				if (!load) {
@@ -603,34 +608,51 @@ namespace Fade
 				if (tex && size.x > 0.0f && (std::lround(size.x) != std::lround(a_w) || std::lround(size.y) != std::lround(a_h))) {
 					SKSE::log::warn("HUD soul gem: {} is {}x{}, not {}x{} - not drawn", a_path, size.x, size.y, a_w, a_h);
 					SKSEMenuFramework::DisposeTexture(a_path);  // a refused sheet holds no video memory
+					a_refused = true;
 					return nullptr;
 				}
 				return tex;
 			}
 
-			[[nodiscard]] static GemArt Load(int a_attempt)
+			// loads only what is still missing (a sheet that loaded on an earlier try is kept, never loaded twice); a size with a
+			// refused sheet lets its other sheet go too, as it can never be drawn
+			void Load(int a_attempt)
 			{
-				GemArt            art;
 				const std::string dir = Mod::kHudArtDir;
-				int               ready = 0;
 				for (std::size_t i = 0; i < kSizes.size(); ++i) {
+					auto& sh = sheets[i];
+					if (!sh.Missing()) {
+						continue;
+					}
 					const auto& s = kSizes[i];
 					const float w = s.cellW * kCols, h = s.cellH * kRows;
-					art.sheets[i].empty = LoadSheet(dir + std::string(s.empty), w, h);
-					art.sheets[i].charge = LoadSheet(dir + std::string(s.charge), w, h);
-					ready += art.sheets[i].Ready() ? 1 : 0;
+					const auto  empty = dir + std::string(s.empty), charge = dir + std::string(s.charge);
+					if (!sh.empty) {
+						sh.empty = LoadSheet(empty, w, h, sh.refused);
+					}
+					if (!sh.charge) {
+						sh.charge = LoadSheet(charge, w, h, sh.refused);
+					}
+					if (sh.refused) {
+						if (sh.empty) {
+							SKSEMenuFramework::DisposeTexture(empty);
+						}
+						if (sh.charge) {
+							SKSEMenuFramework::DisposeTexture(charge);
+						}
+						sh.empty = sh.charge = nullptr;
+					}
 				}
+				const int ready = ReadySizes();
 				SKSE::log::info("HUD soul gem: {} of {} sheet sizes loaded from {} (try {} of {}){}", ready, kSizes.size(), dir, a_attempt, kTries,
 					ready ? "" : " - the drawn gem is used");
-				return art;
 			}
 		};
 
 		// draws one gem from the sheets: centre a_c, the gem's half height a_hh (as the drawn gem's), charge a_fill 0..1 in
 		// a_hue, opacity a_alpha, the clock a_now (seconds). False = no sheets, draw the old gem. The empty crystal above the
 		// charge level and the tinted lit crystal below it are two quads that meet at the level - never one over the other,
-		// so the charged part keeps the gem's opacity when the HUD's Gem opacity is below 100 % (only the turn's cross-fade
-		// lays the next frame over this one, as far as the clock has moved toward it).
+		// so the charged part keeps the gem's opacity when the HUD's Gem opacity is below 100 %.
 		bool DrawGemArt(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_hh, float a_fill, ImGuiMCP::ImVec4 a_hue, float a_alpha, double a_now)
 		{
 			using namespace ImGuiMCP;
@@ -681,11 +703,16 @@ namespace Fade
 				}
 			};
 			// the turn cross-faded: this frame, then the next one over it as far as the clock has moved toward it - a smooth
-			// turn instead of a jump kFps times a second
-			drawFrame(frame, a_alpha);
-			if (blend > 0.01f) {
-				drawFrame((frame + 1) % GemArt::kFrames, a_alpha * blend);
+			// turn instead of a jump kFps times a second. Two layers blended one over the other would cover more than a_alpha
+			// (an 8 Hz flicker below 100 % opacity), so this frame is drawn at a(1-b)/(1-ab) under the next at ab: together
+			// exactly a_alpha over the gem's solid body (93 % of its texels), a little more only on its anti-aliased rim.
+			if (blend <= 0.01f) {
+				drawFrame(frame, a_alpha);
+				return true;
 			}
+			const float over = a_alpha * blend;
+			drawFrame(frame, over < 0.9999f ? a_alpha * (1.0f - blend) / (1.0f - over) : a_alpha);
+			drawFrame((frame + 1) % GemArt::kFrames, over);
 			return true;
 		}
 
