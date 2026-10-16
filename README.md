@@ -2,40 +2,31 @@
 
 Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `LICENSE`.
 
-Ships with RELight - Spell Addon and is required by it.
+The plugin of RELight - Spell Addon; it ships with the mod and is required by it. RE::Light does the lighting; this
+plugin adds what RE::Light cannot do from a config.
 
-- **Brightness** and **Reach** - sliders for this mod's lights only.
-- **A switch for each option you installed** - untick one and its lights go out; mod patches have
-  their own page, by category and author.
-- **Sprays, breath shouts and beams** - RE::Light lights them; the sliders and switches reach their lights too.
-- **Held weapon lights** - a staff or weapon this mod lights on the ground carries its light in your hand while it is drawn,
-  which RE::Light only does for an enchantment.
-- **VAER Reborn's swirls kept** - with VAER Reborn and its option installed, every effect VAER dresses gets VAER's swirl
-  back when a later plugin (Thaumaturgy, Artificer) replaced it, and Thaumaturgy's own Fear, Paralyze, Turn Undead,
-  Banish, Silent Moons and second Absorb effects wear VAER's swirl too.
-- **Hand lights** - a light on your hands while you cast, made in memory, with Dynamic Lighting. No plugin, no script.
-  On by default. Spells from mods with no patch get one too, in the color of their own light or their element.
-- **Community Shaders, ENB and Vanilla found by themselves** - nothing to pick. Off Community Shaders the hand lights are
-  drawn for the game's own lighting and light the ground too.
-- **Wards** - one dome per ward, and a ward color (Vanilla blue or White). All of it stands aside when Dynamic Wards is
-  installed.
-- **FleshFX** - with FleshFX installed, the flesh spells' lights take the color of its skins.
-- **Lights off while sneaking** - every spell light, off by default.
-- **Fading lights** - weapon, staff and bound weapon lights follow their charge, a spell's hand light your magicka
-  (rule files in `SKSE\Plugins\RelightSpellAddon\Fading`).
-- **Lights by Item** - search any spell, staff or weapon and switch its light off or give it a color of its own.
-- **HUD** - hide the enchantment charge bar, a charge gem per weapon hand, and a spell reticle that drains with your magicka.
-- **Presets, dim in daylight, and hand lights for (a budget for big fights)**.
+## What it does
+- **Hand lights** - a light on your hands while you cast, made in memory, with Dynamic Lighting. Spells from mods with no
+  patch get one too, in the color of their own light or their element.
+- **Held weapon lights** - a staff or weapon this mod lights on the ground carries its light in your hand while drawn
+  (made the way ReLight by Truman makes its lights, with his permission).
+- **Sprays and bolts lit along their length** - each wears a raised copy of its own light record.
+- **The lighting is detected automatically** (Community Shaders, ENB or Vanilla) - off Community Shaders the hand lights
+  are drawn for the game's own lighting and light the ground too.
+- A switch for every installed option and patch, Brightness and Reach, presets, Lights by Item, Fading, the HUD (reticle
+  and charge gems), lights off while sneaking, dim in daylight, a budget for big fights, wards (stepping aside for
+  Dynamic Wards), FleshFX colors and VAER Reborn's swirls kept.
 
-Every change applies at once, even to a spell you are holding. Settings are in SKSE Menu Framework's Mod Control
-Panel and are saved to `SKSE\Plugins\RelightSpellAddon.ini`. Values the menu does not show are in
-`SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced Settings.ini`, written with every value and a note the
-first time the game starts.
+## Settings
+SKSE Menu Framework > RELight - Spell Addon, saved to `SKSE\Plugins\RelightSpellAddon.ini`. Values the menu does not
+show are in `SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced Settings.ini`. Every change applies at once.
+The charge gems' pre-rendered art is `HUD/*.dds`, installed to `SKSE\Plugins\RelightSpellAddon\HUD\` (without it the
+plugin draws a plain gem).
 
-The held weapon lights are made the way ReLight by Truman makes its lights, with his permission.
+## Requires
+SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD).
 
-Needs SKSE and RE::Light. Without SKSE Menu Framework there is no menu and the settings file still applies.
-
+## Third-party files
 `src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from
 [SKSE-Menu-Framework-3-Example](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-Example), MIT licensed
 (see `src/SKSEMenuFramework.LICENSE.txt`).

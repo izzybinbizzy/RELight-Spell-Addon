@@ -447,20 +447,35 @@ namespace Fade
 		// a gem's outline (RenderHud, below)
 		using GemPoints = std::array<ImGuiMCP::ImVec2, 6>;
 
-		// the part of a convex gem outline below the height `a_y` (the filled part), as a convex polygon
-		std::vector<ImGuiMCP::ImVec2> Below(const GemPoints& a_gem, float a_y)
+		// the part of a convex gem outline below the height `a_y` (the filled part), as a convex polygon. A straight cut keeps
+		// some corners and adds two crossings, so the part has at most one point more than the outline - a fixed array (with
+		// room to spare), no allocation per frame.
+		struct GemPart
 		{
-			std::vector<ImGuiMCP::ImVec2> out;
+			std::array<ImGuiMCP::ImVec2, std::tuple_size_v<GemPoints> + 2> points{};
+			int                                                            count{ 0 };
+
+			void Add(ImGuiMCP::ImVec2 a_p) noexcept
+			{
+				if (count < static_cast<int>(points.size())) {
+					points[static_cast<std::size_t>(count++)] = a_p;
+				}
+			}
+		};
+
+		[[nodiscard]] GemPart Below(const GemPoints& a_gem, float a_y) noexcept
+		{
+			GemPart out;
 			for (std::size_t i = 0; i < a_gem.size(); ++i) {
 				const auto& p = a_gem[i];
 				const auto& q = a_gem[(i + 1) % a_gem.size()];
 				const bool  pIn = p.y >= a_y, qIn = q.y >= a_y;
 				if (pIn) {
-					out.push_back(p);
+					out.Add(p);
 				}
-				if (pIn != qIn) {
+				if (pIn != qIn) {  // p.y != q.y here, so the division is safe
 					const float t = (a_y - p.y) / (q.y - p.y);
-					out.push_back(ImGuiMCP::ImVec2{ p.x + (q.x - p.x) * t, a_y });
+					out.Add(ImGuiMCP::ImVec2{ p.x + (q.x - p.x) * t, a_y });
 				}
 			}
 			return out;
@@ -518,6 +533,189 @@ namespace Fade
 			return ui && ui->GameIsPaused();
 		}
 
+		// THE 3D SOUL GEM (his order: "I want a blender made 3d soul gem in super high detail (but optimized well so as to not
+		// cause performance issues while retaining clarity) for the hud"). Pre-rendered in Blender by the mod's own render and
+		// sheet tools (not part of this repository): a cut crystal turning about its long axis,
+		// kFrames pictures over one symmetry step (45 degrees) so the loop never jumps, in a kCols x kRows sheet; two looks - the
+		// dark empty crystal and the same crystal lit from inside in white, tinted here and shown from the bottom up to the
+		// charge; three sizes, because the loader reads only the top mip (no mip maps), so a sheet squeezed far below its own
+		// size shimmers as the gem turns - the one nearest the drawn size is used (the gem's cell is drawn ~45 px tall at
+		// 1080p, ~60 at 1440p, ~90 at 4K at Gem size 100 %, up to ~225). BC7, ~0.9 MB in all, loaded on the render thread (the
+		// HUD callback, as Arcane Overdrive's bar sheets) the first time a gem shows - a sheet that did not load is tried again
+		// a few times. Missing or wrong-sized sheets: the drawn gem below. The constants below are measured off the renders; the
+		// sheet tool refuses renders that no longer match kBody.
+		struct GemArt
+		{
+			static constexpr int    kFrames = 12, kCols = 4, kRows = 3;
+			static constexpr float  kFps = 8.0f;  // one 45-degree step in 1.5 s: a slow turn (neighbouring frames cross-faded)
+			static constexpr int    kTries = 5;   // loads tried while no sheet size is ready
+			static constexpr double kRetrySeconds = 10.0;
+			static constexpr float  kBody = 490.0f / 560.0f;  // the gem's height in its cell, measured off the renders (the round cut)
+			static constexpr float  kAspect = 4.0f / 7.0f;    // a cell's width over its height
+			static constexpr float  kStretch = 1.15f;         // a sheet may be drawn up to 15 % above its own size before the next one is used
+
+			struct Size
+			{
+				std::string_view empty, charge;
+				float            cellW, cellH;  // in texels; the sheet is kCols x kRows cells
+			};
+			static constexpr std::array<Size, 3> kSizes{ { { "Soul Gem Empty Small.dds", "Soul Gem Charge Small.dds", 32.0f, 56.0f },
+				{ "Soul Gem Empty Medium.dds", "Soul Gem Charge Medium.dds", 64.0f, 112.0f },
+				{ "Soul Gem Empty Large.dds", "Soul Gem Charge Large.dds", 128.0f, 224.0f } } };  // smallest first
+
+			struct Sheets
+			{
+				ImGuiMCP::ImTextureID empty{ nullptr }, charge{ nullptr };
+				bool                  refused{ false };  // a sheet came back at another size: a wrong install, never tried again
+				[[nodiscard]] bool    Ready() const noexcept { return empty && charge; }
+				[[nodiscard]] bool    Missing() const noexcept { return !Ready() && !refused; }
+			};
+			std::array<Sheets, kSizes.size()> sheets{};
+
+			[[nodiscard]] int ReadySizes() const noexcept
+			{
+				return static_cast<int>(std::count_if(sheets.begin(), sheets.end(), [](const Sheets& a_s) { return a_s.Ready(); }));
+			}
+
+			// the render thread only (the HUD callback): loads every sheet on the first call; while a size is missing (a loader
+			// not up yet, a file briefly locked) its missing sheets are tried again every kRetrySeconds, kTries times in all -
+			// never a size whose sheet was refused for its size
+			[[nodiscard]] static const GemArt& Get(double a_now)
+			{
+				static GemArt art;
+				static int    attempts = 0;
+				static double nextTry = 0.0;
+				const bool    missing = std::any_of(art.sheets.begin(), art.sheets.end(), [](const Sheets& a_s) { return a_s.Missing(); });
+				if (missing && attempts < kTries && (attempts == 0 || a_now >= nextTry)) {
+					art.Load(++attempts);
+					nextTry = a_now + kRetrySeconds;
+				}
+				return art;
+			}
+
+		private:
+			// SKSE Menu Framework's LoadTexture, asked for the size it read as well (the header's wrapper drops it). A size it
+			// reports that is not the sheet's own means another layout - not drawn (a_refused set), so no cell can come out
+			// misaligned.
+			[[nodiscard]] static ImGuiMCP::ImTextureID LoadSheet(const std::string& a_path, float a_w, float a_h, bool& a_refused)
+			{
+				static const auto load = ::GetMenuFrameworkFunction<SKSEMenuFramework::Model::LoadTextureFuction>("LoadTexture");
+				if (!load) {
+					return nullptr;
+				}
+				ImGuiMCP::ImVec2 size{ 0.0f, 0.0f };
+				auto* const      tex = load(a_path.c_str(), &size);
+				if (tex && size.x > 0.0f && (std::lround(size.x) != std::lround(a_w) || std::lround(size.y) != std::lround(a_h))) {
+					SKSE::log::warn("HUD soul gem: {} is {}x{}, not {}x{} - not drawn", a_path, size.x, size.y, a_w, a_h);
+					SKSEMenuFramework::DisposeTexture(a_path);  // a refused sheet holds no video memory
+					a_refused = true;
+					return nullptr;
+				}
+				return tex;
+			}
+
+			// loads only what is still missing (a sheet that loaded on an earlier try is kept, never loaded twice); a size with a
+			// refused sheet lets its other sheet go too, as it can never be drawn
+			void Load(int a_attempt)
+			{
+				const std::string dir = Mod::kHudArtDir;
+				for (std::size_t i = 0; i < kSizes.size(); ++i) {
+					auto& sh = sheets[i];
+					if (!sh.Missing()) {
+						continue;
+					}
+					const auto& s = kSizes[i];
+					const float w = s.cellW * kCols, h = s.cellH * kRows;
+					const auto  empty = dir + std::string(s.empty), charge = dir + std::string(s.charge);
+					if (!sh.empty) {
+						sh.empty = LoadSheet(empty, w, h, sh.refused);
+					}
+					if (!sh.charge) {
+						sh.charge = LoadSheet(charge, w, h, sh.refused);
+					}
+					if (sh.refused) {
+						if (sh.empty) {
+							SKSEMenuFramework::DisposeTexture(empty);
+						}
+						if (sh.charge) {
+							SKSEMenuFramework::DisposeTexture(charge);
+						}
+						sh.empty = sh.charge = nullptr;
+					}
+				}
+				const int ready = ReadySizes();
+				SKSE::log::info("HUD soul gem: {} of {} sheet sizes loaded from {} (try {} of {}){}", ready, kSizes.size(), dir, a_attempt, kTries,
+					ready ? "" : " - the drawn gem is used");
+			}
+		};
+
+		// draws one gem from the sheets: centre a_c, the gem's half height a_hh (as the drawn gem's), charge a_fill 0..1 in
+		// a_hue, opacity a_alpha, the clock a_now (seconds). False = no sheets, draw the old gem. The empty crystal above the
+		// charge level and the tinted lit crystal below it are two quads that meet at the level - never one over the other,
+		// so the charged part keeps the gem's opacity when the HUD's Gem opacity is below 100 %.
+		bool DrawGemArt(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_hh, float a_fill, ImGuiMCP::ImVec4 a_hue, float a_alpha, double a_now)
+		{
+			using namespace ImGuiMCP;
+			const auto& art = GemArt::Get(a_now);
+			const float h = 2.0f * a_hh / GemArt::kBody;  // the cell's drawn height
+			if (!std::isfinite(h) || h <= 0.0f) {
+				return false;
+			}
+			// the smallest loaded size that is not stretched more than kStretch, else the largest loaded one
+			std::size_t pick = GemArt::kSizes.size();
+			for (std::size_t i = 0; i < GemArt::kSizes.size(); ++i) {
+				if (art.sheets[i].Ready()) {
+					pick = i;
+					if (GemArt::kSizes[i].cellH * GemArt::kStretch >= h) {
+						break;
+					}
+				}
+			}
+			if (pick == GemArt::kSizes.size()) {
+				return false;
+			}
+			const auto&  sheet = art.sheets[pick];
+			const auto&  size = GemArt::kSizes[pick];
+			const double turns = std::isfinite(a_now) ? std::fmod(std::max(a_now, 0.0) * GemArt::kFps, static_cast<double>(GemArt::kFrames)) : 0.0;
+			const int    frame = std::clamp(static_cast<int>(turns), 0, GemArt::kFrames - 1);
+			const float  blend = std::clamp(static_cast<float>(turns - static_cast<double>(frame)), 0.0f, 1.0f);  // toward the next frame
+			const float  tw = size.cellW * GemArt::kCols, th = size.cellH * GemArt::kRows;                        // the sheet in texels
+			const float  w = h * GemArt::kAspect;
+			const ImVec2 lo{ a_c.x - w * 0.5f, a_c.y - h * 0.5f }, hi{ a_c.x + w * 0.5f, a_c.y + h * 0.5f };
+			// the charge level: the gem itself spans a_c.y +- a_hh, full at its top tip, empty at its bottom tip
+			const float fill = std::isfinite(a_fill) ? std::clamp(a_fill, 0.0f, 1.0f) : 0.0f;
+			const float level = std::clamp(a_c.y + a_hh - 2.0f * a_hh * fill, lo.y, hi.y);
+			const float cut = (level - lo.y) / h;  // the level's place in the cell, 0..1 from the top
+			// one frame: the empty crystal above the level, the tinted lit one below it (a half-texel inset, so the bilinear
+			// filter never reaches into the next cell)
+			const auto drawFrame = [&](int a_frame, float a_opacity) {
+				const float col = static_cast<float>(a_frame % GemArt::kCols), row = static_cast<float>(a_frame / GemArt::kCols);
+				const float u0 = (col * size.cellW + 0.5f) / tw, u1 = ((col + 1.0f) * size.cellW - 0.5f) / tw;
+				const float v0 = (row * size.cellH + 0.5f) / th, v1 = ((row + 1.0f) * size.cellH - 0.5f) / th;
+				const float vCut = v0 + (v1 - v0) * cut;
+				if (level > lo.y) {
+					ImDrawListManager::AddImage(a_dl, sheet.empty, lo, ImVec2{ hi.x, level }, ImVec2{ u0, v0 }, ImVec2{ u1, vCut },
+						ColorConvertFloat4ToU32(ImVec4{ 1.0f, 1.0f, 1.0f, a_opacity }));
+				}
+				if (level < hi.y) {
+					ImDrawListManager::AddImage(a_dl, sheet.charge, ImVec2{ lo.x, level }, hi, ImVec2{ u0, vCut }, ImVec2{ u1, v1 },
+						ColorConvertFloat4ToU32(ImVec4{ a_hue.x, a_hue.y, a_hue.z, a_opacity }));
+				}
+			};
+			// the turn cross-faded: this frame, then the next one over it as far as the clock has moved toward it - a smooth
+			// turn instead of a jump kFps times a second. Two layers blended one over the other would cover more than a_alpha
+			// (an 8 Hz flicker below 100 % opacity), so this frame is drawn at a(1-b)/(1-ab) under the next at ab: together
+			// exactly a_alpha over the gem's solid body (93 % of its texels), a little more only on its anti-aliased rim.
+			if (blend <= 0.01f) {
+				drawFrame(frame, a_alpha);
+				return true;
+			}
+			const float over = a_alpha * blend;
+			drawFrame(frame, over < 0.9999f ? a_alpha * (1.0f - blend) / (1.0f - over) : a_alpha);
+			drawFrame((frame + 1) % GemArt::kFrames, over);
+			return true;
+		}
+
 		// THE HUD GEMS (his word: each hand has its own cut soul gem on its own side of the health bar). 🔁 HIS WORD
 		// "the enchantment gems should not work for spells and only show when the weapon enchantment is dropping"
 		// and "remove the circle surrounding the soul gem widgets" - a gem is a WEAPON hand's (soul-gem violet for an
@@ -542,7 +740,7 @@ namespace Fade
 						continue;  // a spell's magicka is the reticle's; a full weapon shows nothing
 					}
 					here[i] = true;
-					fill[i] = std::clamp(h.fraction, 0.0f, 1.0f);
+					fill[i] = std::isfinite(h.fraction) ? std::clamp(h.fraction, 0.0f, 1.0f) : 0.0f;
 					tint[i] = h.bound ? ImVec4{ 0.62f, 0.84f, 1.0f, 1.0f } : ImVec4{ 0.72f, 0.46f, 1.0f, 1.0f };
 				}
 			}
@@ -566,30 +764,32 @@ namespace Fade
 				if (shown[i] <= 0.0f) {
 					continue;
 				}
-				const float     a = shown[i] * std::clamp(hud.gemOpacity, 0.1f, 1.0f);
-				const auto      col = [a](float r, float g, float b, float o) { return ColorConvertFloat4ToU32(ImVec4{ r, g, b, o * a }); };
-				const float     f = fill[i];
-				const auto      hue = f < hud.low ? ImVec4{ 1.0f, 0.42f, 0.18f, 1.0f } : tint[i];
-				const ImVec2    c{ cx + (i == 0 ? -1.0f : 1.0f) * Tuning::Get(Tuning::gGemDistance) * screen, y };
-				const GemPoints gem{ ImVec2{ c.x, c.y - hh }, ImVec2{ c.x + hw, c.y - sh }, ImVec2{ c.x + hw, c.y + sh },
-					ImVec2{ c.x, c.y + hh }, ImVec2{ c.x - hw, c.y + sh }, ImVec2{ c.x - hw, c.y - sh } };
-				// the dark empty gem, then what is left of the charge, filled up from the bottom
-				ImDrawListManager::AddConvexPolyFilled(dl, gem.data(), static_cast<int>(gem.size()), col(0.05f, 0.04f, 0.06f, 0.85f));
-				const float level = c.y + hh - 2.0f * hh * f;
-				if (f > 0.0f) {
-					const auto part = Below(gem, level);
-					if (part.size() >= 3) {
-						ImDrawListManager::AddConvexPolyFilled(dl, part.data(), static_cast<int>(part.size()), col(hue.x, hue.y, hue.z, 0.85f));
+				const float  a = shown[i] * std::clamp(hud.gemOpacity, 0.1f, 1.0f);
+				const auto   col = [a](float r, float g, float b, float o) { return ColorConvertFloat4ToU32(ImVec4{ r, g, b, o * a }); };
+				const float  f = fill[i];
+				const auto   hue = f < hud.low ? ImVec4{ 1.0f, 0.42f, 0.18f, 1.0f } : tint[i];
+				const ImVec2 c{ cx + (i == 0 ? -1.0f : 1.0f) * Tuning::Get(Tuning::gGemDistance) * screen, y };
+				if (!DrawGemArt(dl, c, hh, f, hue, a, GetTime())) {
+					const GemPoints gem{ ImVec2{ c.x, c.y - hh }, ImVec2{ c.x + hw, c.y - sh }, ImVec2{ c.x + hw, c.y + sh },
+						ImVec2{ c.x, c.y + hh }, ImVec2{ c.x - hw, c.y + sh }, ImVec2{ c.x - hw, c.y - sh } };
+					// no sheets: the dark empty gem, then what is left of the charge, filled up from the bottom
+					ImDrawListManager::AddConvexPolyFilled(dl, gem.data(), static_cast<int>(gem.size()), col(0.05f, 0.04f, 0.06f, 0.85f));
+					const float level = c.y + hh - 2.0f * hh * f;
+					if (f > 0.0f) {
+						const auto part = Below(gem, level);
+						if (part.count >= 3) {
+							ImDrawListManager::AddConvexPolyFilled(dl, part.points.data(), part.count, col(hue.x, hue.y, hue.z, 0.85f));
+						}
 					}
+					// the facets: the girdle and the lines from the tips, faint; the outline in bone
+					const ImU32 facet = col(1.0f, 1.0f, 1.0f, 0.22f);
+					ImDrawListManager::AddLine(dl, gem[5], gem[1], facet, 1.0f);
+					ImDrawListManager::AddLine(dl, gem[4], gem[2], facet, 1.0f);
+					ImDrawListManager::AddLine(dl, gem[0], ImVec2{ c.x, c.y - sh }, facet, 1.0f);
+					ImDrawListManager::AddLine(dl, gem[3], ImVec2{ c.x, c.y + sh }, facet, 1.0f);
+					ImDrawListManager::AddPolyline(dl, gem.data(), static_cast<int>(gem.size()), col(0.90f, 0.85f, 0.74f, 0.95f), ImDrawFlags_Closed,
+						std::max(1.0f, 1.5f * k));
 				}
-				// the facets: the girdle and the lines from the tips, faint; the outline in bone
-				const ImU32 facet = col(1.0f, 1.0f, 1.0f, 0.22f);
-				ImDrawListManager::AddLine(dl, gem[5], gem[1], facet, 1.0f);
-				ImDrawListManager::AddLine(dl, gem[4], gem[2], facet, 1.0f);
-				ImDrawListManager::AddLine(dl, gem[0], ImVec2{ c.x, c.y - sh }, facet, 1.0f);
-				ImDrawListManager::AddLine(dl, gem[3], ImVec2{ c.x, c.y + sh }, facet, 1.0f);
-				ImDrawListManager::AddPolyline(dl, gem.data(), static_cast<int>(gem.size()), col(0.90f, 0.85f, 0.74f, 0.95f), ImDrawFlags_Closed,
-					std::max(1.0f, 1.5f * k));
 				if (!hud.gemPercent) {
 					continue;
 				}
