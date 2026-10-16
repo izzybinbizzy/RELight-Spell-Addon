@@ -150,6 +150,9 @@ namespace Fade
 				if (!done) {
 					return DevBenchGlue::NotRunYet();
 				}
+				if (DevBenchGlue::Refused(*done)) {
+					return *done;  // nothing could be queued - the rules were not read again
+				}
 				(*done)["ok"] = true;
 				return *done;
 			}
