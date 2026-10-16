@@ -11,15 +11,17 @@ plugin adds what RE::Light cannot do from a config.
 - **Held weapon lights** - a staff or weapon this mod lights on the ground carries its light in your hand while drawn
   (made the way ReLight by Truman makes its lights, with his permission).
 - **Sprays and bolts lit along their length** - each wears a raised copy of its own light record.
-- **Community Shaders, ENB and Vanilla found by themselves** - off Community Shaders the hand lights are drawn for the
-  game's own lighting and light the ground too.
+- **The lighting is detected automatically** (Community Shaders, ENB or Vanilla) - off Community Shaders the hand lights
+  are drawn for the game's own lighting and light the ground too.
 - A switch for every installed option and patch, Brightness and Reach, presets, Lights by Item, Fading, the HUD (reticle
   and charge gems), lights off while sneaking, dim in daylight, a budget for big fights, wards (stepping aside for
   Dynamic Wards), FleshFX colors and VAER Reborn's swirls kept.
 
 ## Settings
 SKSE Menu Framework > RELight - Spell Addon, saved to `SKSE\Plugins\RelightSpellAddon.ini`. Values the menu does not
-show are in `RELight - Spell Addon - Advanced Settings.ini`. Every change applies at once.
+show are in `SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced Settings.ini`. Every change applies at once.
+The charge gems' pre-rendered art is `HUD/*.dds`, installed to `SKSE\Plugins\RelightSpellAddon\HUD\` (without it the
+plugin draws a plain gem).
 
 ## Requires
 SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD).
