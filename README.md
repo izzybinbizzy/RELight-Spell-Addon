@@ -22,7 +22,7 @@ SKSE Menu Framework > RELight - Spell Addon, saved to `SKSE\Plugins\RelightSpell
 show are in `RELight - Spell Addon - Advanced Settings.ini`. Every change applies at once.
 
 ## Requires
-SKSE, Address Library for SKSE Plugins and RE::Light; SKSE Menu Framework for the menu.
+SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD).
 
 ## Third-party files
 `src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from

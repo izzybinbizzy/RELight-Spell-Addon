@@ -533,22 +533,26 @@ namespace Fade
 			return ui && ui->GameIsPaused();
 		}
 
-		// THE 3D SOUL GEM (his order 2026-10-15 ~23:45: "I want a blender made 3d soul gem in super high detail (but optimized
-		// well so as to not cause performance issues while retaining clarity) for the hud"). Pre-rendered in Blender
-		// (`Misc\Build work\soul gem hud 2026-10-16\render gem.py` + `gem sheets.py`): a cut crystal turning about its long axis,
+		// THE 3D SOUL GEM (his order: "I want a blender made 3d soul gem in super high detail (but optimized well so as to not
+		// cause performance issues while retaining clarity) for the hud"). Pre-rendered in Blender by the mod's own render and
+		// sheet tools (not part of this repository): a cut crystal turning about its long axis,
 		// kFrames pictures over one symmetry step (45 degrees) so the loop never jumps, in a kCols x kRows sheet; two looks - the
 		// dark empty crystal and the same crystal lit from inside in white, tinted here and shown from the bottom up to the
 		// charge; three sizes, because the loader reads only the top mip (no mip maps), so a sheet squeezed far below its own
 		// size shimmers as the gem turns - the one nearest the drawn size is used (the gem's cell is drawn ~45 px tall at
-		// 1080p, ~60 at 1440p, ~90 at 4K at Gem size 100 %, up to ~225). BC7, ~0.9 MB in all, each sheet loaded once on the
-		// render thread (the HUD callback, as Arcane Overdrive's bar sheets). Missing or wrong-sized sheets: the drawn gem below.
+		// 1080p, ~60 at 1440p, ~90 at 4K at Gem size 100 %, up to ~225). BC7, ~0.9 MB in all, loaded on the render thread (the
+		// HUD callback, as Arcane Overdrive's bar sheets) the first time a gem shows - tried again a few times when nothing
+		// loaded. Missing or wrong-sized sheets: the drawn gem below. The constants below are measured off the renders; the
+		// sheet tool refuses renders that no longer match kBody.
 		struct GemArt
 		{
-			static constexpr int   kFrames = 12, kCols = 4, kRows = 3;
-			static constexpr float kFps = 8.0f;              // one 45-degree step in 1.5 s: a slow turn
-			static constexpr float kBody = 490.0f / 560.0f;  // the gem's height in its cell, measured off the renders (the round cut)
-			static constexpr float kAspect = 4.0f / 7.0f;    // a cell's width over its height
-			static constexpr float kStretch = 1.15f;         // a sheet may be drawn up to 15 % above its own size before the next one is used
+			static constexpr int    kFrames = 12, kCols = 4, kRows = 3;
+			static constexpr float  kFps = 8.0f;  // one 45-degree step in 1.5 s: a slow turn (neighbouring frames cross-faded)
+			static constexpr int    kTries = 5;   // loads tried while no sheet size is ready
+			static constexpr double kRetrySeconds = 10.0;
+			static constexpr float  kBody = 490.0f / 560.0f;  // the gem's height in its cell, measured off the renders (the round cut)
+			static constexpr float  kAspect = 4.0f / 7.0f;    // a cell's width over its height
+			static constexpr float  kStretch = 1.15f;         // a sheet may be drawn up to 15 % above its own size before the next one is used
 
 			struct Size
 			{
@@ -566,10 +570,22 @@ namespace Fade
 			};
 			std::array<Sheets, kSizes.size()> sheets{};
 
-			// the render thread only (the HUD callback): loads every sheet on the first call
-			[[nodiscard]] static const GemArt& Get()
+			[[nodiscard]] int Ready() const noexcept
 			{
-				static const GemArt art = Load();
+				return static_cast<int>(std::count_if(sheets.begin(), sheets.end(), [](const Sheets& a_s) { return a_s.Ready(); }));
+			}
+
+			// the render thread only (the HUD callback): loads every sheet on the first call; while no size is ready (a loader
+			// not up yet, a file briefly locked) it tries again every kRetrySeconds, kTries times in all
+			[[nodiscard]] static const GemArt& Get(double a_now)
+			{
+				static GemArt art;
+				static int    attempts = 0;
+				static double nextTry = 0.0;
+				if (art.Ready() == 0 && attempts < kTries && (attempts == 0 || a_now >= nextTry)) {
+					art = Load(++attempts);
+					nextTry = a_now + kRetrySeconds;
+				}
 				return art;
 			}
 
@@ -586,12 +602,13 @@ namespace Fade
 				auto* const      tex = load(a_path.c_str(), &size);
 				if (tex && size.x > 0.0f && (std::lround(size.x) != std::lround(a_w) || std::lround(size.y) != std::lround(a_h))) {
 					SKSE::log::warn("HUD soul gem: {} is {}x{}, not {}x{} - not drawn", a_path, size.x, size.y, a_w, a_h);
+					SKSEMenuFramework::DisposeTexture(a_path);  // a refused sheet holds no video memory
 					return nullptr;
 				}
 				return tex;
 			}
 
-			[[nodiscard]] static GemArt Load()
+			[[nodiscard]] static GemArt Load(int a_attempt)
 			{
 				GemArt            art;
 				const std::string dir = Mod::kHudArtDir;
@@ -603,7 +620,8 @@ namespace Fade
 					art.sheets[i].charge = LoadSheet(dir + std::string(s.charge), w, h);
 					ready += art.sheets[i].Ready() ? 1 : 0;
 				}
-				SKSE::log::info("HUD soul gem: {} of {} sheet sizes loaded from {}{}", ready, kSizes.size(), dir, ready ? "" : " - the drawn gem is used");
+				SKSE::log::info("HUD soul gem: {} of {} sheet sizes loaded from {} (try {} of {}){}", ready, kSizes.size(), dir, a_attempt, kTries,
+					ready ? "" : " - the drawn gem is used");
 				return art;
 			}
 		};
@@ -611,11 +629,12 @@ namespace Fade
 		// draws one gem from the sheets: centre a_c, the gem's half height a_hh (as the drawn gem's), charge a_fill 0..1 in
 		// a_hue, opacity a_alpha, the clock a_now (seconds). False = no sheets, draw the old gem. The empty crystal above the
 		// charge level and the tinted lit crystal below it are two quads that meet at the level - never one over the other,
-		// so the gem keeps one opacity when the HUD's Gem opacity is below 100 %.
+		// so the charged part keeps the gem's opacity when the HUD's Gem opacity is below 100 % (only the turn's cross-fade
+		// lays the next frame over this one, as far as the clock has moved toward it).
 		bool DrawGemArt(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_hh, float a_fill, ImGuiMCP::ImVec4 a_hue, float a_alpha, double a_now)
 		{
 			using namespace ImGuiMCP;
-			const auto& art = GemArt::Get();
+			const auto& art = GemArt::Get(a_now);
 			const float h = 2.0f * a_hh / GemArt::kBody;  // the cell's drawn height
 			if (!std::isfinite(h) || h <= 0.0f) {
 				return false;
@@ -635,26 +654,37 @@ namespace Fade
 			}
 			const auto&  sheet = art.sheets[pick];
 			const auto&  size = GemArt::kSizes[pick];
-			const double turns = std::isfinite(a_now) ? std::max(a_now, 0.0) * GemArt::kFps : 0.0;
-			const int    frame = std::clamp(static_cast<int>(std::fmod(turns, static_cast<double>(GemArt::kFrames))), 0, GemArt::kFrames - 1);
-			const float  col = static_cast<float>(frame % GemArt::kCols), row = static_cast<float>(frame / GemArt::kCols);
-			const float  tw = size.cellW * GemArt::kCols, th = size.cellH * GemArt::kRows;  // the sheet in texels
-			// a half-texel inset, so the bilinear filter never reaches into the next cell
-			const float  u0 = (col * size.cellW + 0.5f) / tw, u1 = ((col + 1.0f) * size.cellW - 0.5f) / tw;
-			const float  v0 = (row * size.cellH + 0.5f) / th, v1 = ((row + 1.0f) * size.cellH - 0.5f) / th;
+			const double turns = std::isfinite(a_now) ? std::fmod(std::max(a_now, 0.0) * GemArt::kFps, static_cast<double>(GemArt::kFrames)) : 0.0;
+			const int    frame = std::clamp(static_cast<int>(turns), 0, GemArt::kFrames - 1);
+			const float  blend = std::clamp(static_cast<float>(turns - static_cast<double>(frame)), 0.0f, 1.0f);  // toward the next frame
+			const float  tw = size.cellW * GemArt::kCols, th = size.cellH * GemArt::kRows;                        // the sheet in texels
 			const float  w = h * GemArt::kAspect;
 			const ImVec2 lo{ a_c.x - w * 0.5f, a_c.y - h * 0.5f }, hi{ a_c.x + w * 0.5f, a_c.y + h * 0.5f };
 			// the charge level: the gem itself spans a_c.y +- a_hh, full at its top tip, empty at its bottom tip
 			const float fill = std::isfinite(a_fill) ? std::clamp(a_fill, 0.0f, 1.0f) : 0.0f;
 			const float level = std::clamp(a_c.y + a_hh - 2.0f * a_hh * fill, lo.y, hi.y);
-			const float vCut = v0 + (v1 - v0) * ((level - lo.y) / h);
-			if (level > lo.y) {
-				ImDrawListManager::AddImage(a_dl, sheet.empty, lo, ImVec2{ hi.x, level }, ImVec2{ u0, v0 }, ImVec2{ u1, vCut },
-					ColorConvertFloat4ToU32(ImVec4{ 1.0f, 1.0f, 1.0f, a_alpha }));
-			}
-			if (level < hi.y) {
-				ImDrawListManager::AddImage(a_dl, sheet.charge, ImVec2{ lo.x, level }, hi, ImVec2{ u0, vCut }, ImVec2{ u1, v1 },
-					ColorConvertFloat4ToU32(ImVec4{ a_hue.x, a_hue.y, a_hue.z, a_alpha }));
+			const float cut = (level - lo.y) / h;  // the level's place in the cell, 0..1 from the top
+			// one frame: the empty crystal above the level, the tinted lit one below it (a half-texel inset, so the bilinear
+			// filter never reaches into the next cell)
+			const auto drawFrame = [&](int a_frame, float a_opacity) {
+				const float col = static_cast<float>(a_frame % GemArt::kCols), row = static_cast<float>(a_frame / GemArt::kCols);
+				const float u0 = (col * size.cellW + 0.5f) / tw, u1 = ((col + 1.0f) * size.cellW - 0.5f) / tw;
+				const float v0 = (row * size.cellH + 0.5f) / th, v1 = ((row + 1.0f) * size.cellH - 0.5f) / th;
+				const float vCut = v0 + (v1 - v0) * cut;
+				if (level > lo.y) {
+					ImDrawListManager::AddImage(a_dl, sheet.empty, lo, ImVec2{ hi.x, level }, ImVec2{ u0, v0 }, ImVec2{ u1, vCut },
+						ColorConvertFloat4ToU32(ImVec4{ 1.0f, 1.0f, 1.0f, a_opacity }));
+				}
+				if (level < hi.y) {
+					ImDrawListManager::AddImage(a_dl, sheet.charge, ImVec2{ lo.x, level }, hi, ImVec2{ u0, vCut }, ImVec2{ u1, v1 },
+						ColorConvertFloat4ToU32(ImVec4{ a_hue.x, a_hue.y, a_hue.z, a_opacity }));
+				}
+			};
+			// the turn cross-faded: this frame, then the next one over it as far as the clock has moved toward it - a smooth
+			// turn instead of a jump kFps times a second
+			drawFrame(frame, a_alpha);
+			if (blend > 0.01f) {
+				drawFrame((frame + 1) % GemArt::kFrames, a_alpha * blend);
 			}
 			return true;
 		}
