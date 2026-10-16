@@ -32,6 +32,7 @@
 //   HudGemSize=100            percent, 50 to 200
 //   HudGemOpacity=90          percent, 10 to 100
 //   HudGemPercent=1           the percent under each gem
+//   HudGemFull=0              a gem for every enchanted or bound weapon in hand, full ones too (0: once its charge drops)
 //   Reticle=0                 the spell reticle beside the crosshair, draining with magicka (needs SKSE Menu Framework)
 //   ReticleStyle=0            0 a bar per hand beside the crosshair, 1 one bar under the crosshair
 //   ReticleSize=100           percent, 50 to 200
@@ -92,6 +93,7 @@ namespace Fade
 		float               hudGemSize{ 1.0f };
 		float               hudGemOpacity{ 0.9f };
 		bool                hudGemPercent{ true };  // the percent under each gem
+		bool                hudGemFull{ false };    // a gem at full charge too (his ask 2026-10-16); off: once the charge drops
 		bool                reticle{ false };       // FadeMenu.cpp's reticle: a bar per hand of the player beside the crosshair
 		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 the bar under the crosshair (his pick)
 		float               reticleSize{ 1.0f };
@@ -201,6 +203,7 @@ namespace Fade
 			{ "HudGemOpacity", [](const Settings& s) { return ToPct(s.hudGemOpacity); },
 				[](Settings& s, int v) { s.hudGemOpacity = Pct(v, 10, 100); } },
 			{ "HudGemPercent", [](const Settings& s) { return s.hudGemPercent ? 1 : 0; }, [](Settings& s, int v) { s.hudGemPercent = v != 0; } },
+			{ "HudGemFull", [](const Settings& s) { return s.hudGemFull ? 1 : 0; }, [](Settings& s, int v) { s.hudGemFull = v != 0; } },
 			{ "Reticle", [](const Settings& s) { return s.reticle ? 1 : 0; }, [](Settings& s, int v) { s.reticle = v != 0; } },
 			{ "ReticleStyle", [](const Settings& s) { return s.reticleStyle; }, [](Settings& s, int v) { s.reticleStyle = std::clamp(v, 0, 1); } },
 			{ "ReticleSize", [](const Settings& s) { return ToPct(s.reticleSize); }, [](Settings& s, int v) { s.reticleSize = Pct(v, 50, 200); } },

@@ -122,13 +122,16 @@ namespace Fade
 			Verdict              verdict{};
 			Reading              reading{};
 			// what the verdict was worked out for (it is kept until one of these changes)
-			bool              verdictKnown{ false };
-			const void*       verdictWeapon{ nullptr };
-			const void*       verdictEnch{ nullptr };
-			RE::FormID        verdictEnchID{ 0 };  // with the pointer: an enchantment freed and made again is another
-			std::uint32_t     verdictRules{ 0 };
-			Settings          verdictSettings{};
-			float             fraction{ 1.0f };
+			bool          verdictKnown{ false };
+			const void*   verdictWeapon{ nullptr };
+			const void*   verdictEnch{ nullptr };
+			RE::FormID    verdictEnchID{ 0 };  // with the pointer: an enchantment freed and made again is another
+			std::uint32_t verdictRules{ 0 };
+			Settings      verdictSettings{};
+			float         fraction{ 1.0f };
+			// what the HUD shows: the charge, magicka, the preview - or a bound weapon's time left over its WHOLE spell, while its
+			// light (fraction) holds full until the last seconds (Glow::BoundFraction)
+			float             hudFraction{ 1.0f };
 			std::vector<Root> effectRoots;  // enchantment effects' attach roots, from the reference-effect hooks
 			std::size_t       lights{ 0 }, roots{ 0 };
 			std::string       actorName;
@@ -514,6 +517,7 @@ namespace Fade
 				return;
 			}
 			h.fraction = a_previewOn ? Glow::Clamp01(a_previewFraction) : sp.fraction;
+			h.hudFraction = h.fraction;
 			if (a_previewToggled) {
 				h.glow.lastFraction = h.fraction;
 			}
@@ -600,6 +604,7 @@ namespace Fade
 			hud.gemSize = a_s.hudGemSize;
 			hud.gemOpacity = a_s.hudGemOpacity;
 			hud.gemPercent = a_s.hudGemPercent;
+			hud.gemFull = a_s.hudGemFull;
 			hud.low = a_s.tuning.sputterBelow;
 			// the reticle stays through the game's own pause before magicka comes back (his rule: it goes only when magicka
 			// "doesn't return like it does normally"); a mod may change the setting, so it is read each frame
@@ -627,7 +632,7 @@ namespace Fade
 						side.shown = true;
 						side.spell = h.spell;
 						side.bound = h.reading.bound;
-						side.fraction = Glow::Clamp01(h.fraction);
+						side.fraction = Glow::Clamp01(h.hudFraction);
 						if (h.spell) {
 							side.color = h.hudColor;
 							side.element = h.element;
@@ -733,6 +738,9 @@ namespace Fade
 				if (previewOn) {  // before a new weapon's reset, so the preview's charge is not taken as a hit or a refill
 					h.fraction = Glow::Clamp01(preview.fraction);
 				}
+				// the gem of a bound weapon counts its spell's whole time down (his report 2026-10-16: no gem on a bound sword
+				// with half its time gone - it read the light's fraction, full until the last seconds)
+				h.hudFraction = !previewOn && h.reading.bound && h.reading.max > 0.0f ? Glow::Clamp01(h.reading.current / h.reading.max) : h.fraction;
 				if (previewToggled) {
 					h.glow.lastFraction = h.fraction;  // the preview going on or off is not a hit or a refill either
 				}

@@ -17,14 +17,14 @@ plugin adds what RE::Light cannot do from a config.
   and charge gems), lights off while sneaking, dim in daylight, a budget for big fights, wards (stepping aside for
   Dynamic Wards), FleshFX colors and VAER Reborn's swirls kept.
 
-## Settings
-SKSE Menu Framework > RELight - Spell Addon, saved to `SKSE\Plugins\RelightSpellAddon.ini`. Values the menu does not
-show are in `SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced Settings.ini`. Every change applies at once.
-The charge gems' pre-rendered art is `HUD/*.dds`, installed to `SKSE\Plugins\RelightSpellAddon\HUD\` (without it the
-plugin draws a plain gem).
-
 ## Requires
 SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD).
+
+## Settings
+SKSE Menu Framework > RELight - Spell Addon, saved to `Data\SKSE\Plugins\RelightSpellAddon.ini`; menu changes apply at
+once. Values the menu does not show are in `Data\SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced
+Settings.ini`, read when the game starts. The charge gems' pre-rendered art is `HUD/*.dds`, installed to
+`Data\SKSE\Plugins\RelightSpellAddon\HUD\` (without it the plugin draws a plain gem).
 
 ## Third-party files
 `src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from

@@ -183,6 +183,7 @@ namespace Fade
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
+		bool                   gemFull{ false };   // a gem at full charge too (the HUD page's Show at full charge)
 		float                  low{ 0.15f };       // the sputter point: under it the reticle turns ember
 		float                  regenWait{ 3.0f };  // the game's fMagickaRegenDelay: how long magicka normally waits before it comes back
 		std::array<HudHand, 2> hands{};
