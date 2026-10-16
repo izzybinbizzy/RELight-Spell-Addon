@@ -18,4 +18,5 @@ namespace Fade::Mod
 	inline constexpr const char* kRulesDirText = "Data\\SKSE\\Plugins\\RelightSpellAddon\\Fading";                                     // the same, as a player reads it
 	inline constexpr const char* kItemsPath = "Data/SKSE/Plugins/RelightSpellAddon/Lights by Item.ini";                                // FadeItems.cpp (his order)
 	inline constexpr const char* kAdvancedPath = "Data/SKSE/Plugins/RelightSpellAddon/RELight - Spell Addon - Advanced Settings.ini";  // FadeTuning.cpp (his rule)
+	inline constexpr const char* kHudArtDir = "Data/SKSE/Plugins/RelightSpellAddon/HUD/";                                              // FadeMenu.cpp's soul gem sheets
 }
