@@ -147,6 +147,7 @@ namespace Fade
 		std::string actor, weapon, enchantment, why;
 		bool        left{ false }, bound{ false }, exempt{ false }, spell{ false }, player{ false };
 		float       fraction{ 1.0f }, current{ 0.0f }, max{ 0.0f };
+		float       hudFraction{ 1.0f };  // what the HUD's gem shows (a bound weapon: its spell's whole time - Glow::HudFraction)
 		float       brightness{ 1.0f }, reach{ 1.0f }, cool{ 0.0f };
 		std::size_t lights{ 0 }, roots{ 0 };
 		float       chargeAV{ -1.0f };  // the game's own RightItemCharge / LeftItemCharge, to compare
@@ -183,6 +184,7 @@ namespace Fade
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
+		bool                   gemFull{ false };   // a gem at full charge too (the HUD page's Show at full charge)
 		float                  low{ 0.15f };       // the sputter point: under it the reticle turns ember
 		float                  regenWait{ 3.0f };  // the game's fMagickaRegenDelay: how long magicka normally waits before it comes back
 		std::array<HudHand, 2> hands{};

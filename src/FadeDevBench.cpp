@@ -41,7 +41,7 @@ namespace Fade
 			out["hands"] = json::array();
 			for (const auto& h : Snapshot()) {
 				out["hands"].push_back({ { "actor", h.actor }, { "left", h.left }, { "weapon", h.weapon }, { "enchantment", h.enchantment },
-					{ "bound", h.bound }, { "spell", h.spell }, { "exempt", h.exempt }, { "fraction", h.fraction }, { "current", h.current }, { "max", h.max },
+					{ "bound", h.bound }, { "spell", h.spell }, { "exempt", h.exempt }, { "fraction", h.fraction }, { "hudFraction", h.hudFraction }, { "current", h.current }, { "max", h.max },
 					{ "brightness", h.brightness }, { "reach", h.reach }, { "cool", h.cool }, { "lights", h.lights }, { "roots", h.roots },
 					{ "why", h.why } });
 			}
@@ -149,6 +149,9 @@ namespace Fade
 				auto done = DevBenchGlue::OnMainThread([]() { LoadRules(); return RulesNow(); });
 				if (!done) {
 					return DevBenchGlue::NotRunYet();
+				}
+				if (DevBenchGlue::Refused(*done)) {
+					return *done;  // nothing could be queued - the rules were not read again
 				}
 				(*done)["ok"] = true;
 				return *done;

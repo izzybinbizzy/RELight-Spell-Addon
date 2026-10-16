@@ -84,15 +84,31 @@ namespace DevBenchGlue
 		return std::isfinite(d) ? std::optional<double>(d) : std::nullopt;
 	}
 
+	// what a tool replies when nothing could be put on the main thread at all (SKSE gave no task interface): a refusal
+	inline json NotQueued()
+	{
+		json j = Refusal("no SKSE task interface - nothing was queued, so nothing was applied");
+		j["queued"] = false;
+		return j;
+	}
+
+	// true for a refusal ({"ok": false}) - a caller that wraps or adds to what OnMainThread returned passes one on as it is
+	inline bool Refused(const json& a_reply)
+	{
+		return a_reply.is_object() && a_reply.contains("ok") && a_reply["ok"].is_boolean() && !a_reply["ok"].get<bool>();
+	}
+
 	// Runs a_fn on the main thread through SKSE's task interface and waits for what it returns, so a reply carries what
 	// the game holds after the change. nullopt when the game did not run it in time (a loading screen, a paused game): the
-	// task still runs later. a_fn must return json and must not touch anything the listener thread owns.
+	// task still runs later (NotRunYet says so). When nothing could be queued at all - no task interface - it returns the
+	// NotQueued refusal (a value, never an exception: a handler that forgot its try must not end the game), so a caller
+	// that wraps the result checks Refused first. a_fn must return json and must not touch anything the listener thread owns.
 	template <class F>
 	std::optional<json> OnMainThread(F&& a_fn, std::chrono::milliseconds a_timeout = std::chrono::milliseconds(3000))
 	{
 		auto* tasks = SKSE::GetTaskInterface();
 		if (!tasks)
-			return std::nullopt;
+			return NotQueued();
 		auto promise = std::make_shared<std::promise<json>>();
 		auto result = promise->get_future();
 		tasks->AddTask([promise, fn = std::forward<F>(a_fn)]() mutable {

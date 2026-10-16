@@ -305,13 +305,19 @@ namespace Fade
 			ImGuiMCP::BeginDisabled(!s.enabled);
 			Toggle("Charge gems on the HUD", s.hudGems,
 				"A soul gem for each enchanted weapon hand beside the health bar - the left hand's on the left, the right hand's on "
-				"the right - as full as that weapon's charge. It shows once the charge starts dropping, while your weapons are out. "
-				"Needs Fading on.",
+				"the right - as full as that weapon's charge (a bound weapon's: the time its spell has left). It shows once the charge "
+				"starts dropping, while your weapons are out - full ones too with Show at full charge. Needs Fading on.",
 				save);
 			ImGuiMCP::BeginDisabled(!s.hudGems);
 			Percent("Gem size", s.hudGemSize, 50, 200, "How big the gems are.", save);
 			Percent("Gem opacity", s.hudGemOpacity, 10, 100, "How strongly the gems show over the game.", save);
 			Toggle("Show the percent", s.hudGemPercent, "The charge in percent under each gem.", save);
+			// his ask 2026-10-16 ("it was fully charged, give toggle to change that setting"): off keeps his 2026-10-10 rule - a gem
+			// only once the charge drops
+			Toggle("Show at full charge", s.hudGemFull,
+				"On: a gem for every enchanted or bound weapon in your hands whose light fades (What fades), full ones too, while they "
+				"are out. Off: a gem shows once the charge starts dropping.",
+				save);
 			ImGuiMCP::EndDisabled();
 
 			GlowHeading(Icon::kTarget, "Reticle");
@@ -719,8 +725,8 @@ namespace Fade
 		// THE HUD GEMS (his word: each hand has its own cut soul gem on its own side of the health bar). 🔁 HIS WORD
 		// "the enchantment gems should not work for spells and only show when the weapon enchantment is dropping"
 		// and "remove the circle surrounding the soul gem widgets" - a gem is a WEAPON hand's (soul-gem violet for an
-		// enchantment, pale blue for a bound weapon, ember under the sputter point), shown once its charge is below full, with
-		// no halo. Render thread: it reads only Hud().
+		// enchantment, pale blue for a bound weapon, ember under the sputter point), shown once its charge is below full - or
+		// always with Show at full charge (his ask 2026-10-16) - with no halo. Render thread: it reads only Hud().
 		void __stdcall RenderHud()
 		{
 			using namespace ImGuiMCP;
@@ -736,8 +742,8 @@ namespace Fade
 			if (hud.gems && hud.drawn && !HideHud()) {
 				for (std::size_t i = 0; i < 2; ++i) {
 					const auto& h = hud.hands[i];
-					if (!h.shown || h.spell || h.fraction >= 0.995f) {
-						continue;  // a spell's magicka is the reticle's; a full weapon shows nothing
+					if (!h.shown || h.spell || (h.fraction >= 0.995f && !hud.gemFull)) {
+						continue;  // a spell's magicka is the reticle's; a full weapon shows nothing unless Show at full charge is on
 					}
 					here[i] = true;
 					fill[i] = std::isfinite(h.fraction) ? std::clamp(h.fraction, 0.0f, 1.0f) : 0.0f;
