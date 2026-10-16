@@ -740,7 +740,7 @@ namespace Fade
 				}
 				// the gem of a bound weapon counts its spell's whole time down (his report 2026-10-16: no gem on a bound sword
 				// with half its time gone - it read the light's fraction, full until the last seconds)
-				h.hudFraction = !previewOn && h.reading.bound && h.reading.max > 0.0f ? Glow::Clamp01(h.reading.current / h.reading.max) : h.fraction;
+				h.hudFraction = Glow::HudFraction(h.reading.bound, previewOn, h.reading.current, h.reading.max, h.fraction);
 				if (previewToggled) {
 					h.glow.lastFraction = h.fraction;  // the preview going on or off is not a hit or a refill either
 				}
@@ -990,6 +990,7 @@ namespace Fade
 			v.spell = h.spell;
 			v.exempt = !h.active;
 			v.fraction = h.fraction;
+			v.hudFraction = h.hudFraction;
 			v.current = h.reading.current;
 			v.max = h.reading.max;
 			v.brightness = h.active ? h.out.brightness : 1.0f;

@@ -147,6 +147,7 @@ namespace Fade
 		std::string actor, weapon, enchantment, why;
 		bool        left{ false }, bound{ false }, exempt{ false }, spell{ false }, player{ false };
 		float       fraction{ 1.0f }, current{ 0.0f }, max{ 0.0f };
+		float       hudFraction{ 1.0f };  // what the HUD's gem shows (a bound weapon: its spell's whole time - Glow::HudFraction)
 		float       brightness{ 1.0f }, reach{ 1.0f }, cool{ 0.0f };
 		std::size_t lights{ 0 }, roots{ 0 };
 		float       chargeAV{ -1.0f };  // the game's own RightItemCharge / LeftItemCharge, to compare

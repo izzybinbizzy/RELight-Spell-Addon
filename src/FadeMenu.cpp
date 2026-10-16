@@ -306,7 +306,7 @@ namespace Fade
 			Toggle("Charge gems on the HUD", s.hudGems,
 				"A soul gem for each enchanted weapon hand beside the health bar - the left hand's on the left, the right hand's on "
 				"the right - as full as that weapon's charge (a bound weapon's: the time its spell has left). It shows once the charge "
-				"starts dropping, while your weapons are out - or always, with Show at full charge. Needs Fading on.",
+				"starts dropping, while your weapons are out - full ones too with Show at full charge. Needs Fading on.",
 				save);
 			ImGuiMCP::BeginDisabled(!s.hudGems);
 			Percent("Gem size", s.hudGemSize, 50, 200, "How big the gems are.", save);
@@ -315,8 +315,8 @@ namespace Fade
 			// his ask 2026-10-16 ("it was fully charged, give toggle to change that setting"): off keeps his 2026-10-10 rule - a gem
 			// only once the charge drops
 			Toggle("Show at full charge", s.hudGemFull,
-				"On: a gem for every enchanted or bound weapon in your hands while they are out, full ones too. Off: a gem shows once "
-				"the charge starts dropping.",
+				"On: a gem for every enchanted or bound weapon in your hands whose light fades (What fades), full ones too, while they "
+				"are out. Off: a gem shows once the charge starts dropping.",
 				save);
 			ImGuiMCP::EndDisabled();
 

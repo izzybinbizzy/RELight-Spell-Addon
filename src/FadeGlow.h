@@ -312,6 +312,17 @@ namespace Glow
 		return { BoundFraction(a_max - a_current, a_max, a_fadeSeconds), true };
 	}
 
+	// What the HUD's charge gem shows for a hand: the light's fraction (`a_light`: its charge, or the preview) - except a bound
+	// weapon's, which counts its spell's WHOLE time down while its light holds full until the last seconds (his report
+	// 2026-10-16: "no gem on bound sword"). A bound weapon with no duration (it lasts until dispelled) shows the light's value
+	[[nodiscard]] inline float HudFraction(bool a_bound, bool a_preview, float a_current, float a_max, float a_light) noexcept
+	{
+		if (a_preview || !a_bound || !(a_max > 0.0f)) {
+			return a_light;
+		}
+		return Clamp01(a_current / a_max);
+	}
+
 	struct Rgb
 	{
 		float r{ 1.0f }, g{ 1.0f }, b{ 1.0f };
