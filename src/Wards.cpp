@@ -12,9 +12,10 @@
 // An effect on a mod's own ward art (Better Vampires' blood ward) is never touched.
 //
 // THE COLOR (his call, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
-// pointed at our meshes (`meshes\magic\Glow Wards\`, Dynamic Wards' own looks under our names): the dome (with 360 Ward
-// the 360 sphere, in place of its orange), the hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand,
-// and gives the 360 sphere and flash the vanilla blue. The hand light follows in HandLights.cpp. Nothing is saved.
+// pointed at our meshes (`meshes\magic\Glow Wards\`): the dome (with 360 Ward the 360 sphere, in place of its orange), the
+// hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand, and gives the 360 sphere and flash the TRUE
+// vanilla blue - `Glow Wards\Vanilla\`, the same files Illuminated uses (his answer 2026-10-13; the old `Blue\` sphere was
+// Dynamic Wards' deeper Adept Blue). The hand light follows in HandLights.cpp. Nothing is saved.
 
 #include "Plugin.h"
 
@@ -29,6 +30,23 @@ namespace Plugin
 		constexpr std::uint32_t kWardLight = 0x02F3EF;       // Skyrim.esm MagicLightWardHand01: every ward's own hand light
 		constexpr const char*   k360Plugin = "360 Ward.esp";
 		constexpr const char*   kEmptyModel = "Effects\\FXEmptyObject.nif";
+		// our meshes, by look: White, or Vanilla blue - with 360 Ward its sphere and flash the TRUE vanilla blue (`Vanilla\`,
+		// Illuminated's files), without it our vanilla-blue dome (`Blue\`, the vanilla look on our own texture copies)
+		struct Look
+		{
+			const char* sphere;
+			const char* flash;
+			const char* dome;
+			const char* hand;
+			const char* wornDome;
+			const char* wornHand;
+		};
+		constexpr Look kWhite{ "Magic\\Glow Wards\\White\\wardbodyfx360.nif", "Magic\\Glow Wards\\White\\wardshieldhitfx.nif",
+			"Magic\\Glow Wards\\White\\wardbodyfx.nif", "Magic\\Glow Wards\\White\\wardinhandfx.nif",
+			"Magic\\Glow Wards\\White\\wardbodyfxworn.nif", "Magic\\Glow Wards\\White\\wardinhandfxworn.nif" };
+		constexpr Look kVanillaBlue{ "Magic\\Glow Wards\\Vanilla\\wardbodyfx360.nif", "Magic\\Glow Wards\\Vanilla\\wardshieldhitfx.nif",
+			"Magic\\Glow Wards\\Blue\\wardbodyfx.nif", "Magic\\Glow Wards\\Blue\\wardinhandfx.nif",
+			"Magic\\Glow Wards\\Blue\\wardbodyfxworn.nif", "Magic\\Glow Wards\\Blue\\wardinhandfxworn.nif" };
 
 		RE::BGSArtObject*                                  gEmpty = nullptr;
 		std::vector<RE::EffectSetting*>                    gSilenced;
@@ -168,20 +186,21 @@ namespace Plugin
 				return;
 			}
 			// loaded, not merely present: LookupModByName also finds a plugin that is installed but not enabled
-			const bool has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
-			const bool white = WardColor() == 1;
-			auto*      dome = dh->LookupForm<RE::BGSArtObject>(kDomeArt, "Skyrim.esm");
-			auto*      hand = dh->LookupForm<RE::BGSArtObject>(kHandArt, "Skyrim.esm");
-			auto*      flash = has360 ? dh->LookupForm<RE::BGSArtObject>(kFlashArt, k360Plugin) : nullptr;
+			const bool  has360 = dh->LookupLoadedModByName(k360Plugin) || dh->LookupLoadedLightModByName(k360Plugin);
+			const bool  white = WardColor() == 1;
+			auto*       dome = dh->LookupForm<RE::BGSArtObject>(kDomeArt, "Skyrim.esm");
+			auto*       hand = dh->LookupForm<RE::BGSArtObject>(kHandArt, "Skyrim.esm");
+			auto*       flash = has360 ? dh->LookupForm<RE::BGSArtObject>(kFlashArt, k360Plugin) : nullptr;
+			const Look& look = white ? kWhite : kVanillaBlue;
 			if (has360) {
-				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx360.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx360.nif");
-				Point(flash, white ? "Magic\\Glow Wards\\White\\wardshieldhitfx.nif" : "Magic\\Glow Wards\\Blue\\wardshieldhitfx.nif");
+				Point(dome, look.sphere);
+				Point(flash, look.flash);
 			} else {
 				// his call: Vanilla blue wears OUR dome too - the vanilla look, reading our own copies of its
 				// textures, so no other mod's loose textures reach it
-				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx.nif");
+				Point(dome, look.dome);
 			}
-			Point(hand, white ? "Magic\\Glow Wards\\White\\wardinhandfx.nif" : "Magic\\Glow Wards\\Blue\\wardinhandfx.nif");
+			Point(hand, look.hand);
 			// the worn wards: their own hand always (its graph has the same fault on 360), their own dome unless 360 Ward's
 			// sphere - already on BeginLoopEnd - is the dome
 			if (!gWornDome) {
@@ -191,8 +210,8 @@ namespace Plugin
 				gWornHand = LightKit::NewForm<RE::BGSArtObject>();
 			}
 			if (gWornDome && gWornHand) {
-				gWornDome->SetModel(white ? "Magic\\Glow Wards\\White\\wardbodyfxworn.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfxworn.nif");
-				gWornHand->SetModel(white ? "Magic\\Glow Wards\\White\\wardinhandfxworn.nif" : "Magic\\Glow Wards\\Blue\\wardinhandfxworn.nif");
+				gWornDome->SetModel(look.wornDome);
+				gWornHand->SetModel(look.wornHand);
 				std::size_t worn = 0;
 				for (const auto& r : kWorn) {
 					if (auto* e = dh->LookupForm<RE::EffectSetting>(r.id, r.plugin)) {
