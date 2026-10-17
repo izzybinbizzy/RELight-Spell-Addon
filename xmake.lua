@@ -14,6 +14,13 @@ set_config("skyrim_se", true)
 set_config("skyrim_ae", true)
 set_config("skyrim_vr", false)
 
+-- REPRODUCIBLE BUILDS: the same source gives the same DLL, byte for byte, in whatever folder it is built - no time stamp
+-- (/Brepro: the compiler and the linker stamp a hash of the contents), no source folder in the code (/pathmap: this folder
+-- is written as "."), no build folder in the DLL (/PDBALTPATH: the .pdb by its name only). Set before CommonLib is included,
+-- so its files are built the same way.
+add_cxflags("/Brepro", "/pathmap:" .. os.projectdir() .. "=.", { force = true })
+add_shflags("/Brepro", "/PDBALTPATH:%_PDB%", { force = true })
+
 includes("lib/commonlibsse-ng")
 
 -- the fading module's rule files (Fade*.cpp, Illuminated's, ported 2026-10-08)
