@@ -12,9 +12,10 @@
 // An effect on a mod's own ward art (Better Vampires' blood ward) is never touched.
 //
 // THE COLOR (his call, "relight through skse menu"): Vanilla blue or White. The vanilla ward art forms are
-// pointed at our meshes (`meshes\magic\Glow Wards\`, Dynamic Wards' own looks under our names): the dome (with 360 Ward
-// the 360 sphere, in place of its orange), the hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand,
-// and gives the 360 sphere and flash the vanilla blue. The hand light follows in HandLights.cpp. Nothing is saved.
+// pointed at our meshes (`meshes\magic\Glow Wards\`): the dome (with 360 Ward the 360 sphere, in place of its orange), the
+// hand art and 360 Ward's hit flash. Vanilla keeps the vanilla dome and hand, and gives the 360 sphere and flash the TRUE
+// vanilla blue - `Glow Wards\Vanilla\`, the same files Illuminated uses (his answer 2026-10-13; the old `Blue\` sphere was
+// Dynamic Wards' deeper Adept Blue). The hand light follows in HandLights.cpp. Nothing is saved.
 
 #include "Plugin.h"
 
@@ -174,8 +175,8 @@ namespace Plugin
 			auto*      hand = dh->LookupForm<RE::BGSArtObject>(kHandArt, "Skyrim.esm");
 			auto*      flash = has360 ? dh->LookupForm<RE::BGSArtObject>(kFlashArt, k360Plugin) : nullptr;
 			if (has360) {
-				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx360.nif" : "Magic\\Glow Wards\\Blue\\wardbodyfx360.nif");
-				Point(flash, white ? "Magic\\Glow Wards\\White\\wardshieldhitfx.nif" : "Magic\\Glow Wards\\Blue\\wardshieldhitfx.nif");
+				Point(dome, white ? "Magic\\Glow Wards\\White\\wardbodyfx360.nif" : "Magic\\Glow Wards\\Vanilla\\wardbodyfx360.nif");
+				Point(flash, white ? "Magic\\Glow Wards\\White\\wardshieldhitfx.nif" : "Magic\\Glow Wards\\Vanilla\\wardshieldhitfx.nif");
 			} else {
 				// his call: Vanilla blue wears OUR dome too - the vanilla look, reading our own copies of its
 				// textures, so no other mod's loose textures reach it
