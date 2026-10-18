@@ -601,6 +601,8 @@ namespace Fade
 			hud.reticleStyle = a_s.reticleStyle;
 			hud.reticleSize = a_s.reticleSize;
 			hud.reticleOpacity = a_s.reticleOpacity;
+			hud.reticleDotSize = a_s.reticleDotSize;
+			hud.reticleDotClear = a_s.reticleDotClear;
 			hud.gemSize = a_s.hudGemSize;
 			hud.gemOpacity = a_s.hudGemOpacity;
 			hud.gemPercent = a_s.hudGemPercent;

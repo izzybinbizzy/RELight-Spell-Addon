@@ -258,7 +258,7 @@ namespace Plugin
 					RehandSoon();
 				}
 				if (!o.desc.empty()) {  // his call: a broad word on what each switch lights
-					ImGuiMCP::SetItemTooltip("%s", T(o.desc.c_str()));
+					MenuStyle::Tip(T(o.desc.c_str()));
 				}
 				const auto [lit, heldOut] = counts[o.id];  // every file of a pack
 				ImGuiMCP::SameLine();
@@ -366,8 +366,9 @@ namespace Plugin
 			ImGuiMCP::Text("%s", T("Lighting"));
 			ImGuiMCP::SameLine();
 			ImGuiMCP::TextColored(kGold, T("Automatic - %s"), T(lighting.c_str()));
-			ImGuiMCP::SetItemTooltip("%s", T("Found by itself when the game starts. Off Community Shaders the hand lights are drawn for the "
-											 "game's own lighting and light the ground. Your presets are kept apart for each lighting."));
+			MenuStyle::Tip(T(
+				"Found by itself when the game starts. Off Community Shaders the hand lights are drawn for the "
+				"game's own lighting and light the ground. Your presets are kept apart for each lighting."));
 		}
 
 		void DrawUserPresets()
@@ -390,7 +391,9 @@ namespace Plugin
 				name[0] = '\0';
 			}
 			ImGuiMCP::EndDisabled();
-			ImGuiMCP::SetItemTooltip(T("Saves every setting and switch as it is now under this name, for %s."), T(lighting.c_str()));
+			char saveTip[256]{};
+			std::snprintf(saveTip, sizeof(saveTip), T("Saves every setting and switch as it is now under this name, for %s."), T(lighting.c_str()));
+			MenuStyle::Tip(saveTip);
 			std::lock_guard lock(gPresetLock);
 			for (std::size_t i = 0; i < gPresets.size(); ++i) {
 				if (gPresets[i].lighting != lighting) {
@@ -402,7 +405,7 @@ namespace Plugin
 					SaveSettings();
 					RepresetSoon();
 				}
-				ImGuiMCP::SetItemTooltip("%s", T("Load this preset."));
+				MenuStyle::Tip(T("Load this preset."));
 				ImGuiMCP::SameLine();
 				const bool gone = ImGuiMCP::SmallButton(T("Delete"));
 				ImGuiMCP::PopID();
@@ -462,7 +465,7 @@ namespace Plugin
 					}
 					SaveSettings();
 				}
-				ImGuiMCP::SetItemTooltip("%s", p.tip);
+				MenuStyle::Tip(p.tip);
 			}
 			DrawUserPresets();
 
@@ -474,9 +477,9 @@ namespace Plugin
 			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
 				SaveSettings();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
-				  "is what the old Reduced download was. How far they carry does not change - that is the slider below."));
+			MenuStyle::Tip(T(
+				"How bright this mod's lights are, and only this mod's. 100% is the measured brightness; about 30% "
+				"is what the old Reduced download was. How far they carry does not change - that is the slider below."));
 
 			int r = ReachPercent();
 			if (ImGuiMCP::SliderInt(T("Reach"), &r, 50, 150, "%d%%")) {
@@ -485,9 +488,9 @@ namespace Plugin
 			if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
 				SaveSettings();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
-				  "that is the slider above."));
+			MenuStyle::Tip(T(
+				"How far this mod's lights carry. 100% is the measured reach. How bright they are does not change - "
+				"that is the slider above."));
 
 			// Illuminated's light settings, ported (his "add everything from illuminated into relight ... sister
 			// mods"); RE::Light lights the objects, these are what it has no setting for
@@ -497,9 +500,9 @@ namespace Plugin
 				SetDimInDaylight(day);
 				SaveSettings();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("This mod's lights are dimmer outdoors by day and in brightly lit rooms, where a bright light looks out of place, and at "
-				  "full strength at night and in the dark. Follows the time of day as it passes."));
+			MenuStyle::Tip(T(
+				"This mod's lights are dimmer outdoors by day and in brightly lit rooms, where a bright light looks out of place, and at "
+				"full strength at night and in the dark. Follows the time of day as it passes."));
 
 			GlowHeading("While Sneaking", Icon::kBulb);
 			bool sneak = SneakOn();
@@ -507,9 +510,9 @@ namespace Plugin
 				SetSneakOn(sneak);
 				SaveSettings();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
-				  "hazards - and the ones already lit go out. They come back when you stand up."));
+			MenuStyle::Tip(T(
+				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
+				"hazards - and the ones already lit go out. They come back when you stand up."));
 
 			GlowHeading("Hands and Weapons", Icon::kBulb);
 			bool hands = HandLightsOn();
@@ -518,8 +521,7 @@ namespace Plugin
 				SaveSettings();
 				RehandSoon();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding."));
+			MenuStyle::Tip(T("A light on your hands while you cast, in the color of the spell. Changes reach a spell you are already holding."));
 
 			// his call: "a toggle for weapon lights just like hand lights and right under it"
 			bool weapons = WeaponLightsOn();
@@ -528,9 +530,9 @@ namespace Plugin
 				SaveSettings();
 				RehandSoon();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
-				  "once; the switches on the Spell & Enchantment Art page choose among them."));
+			MenuStyle::Tip(T(
+				"Every weapon light: enchanted weapons, bound weapons, artifacts and staves. Off puts them all out at "
+				"once; the switches on the Spell & Enchantment Art page choose among them."));
 
 			// Illuminated's "Sprays Bolts and Wards" heading: RELight's sprays and bolts are RE::Light's, its wards' color is ours
 			GlowHeading("Sprays, Bolts and Wards", Icon::kShield);
@@ -550,9 +552,9 @@ namespace Plugin
 						});
 					}
 				}
-				ImGuiMCP::SetItemTooltip("%s",
-					T("The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one color. "
-					  "Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
+				MenuStyle::Tip(T(
+					"The ward's dome, the 360 Ward sphere and its flash, the art on your hand and the hand light, in one color. "
+					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
 			}
 
 			GlowHeading("Spells Without a Patch", Icon::kBulb);
@@ -562,9 +564,9 @@ namespace Plugin
 				SaveSettings();
 				RehandSoon();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
-				  "gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
+			MenuStyle::Tip(T(
+				"RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
+				"gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
 			ImGuiMCP::SameLine();
 			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
 
@@ -572,7 +574,7 @@ namespace Plugin
 			if (const auto* cs = CSLightLoaded()) {
 				GlowHeading("Other Light Mods", Icon::kBulb);
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
-				ImGuiMCP::SetItemTooltip("%s", T("RELight - Spell Addon does not need CS Light. If you keep CS Light for its world lights, untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options in its own installer, or those lights glow twice."));
+				MenuStyle::Tip(T("RELight - Spell Addon does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
 			}
 
 			// his word: "big fights can be called performance and be at the bottom of lights menu"
@@ -583,9 +585,19 @@ namespace Plugin
 				SetHandLightsFor(who);
 				SaveSettings();
 			}
-			ImGuiMCP::SetItemTooltip("%s",
-				T("Which casters' hands carry a spell light. In a big fight fewer lights keep the game smooth. Everyone nearby leaves "
-				  "out casters farther than about forty paces from you. Reaches the next spell they ready."));
+			MenuStyle::Tip(T(
+				"Which casters' hands carry a spell light. In a big fight fewer lights keep the game smooth. Everyone nearby leaves "
+				"out casters farther than about forty paces from you. Reaches the next spell they ready."));
+			// his list 2026-10-17: "under performance add a toggle to turn off lights completely for the entire mod"
+			bool allOff = AllLightsOff();
+			if (ImGuiMCP::Checkbox(T("All RELight - Spell Addon lights off"), &allOff)) {
+				SetAllLightsOff(allOff);
+				SaveSettings();
+				RehandSoon();
+			}
+			MenuStyle::Tip(T(
+				"Every light this mod adds goes out - every switch's lights and the hand, weapon and ground lights - to compare, "
+				"or when every frame counts. Off again brings them all back."));
 		}
 
 		// Illuminated's Configs page: the spells' own switches under "Spells and Effects", then each mod patch by category (his

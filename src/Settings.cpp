@@ -43,6 +43,7 @@ namespace Plugin
 		std::atomic<int>  gDaylight{ 1 };
 		std::atomic<int>  gHandsFor{ 0 };
 		std::atomic<bool> gAuto{ true };
+		std::atomic<bool> gAllOff{ false };  // his Performance switch (2026-10-17, Illuminated's CLAUDE.md): every light of this mod off
 
 		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{
@@ -86,6 +87,7 @@ namespace Plugin
 			{ "DimInDaylight", [] { return gDaylight.load(); }, [](int v) { gDaylight = std::clamp(v, 0, 2); } },
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
+			{ "AllLightsOff", [] { return gAllOff ? 1 : 0; }, [](int v) { gAllOff = v != 0; } },
 		};
 
 		// [Switches] lines for options that are not installed now, as read: written back unchanged, so an option taken out
@@ -330,6 +332,8 @@ namespace Plugin
 	void SetHandLightsFor(int a_v) { gHandsFor = std::clamp(a_v, 0, 3); }
 	bool AutoLightsOn() { return gAuto; }
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
+	bool AllLightsOff() { return gAllOff; }
+	void SetAllLightsOff(bool a_off) { gAllOff = a_off; }
 
 	// his call: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together
