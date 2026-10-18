@@ -460,9 +460,6 @@ namespace Plugin
 
 	bool OptionLit(std::size_t a_option)
 	{
-		if (AllLightsOff()) {
-			return false;
-		}
 		if (a_option >= gOptions.size()) {
 			return true;
 		}

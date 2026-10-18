@@ -155,7 +155,9 @@ namespace Plugin
 			return k.option;
 		}
 
-		bool Off(std::size_t a_option) { return a_option != kNone && !OptionLit(a_option); }
+		// all lights off holds every option's lights out here, where lights are culled - never in OptionLit, which the hand lights'
+		// discovery reads at load (CodeRabbit, #24: a game started with the switch on found no automatic hand light)
+		bool Off(std::size_t a_option) { return a_option != kNone && (AllLightsOff() || !OptionLit(a_option)); }
 
 		void HoldOut(RE::NiLight* a_light, std::size_t a_option, bool a_enchant)
 		{
