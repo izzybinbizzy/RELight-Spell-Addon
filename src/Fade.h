@@ -183,6 +183,7 @@ namespace Fade
 		bool                   drawn{ false };                   // the player's weapons or spells are out
 		int                    reticleStyle{ 0 };                // 0 the bars beside the crosshair, 1 the bar under the crosshair
 		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
+		int                    reticleDotSize{ 1 }, reticleDotClear{ 0 };  // the dot in the middle: 0 small .. 2 big; 0 full .. 2 clear
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
 		bool                   gemFull{ false };   // a gem at full charge too (the HUD page's Show at full charge)

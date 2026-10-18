@@ -91,7 +91,7 @@ namespace Fade
 			Dummy(ImVec2{ 0.0f, 4.0f });
 		}
 
-		void Tip(const char* a_text) { ImGuiMCP::SetItemTooltip("%s", T(a_text)); }
+		void Tip(const char* a_text) { MenuStyle::Tip(T(a_text)); }
 
 		// The pages edit a copy of the settings (Config); only the keys that changed go back (Commit -> ApplySetting), so a
 		// DevBench change made meanwhile is kept, and the shared copy is never written half-way. A switch or a choice saves
@@ -342,6 +342,14 @@ namespace Fade
 			}
 			Percent("Reticle size", s.reticleSize, 50, 200, "How big the reticle's bars are.", save);
 			Percent("Reticle opacity", s.reticleOpacity, 10, 100, "How strongly the reticle shows over the game.", save);
+			{
+				// his list: "a dot in the middle that can be resized and made transparent ... just big medium and small.
+				// and full medium clear for transparency. make the dot follow reticle color"
+				static const char* const kDotSizes[] = { TR_MARK("Small"), TR_MARK("Medium"), TR_MARK("Big") };
+				static const char* const kDotClear[] = { TR_MARK("Full"), TR_MARK("Medium"), TR_MARK("Clear") };
+				Choice("Center dot size", s.reticleDotSize, kDotSizes, 3, "The dot in the middle of the reticle, in the spell's color.", save);
+				Choice("Center dot see-through", s.reticleDotClear, kDotClear, 3, "Full: solid. Medium: half see-through. Clear: faint.", save);
+			}
 			ImGuiMCP::EndDisabled();
 			ImGuiMCP::EndDisabled();
 			ImGuiMCP::EndDisabled();
@@ -922,7 +930,7 @@ namespace Fade
 		// and a style drawn from our Crossfire bar (his pick: a style of the reticle). So it shows a SPELL hand's magicka only, in the color of
 		// that spell's own light (ember under the sputter point), and
 		//   Bars (style 0): the bar stood on end beside the crosshair, one per hand - the left hand left, the right right - its
-		//     dark slot, the fill faint at the bottom and brightest at its top, a tick and chevron at both ends, the diamond
+		//     dark slot, the fill faint at the bottom and brightest at its top, a tick at both ends, the diamond
 		//     riding the top of the fill with its breathing glow;
 		//   Bar under the crosshair (style 1 - "Crossfire bar" until his answer 2026-10-13 renamed it): the struggle bar itself
 		//     under the crosshair, filling from the left as magicka comes back -
@@ -984,6 +992,20 @@ namespace Fade
 				return [a](float r, float g, float b, float o) { return ColorConvertFloat4ToU32(ImVec4{ r, g, b, o * a }); };
 			};
 			const auto hueOf = [&](std::size_t i) { return fill[i] < low ? ImVec4{ 1.0f, 0.42f, 0.18f, 1.0f } : tint[i]; };
+			// the dot in the middle, in the shown hand's color (the right hand's when both show), a soft glow round a bright core
+			const auto centerDot = [&] {
+				static constexpr float kRadius[]{ 1.6f, 2.6f, 4.0f };
+				static constexpr float kAlpha[]{ 1.0f, 0.55f, 0.25f };
+				const std::size_t      side = shown[1] > 0.0f ? 1 : 0;
+				const auto             hue = hueOf(side);
+				const float            r = kRadius[std::clamp(hud.reticleDotSize, 0, 2)] * k;
+				const auto             col = colOf(std::clamp(hud.reticleOpacity, 0.1f, 1.0f) * kAlpha[std::clamp(hud.reticleDotClear, 0, 2)] * shown[side]);
+				for (int g = 0; g < 4; ++g) {
+					ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r * (3.2f - static_cast<float>(g) * 0.55f), col(hue.x, hue.y, hue.z, 0.06f + static_cast<float>(g) * 0.04f), 20);
+				}
+				ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r, col(hue.x, hue.y, hue.z, 1.0f), 20);
+				ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r * 0.45f, col(1.0f, 0.96f, 0.88f, 0.9f), 12);
+			};
 
 			if (hud.reticleStyle == 1) {
 				// THE BAR UNDER THE CROSSHAIR: one bar, magicka is one pool - the fuller side's fill (both hands read the same magicka)
@@ -1005,10 +1027,9 @@ namespace Fade
 						col(left.x, left.y, left.z, 0.45f), col(right.x, right.y, right.z, 1.0f), col(right.x, right.y, right.z, 1.0f),
 						col(left.x, left.y, left.z, 0.45f));
 				}
-				for (const auto [x, s] : { std::pair{ x0, 1.0f }, std::pair{ x1, -1.0f } }) {
+				// a tick at both ends (his list: "i dont like the arrows" - the chevrons are gone)
+				for (const float x : { x0, x1 }) {
 					ImDrawListManager::AddLine(dl, ImVec2{ x, yc - h * 1.6f }, ImVec2{ x, yc + h * 1.6f }, bone, std::max(1.0f, k));
-					ImDrawListManager::AddTriangleFilled(dl, ImVec2{ x - s * 10.0f * k, yc }, ImVec2{ x - s * 3.0f * k, yc - h * 0.9f },
-						ImVec2{ x - s * 3.0f * k, yc + h * 0.9f }, bone);
 				}
 				// the glow at the fill's edge, breathing; and the pulse over the whole bar
 				const float breath = 0.85f + 0.15f * static_cast<float>(std::sin(now * (f < low ? 9.0 : 4.0)));
@@ -1048,6 +1069,7 @@ namespace Fade
 						ImDrawListManager::AddText(dl, font, fs, ImVec2{ tx, yc + h * 1.6f + 3.0f * k }, col(0.75f, 0.71f, 0.63f, 1.0f), info);
 					}
 				}
+				centerDot();
 				return;
 			}
 
@@ -1081,11 +1103,9 @@ namespace Fade
 					ImDrawListManager::AddRectFilled(dl, ImVec2{ x - w * 1.5f, y0 - 3.0f * k }, ImVec2{ x + w * 1.5f, y1 + 3.0f * k }, shade(0.22f * glow),
 						3.0f * k, 0);
 				}
-				// the bracket ends: a tick and a small outward chevron, as on the bar
-				for (const auto [y, d] : { std::pair{ y0, -1.0f }, std::pair{ y1, 1.0f } }) {
+				// the bracket ends: a tick (his list: "i dont like the arrows" - the chevrons are gone)
+				for (const float y : { y0, y1 }) {
 					ImDrawListManager::AddLine(dl, ImVec2{ x - w * 1.6f, y }, ImVec2{ x + w * 1.6f, y }, bone, std::max(1.0f, k));
-					ImDrawListManager::AddTriangleFilled(dl, ImVec2{ x, y + d * 8.0f * k }, ImVec2{ x - w * 0.9f, y + d * 2.5f * k },
-						ImVec2{ x + w * 0.9f, y + d * 2.5f * k }, bone);
 				}
 				// the glow round the top of the fill, breathing (faster when nearly empty)
 				const float breath = 0.85f + 0.15f * static_cast<float>(std::sin(now * (ember ? 9.0 : 4.0)));
@@ -1100,6 +1120,7 @@ namespace Fade
 				ImDrawListManager::AddQuad(dl, ImVec2{ x, yf - r }, ImVec2{ x + r, yf }, ImVec2{ x, yf + r }, ImVec2{ x - r, yf }, col(0.16f, 0.13f, 0.10f, 1.0f),
 					1.0f);
 			}
+			centerDot();
 		}
 	}
 
@@ -1121,7 +1142,7 @@ namespace Fade
 		SKSEMenuFramework::AddSectionItem(T("HUD"), RenderHudSettings);
 		SKSEMenuFramework::AddSectionItem(T("Fading"), RenderSettings);
 		// his order: "an entirely new main menu ... search for the weapon/spell and change it's lights" (FadeItems.cpp)
-		SKSEMenuFramework::AddSectionItem(T("Lights by Item"), Items::Render);
+		SKSEMenuFramework::AddSectionItem(T("Lights by Item / Spell"), Items::Render);
 #ifdef FADE_DEBUG_PAGE
 		SKSEMenuFramework::AddSectionItem(T("Fading - debug"), RenderDebug);
 #endif

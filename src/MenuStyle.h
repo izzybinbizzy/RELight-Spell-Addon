@@ -110,11 +110,16 @@ namespace MenuStyle
 		PopTextWrapPos();
 	}
 
-	// a hover tooltip on the item just drawn
+	// a hover tooltip on the item just drawn, wrapped to a readable width so a long one never runs past the screen
 	inline void Tip(const char* a_text)
 	{
 		using namespace ImGuiMCP;
-		SetItemTooltip("%s", a_text);
+		if (BeginItemTooltip()) {
+			PushTextWrapPos(GetFontSize() * 30.0f);
+			TextUnformatted(a_text);
+			PopTextWrapPos();
+			EndTooltip();
+		}
 	}
 
 	// a small round dot and a label: on (accent) or off (muted)

@@ -225,7 +225,7 @@ namespace Plugin
 						break;
 					}
 					const Stream* held = HeldOf(weapon, fp);
-					if (!held || !OptionLit(held->option)) {
+					if (!held || !OptionLit(held->option) || AllLightsOff()) {
 						continue;
 					}
 					if (auto* node = NodeFor(a_actor, left, fp, weapon); node && !(enchanted && ReLightOn(node))) {

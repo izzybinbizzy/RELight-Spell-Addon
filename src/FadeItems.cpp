@@ -521,20 +521,23 @@ namespace Fade::Items
 		const MenuStyle::Page page;
 		static char           search[64]{};
 		static bool           handsOnly = false;
-		MenuStyle::Header(MenuStyle::Icon::kBulb, T("Lights by Item"));
+		MenuStyle::Header(MenuStyle::Icon::kBulb, T("Lights by Item / Spell"));
 		TextWrapped("%s", T("Find a spell, staff or weapon and change its light: switch it off, or give it a color of its own. Every "
 							"other item keeps its light as it is (Auto). The main Brightness and Reach sliders still reach them all."));
+		// his list: "explain the buttons in light by item and make them one above the other" - each control on its own line,
+		// what it does beside it
 		SetNextItemWidth(260.0f);
 		if (InputTextWithHint("##itemSearch", T("Search a spell or weapon"), search, sizeof(search))) {
 			handsOnly = false;
 		}
 		SameLine();
+		TextDisabled("%s", T("Type part of a name to find it."));
 		if (Button(T("In my hands now"))) {
 			handsOnly = true;
 			search[0] = '\0';
 		}
-		SetItemTooltip("%s", T("Shows the spells and weapons in your hands right now."));
 		SameLine();
+		TextDisabled("%s", T("Lists only what you hold right now."));
 		if (Button(T("Reset all"))) {
 			{
 				std::lock_guard lock(gLock);
@@ -542,7 +545,10 @@ namespace Fade::Items
 			}
 			MarkChanged();
 		}
-		SetItemTooltip("%s", T("Every item back to Auto: its light as the mod and your other lighting mods made it."));
+		SameLine();
+		TextDisabled("%s", T("Every item back to Auto."));
+		TextDisabled("%s", T("Each item: first box = its light on or off, second box = a color of its own (pick it in the square), "
+							 "Reset = back to Auto."));
 		std::unordered_map<RE::FormID, Choice> choices;
 		{
 			std::lock_guard lock(gLock);
@@ -575,14 +581,14 @@ namespace Fade::Items
 				c.off = !on;
 				Set(item.id, c);
 			}
-			SetItemTooltip("%s", T("Its light on or off."));
+			MenuStyle::Tip(T("Its light on or off."));
 			SameLine();
 			bool own = c.colored;
 			if (Checkbox("##own", &own)) {
 				c.colored = own;
 				Set(item.id, c);
 			}
-			SetItemTooltip("%s", T("Its own color (off: Auto, the light's own color)."));
+			MenuStyle::Tip(T("Its own color (off: Auto, the light's own color)."));
 			SameLine();
 			BeginDisabled(!c.colored);
 			float rgb[3]{ c.color.red, c.color.green, c.color.blue };

@@ -305,7 +305,7 @@ namespace Plugin
 		{
 			std::lock_guard l{ gLock };
 			gInUse.clear();
-			const bool on = HandLightsOn();
+			const bool on = HandLightsOn() && !AllLightsOff();
 			for (auto& [key, copy] : gCopies) {
 				if (const Hand* h = on ? Picked(Winner(key)) : nullptr) {
 					Fill(copy, *h);

@@ -207,6 +207,8 @@ namespace Plugin
 	void               SetHandLightsFor(int a_v);
 	[[nodiscard]] bool AutoLightsOn();
 	void               SetAutoLightsOn(bool a_on);
+	[[nodiscard]] bool AllLightsOff();  // Performance: every light of this mod off - the options' lights, hand, held and ground lights
+	void               SetAllLightsOff(bool a_off);
 	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
 	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
