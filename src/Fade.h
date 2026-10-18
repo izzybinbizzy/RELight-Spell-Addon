@@ -134,6 +134,7 @@ namespace Fade
 	[[nodiscard]] std::vector<RE::NiAVObject*> EffectRootsOf(const RE::Actor* a_actor, bool a_left);
 	void                                       AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D);  // after the effect's own update; a_own3D: search
 																												   // the effect's own model too
+	void AfterCaster();                                                                                            // after a magic caster's update: Lights by Item's choices again
 	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect);                                                   // after the game animates an enchantment's shader
 	void ReapplyAll();                                                                                             // after a cell's light animation: this frame's numbers again, every hand's
 	void Rebase(RE::NiPointLight* a_light, float a_ratio, float a_now);                                            // the plugin's Brightness moved a steady light
@@ -215,13 +216,15 @@ namespace Fade
 	// FadeItems.cpp: Lights by Item (his order)
 	namespace Items
 	{
-		void           BuildCatalog();                                           // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
-		void           Load();                                                   // data load: the choices in Mod::kItemsPath
-		void           Apply();                                                  // every frame, main thread, last in the fading pass: each choice onto the lights at its hand
-		void           Reapply();                                                // under gLock, after ReapplyAll wrote the lights again: this frame's choices once more
-		bool           SetFromText(RE::FormID a_id, std::string_view a_choice);  // "auto", "off" or "r,g,b", as the menu would
-		void           Release();                                                // every light back as its owner left it (a load)
-		void __stdcall Render();                                                 // the page
+		void               BuildCatalog();                                           // data load, main thread: every spell, staff and enchanted / bound weapon, for the search
+		void               Load();                                                   // data load: the choices in Mod::kItemsPath
+		void               Apply();                                                  // every frame, main thread, last in the fading pass: each choice onto the lights at its hand
+		void               Reapply();                                                // under gLock, after ReapplyAll wrote the lights again: this frame's choices once more
+		void               ReapplyUnder(RE::NiAVObject* a_root);                     // under gLock, the same for the lights under one root only
+		[[nodiscard]] bool Holding() noexcept;                                       // a choice is on a light now (any thread)
+		bool               SetFromText(RE::FormID a_id, std::string_view a_choice);  // "auto", "off" or "r,g,b", as the menu would
+		void               Release();                                                // every light back as its owner left it (a load)
+		void __stdcall     Render();                                                 // the page
 	}
 
 	// ------------------------------------------------------------------ FadeMenu.cpp

@@ -816,24 +816,30 @@ namespace Fade
 				}
 			}
 		}
-		if (!gEnabled) {
-			return;
-		}
-		auto* found = ActiveHand(actor, left);
-		if (!found) {
-			return;
-		}
-		auto& hand = *found;
-		for (auto* node : nodes) {
-			if (!node) {
-				continue;
+		if (auto* hand = gEnabled ? ActiveHand(actor, left) : nullptr) {
+			for (auto* node : nodes) {
+				if (!node) {
+					continue;
+				}
+				NoteRoot(hand->effectRoots, node);
+				ApplyUnder(node, *hand);  // right after Light Placer wrote this frame's values for this effect
 			}
-			NoteRoot(hand.effectRoots, node);
-			ApplyUnder(node, hand);  // right after Light Placer wrote this frame's values for this effect
+			if (nodes[1] && gDimShader.load(std::memory_order_relaxed)) {
+				DimArt(nodes[1], hand->out.brightness);  // the art's own glowing meshes: VAER's swirls, EAE's art
+			}
 		}
-		if (nodes[1] && gDimShader.load(std::memory_order_relaxed)) {
-			DimArt(nodes[1], hand.out.brightness);  // the art's own glowing meshes: VAER's swirls, EAE's art
+		for (auto* node : nodes) {
+			Items::ReapplyUnder(node);  // last: an item's own choice over Light Placer's animation of this frame
 		}
+	}
+
+	void AfterCaster()
+	{
+		if (!Items::Holding()) {
+			return;
+		}
+		std::lock_guard lock(gLock);
+		Items::Reapply();  // Light Placer animates a hand's casting lights in the caster's update
 	}
 
 	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect)
