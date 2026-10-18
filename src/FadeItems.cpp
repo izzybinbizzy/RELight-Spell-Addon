@@ -12,7 +12,9 @@
 // after the sliders and the fading, before a ground twin copies the hand light), on every light at the hand that holds it -
 // a spell's: under the hand's magic nodes and the game's casting light; a weapon's (staves and bound weapons too): under its
 // 3D in the hand, and for a staff also its hand's magic nodes and casting light, and for an enchanted weapon the roots its
-// enchantment effects hang lights on (Fading on or off). Off puts the light out (fade 0), a color
+// enchantment effects hang lights on (Fading on or off). And again right after Light Placer animates those lights - an
+// effect's, a caster's, a cell's (Dynamic Lighting's color and fade keys rewrite them every update, so a choice written once
+// a frame lost to them). Off puts the light out (fade 0), a color
 // recolors it; the fade and color it had are kept, and given back the moment the item is set to Auto again (unless something
 // else wrote the light since). Every lighting mod's light at that hand is reached - Light Placer's, RE::Light's, the game's
 // own, ours - since the choice is about the item, not the light's maker.
@@ -102,6 +104,7 @@ namespace Fade::Items
 		};
 		std::unordered_map<RE::NiPointLight*, Held> gHeld;
 		std::uint32_t                               gFrame = 0;
+		std::atomic<bool>                           gHolding{ false };  // gHeld is not empty: the hooks' cheap test
 
 		[[nodiscard]] std::string KeyOf(const RE::TESForm* a_form)
 		{
@@ -459,6 +462,7 @@ namespace Fade::Items
 				++it;
 			}
 		}
+		gHolding.store(!gHeld.empty(), std::memory_order_relaxed);
 	}
 
 	bool SetFromText(RE::FormID a_id, std::string_view a_choice)
@@ -480,6 +484,24 @@ namespace Fade::Items
 		}
 	}
 
+	void ReapplyUnder(RE::NiAVObject* a_root)
+	{
+		if (!a_root || gHeld.empty()) {
+			return;
+		}
+		RE::BSVisit::TraverseScenegraphLights(a_root, [](RE::NiPointLight* a_light) {
+			if (const auto it = gHeld.find(a_light); it != gHeld.end() && it->second.frame == gFrame) {
+				Touch(a_light, it->second.choice);
+			}
+			return RE::BSVisit::BSVisitControl::kContinue;
+		});
+	}
+
+	bool Holding() noexcept
+	{
+		return gHolding.load(std::memory_order_relaxed);
+	}
+
 	void Release()
 	{
 		SaveIfSettled(true);
@@ -489,6 +511,7 @@ namespace Fade::Items
 			}
 		}
 		gHeld.clear();
+		gHolding.store(false, std::memory_order_relaxed);
 	}
 
 	// ------------------------------------------------------------------ the page

@@ -795,7 +795,7 @@ namespace Fade
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
 	{
 		const bool items = gItemRootsWanted.load(std::memory_order_relaxed);
-		if (gActiveHands.load(std::memory_order_relaxed) == 0 && !items) {
+		if (gActiveHands.load(std::memory_order_relaxed) == 0 && !items && !Items::Holding()) {
 			return;
 		}
 		RE::Actor*      actor = nullptr;
@@ -816,24 +816,38 @@ namespace Fade
 				}
 			}
 		}
-		if (!gEnabled) {
-			return;
-		}
-		auto* found = ActiveHand(actor, left);
-		if (!found) {
-			return;
-		}
-		auto& hand = *found;
-		for (auto* node : nodes) {
-			if (!node) {
-				continue;
+		if (auto* hand = gEnabled ? ActiveHand(actor, left) : nullptr) {
+			for (auto* node : nodes) {
+				if (!node) {
+					continue;
+				}
+				NoteRoot(hand->effectRoots, node);
+				ApplyUnder(node, *hand);  // right after Light Placer wrote this frame's values for this effect
 			}
-			NoteRoot(hand.effectRoots, node);
-			ApplyUnder(node, hand);  // right after Light Placer wrote this frame's values for this effect
+			if (nodes[1] && gDimShader.load(std::memory_order_relaxed)) {
+				DimArt(nodes[1], hand->out.brightness);  // the art's own glowing meshes: VAER's swirls, EAE's art
+			}
 		}
-		if (nodes[1] && gDimShader.load(std::memory_order_relaxed)) {
-			DimArt(nodes[1], hand.out.brightness);  // the art's own glowing meshes: VAER's swirls, EAE's art
+		for (auto* node : nodes) {
+			Items::ReapplyUnder(node);  // last: an item's own choice over Light Placer's animation of this frame
 		}
+	}
+
+	void AfterCaster(RE::ActorMagicCaster* a_caster)
+	{
+		using Source = RE::MagicSystem::CastingSource;
+		if (!a_caster || !Items::Holding() || (a_caster->castingSource != Source::kLeftHand && a_caster->castingSource != Source::kRightHand)) {
+			return;
+		}
+		// Light Placer animates this hand's casting lights in the caster's update: only its own lights, as Items::Apply finds them
+		RE::NiAVObject*   nodes[2]{};
+		RE::NiPointLight* light = nullptr;
+		SpellHandLights(a_caster->GetCasterAsActor(), a_caster->castingSource == Source::kLeftHand, nodes, light);
+		std::lock_guard lock(gLock);
+		for (auto* node : nodes) {
+			Items::ReapplyUnder(node);
+		}
+		Items::ReapplyUnder(light);
 	}
 
 	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect)
