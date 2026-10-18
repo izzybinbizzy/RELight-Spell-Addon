@@ -13,8 +13,8 @@
 // a spell's: under the hand's magic nodes and the game's casting light; a weapon's (staves and bound weapons too): under its
 // 3D in the hand, and for a staff also its hand's magic nodes and casting light, and for an enchanted weapon the roots its
 // enchantment effects hang lights on (Fading on or off). And again right after Light Placer animates those lights - an
-// effect's, a caster's, a cell's (Dynamic Lighting's color and fade keys rewrite them every update; his report 2026-10-17:
-// a sword set red stayed green, then flashed red and green). Off puts the light out (fade 0), a color
+// effect's, a caster's, a cell's (Dynamic Lighting's color and fade keys rewrite them every update, so a choice written once
+// a frame lost to them). Off puts the light out (fade 0), a color
 // recolors it; the fade and color it had are kept, and given back the moment the item is set to Auto again (unless something
 // else wrote the light since). Every lighting mod's light at that hand is reached - Light Placer's, RE::Light's, the game's
 // own, ours - since the choice is about the item, not the light's maker.

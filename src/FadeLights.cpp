@@ -795,7 +795,7 @@ namespace Fade
 	void AfterReferenceEffect(RE::ReferenceEffect* a_effect, bool a_own3D)
 	{
 		const bool items = gItemRootsWanted.load(std::memory_order_relaxed);
-		if (gActiveHands.load(std::memory_order_relaxed) == 0 && !items) {
+		if (gActiveHands.load(std::memory_order_relaxed) == 0 && !items && !Items::Holding()) {
 			return;
 		}
 		RE::Actor*      actor = nullptr;
@@ -833,13 +833,21 @@ namespace Fade
 		}
 	}
 
-	void AfterCaster()
+	void AfterCaster(RE::ActorMagicCaster* a_caster)
 	{
-		if (!Items::Holding()) {
+		using Source = RE::MagicSystem::CastingSource;
+		if (!a_caster || !Items::Holding() || (a_caster->castingSource != Source::kLeftHand && a_caster->castingSource != Source::kRightHand)) {
 			return;
 		}
+		// Light Placer animates this hand's casting lights in the caster's update: only its own lights, as Items::Apply finds them
+		RE::NiAVObject*   nodes[2]{};
+		RE::NiPointLight* light = nullptr;
+		SpellHandLights(a_caster->GetCasterAsActor(), a_caster->castingSource == Source::kLeftHand, nodes, light);
 		std::lock_guard lock(gLock);
-		Items::Reapply();  // Light Placer animates a hand's casting lights in the caster's update
+		for (auto* node : nodes) {
+			Items::ReapplyUnder(node);
+		}
+		Items::ReapplyUnder(light);
 	}
 
 	void AfterShaderEffect(RE::ShaderReferenceEffect* a_effect)
