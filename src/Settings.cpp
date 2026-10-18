@@ -43,7 +43,7 @@ namespace Plugin
 		std::atomic<int>  gDaylight{ 1 };
 		std::atomic<int>  gHandsFor{ 0 };
 		std::atomic<bool> gAuto{ true };
-		std::atomic<bool> gAllOff{ false };  // his Performance switch (2026-10-17, Illuminated's CLAUDE.md): every light of this mod off
+		std::atomic<bool> gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
 
 		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{

@@ -343,7 +343,7 @@ namespace Fade
 			Percent("Reticle size", s.reticleSize, 50, 200, "How big the reticle's bars are.", save);
 			Percent("Reticle opacity", s.reticleOpacity, 10, 100, "How strongly the reticle shows over the game.", save);
 			{
-				// his list 2026-10-17: "a dot in the middle that can be resized and made transparent ... just big medium and small.
+				// his list: "a dot in the middle that can be resized and made transparent ... just big medium and small.
 				// and full medium clear for transparency. make the dot follow reticle color"
 				static const char* const kDotSizes[] = { TR_MARK("Small"), TR_MARK("Medium"), TR_MARK("Big") };
 				static const char* const kDotClear[] = { TR_MARK("Full"), TR_MARK("Medium"), TR_MARK("Clear") };
@@ -1027,7 +1027,7 @@ namespace Fade
 						col(left.x, left.y, left.z, 0.45f), col(right.x, right.y, right.z, 1.0f), col(right.x, right.y, right.z, 1.0f),
 						col(left.x, left.y, left.z, 0.45f));
 				}
-				// a tick at both ends (his list 2026-10-17: "i dont like the arrows" - the chevrons are gone)
+				// a tick at both ends (his list: "i dont like the arrows" - the chevrons are gone)
 				for (const float x : { x0, x1 }) {
 					ImDrawListManager::AddLine(dl, ImVec2{ x, yc - h * 1.6f }, ImVec2{ x, yc + h * 1.6f }, bone, std::max(1.0f, k));
 				}
@@ -1103,7 +1103,7 @@ namespace Fade
 					ImDrawListManager::AddRectFilled(dl, ImVec2{ x - w * 1.5f, y0 - 3.0f * k }, ImVec2{ x + w * 1.5f, y1 + 3.0f * k }, shade(0.22f * glow),
 						3.0f * k, 0);
 				}
-				// the bracket ends: a tick (his list 2026-10-17: "i dont like the arrows" - the chevrons are gone)
+				// the bracket ends: a tick (his list: "i dont like the arrows" - the chevrons are gone)
 				for (const float y : { y0, y1 }) {
 					ImDrawListManager::AddLine(dl, ImVec2{ x - w * 1.6f, y }, ImVec2{ x + w * 1.6f, y }, bone, std::max(1.0f, k));
 				}

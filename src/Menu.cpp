@@ -391,9 +391,11 @@ namespace Plugin
 				name[0] = '\0';
 			}
 			ImGuiMCP::EndDisabled();
-			char saveTip[256]{};
-			std::snprintf(saveTip, sizeof(saveTip), T("Saves every setting and switch as it is now under this name, for %s."), T(lighting.c_str()));
-			MenuStyle::Tip(saveTip);
+			const char* const saveFmt = T("Saves every setting and switch as it is now under this name, for %s.");
+			const char* const lightingName = T(lighting.c_str());
+			std::string       saveTip(static_cast<std::size_t>((std::max)(std::snprintf(nullptr, 0, saveFmt, lightingName), 0)) + 1, '\0');
+			std::snprintf(saveTip.data(), saveTip.size(), saveFmt, lightingName);
+			MenuStyle::Tip(saveTip.c_str());
 			std::lock_guard lock(gPresetLock);
 			for (std::size_t i = 0; i < gPresets.size(); ++i) {
 				if (gPresets[i].lighting != lighting) {
@@ -588,7 +590,7 @@ namespace Plugin
 			MenuStyle::Tip(T(
 				"Which casters' hands carry a spell light. In a big fight fewer lights keep the game smooth. Everyone nearby leaves "
 				"out casters farther than about forty paces from you. Reaches the next spell they ready."));
-			// his list 2026-10-17: "under performance add a toggle to turn off lights completely for the entire mod"
+			// his list: "under performance add a toggle to turn off lights completely for the entire mod"
 			bool allOff = AllLightsOff();
 			if (ImGuiMCP::Checkbox(T("All RELight - Spell Addon lights off"), &allOff)) {
 				SetAllLightsOff(allOff);
@@ -596,8 +598,9 @@ namespace Plugin
 				RehandSoon();
 			}
 			MenuStyle::Tip(T(
-				"Every light this mod adds goes out - every switch's lights and the hand, weapon and ground lights - to compare, "
-				"or when every frame counts. Off again brings them all back."));
+				"This mod's lights go out - every switch's lights and the hand, weapon and ground lights (sprays and bolts keep their own "
+				"light) - to compare, or when every frame counts. A spell already in your hand changes the next time you ready it. Off "
+				"again brings them all back."));
 		}
 
 		// Illuminated's Configs page: the spells' own switches under "Spells and Effects", then each mod patch by category (his

@@ -100,7 +100,7 @@ namespace Fade
 		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 the bar under the crosshair (his pick)
 		float               reticleSize{ 1.0f };
 		float               reticleOpacity{ 0.85f };
-		int                 reticleDotSize{ 1 };   // his list 2026-10-17: a dot in the middle, "big medium and small"
+		int                 reticleDotSize{ 1 };   // his list: a dot in the middle, "big medium and small"
 		int                 reticleDotClear{ 0 };  // and "full medium clear for transparency"
 		bool                debugLog{ false };
 
