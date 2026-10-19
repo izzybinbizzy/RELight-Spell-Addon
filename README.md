@@ -18,7 +18,8 @@ plugin adds what RE::Light cannot do from a config.
   Dynamic Wards), FleshFX colors and VAER Reborn's swirls kept.
 
 ## Requires
-SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD).
+SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD). In Skyrim VR:
+SKSE VR, the VR Address Library and ReLight VR, with the VR build of this plugin (built with `GLOW_VR=1`).
 
 ## Settings
 SKSE Menu Framework > RELight - Spell Addon, saved to `Data\SKSE\Plugins\RelightSpellAddon.ini`; menu changes apply at

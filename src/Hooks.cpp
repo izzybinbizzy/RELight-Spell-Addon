@@ -18,8 +18,16 @@
 // out, so it never shows a frame it should not) and hand the bookkeeping to the main thread as an SKSE task that holds the
 // light until then - so no lock is held across a frame, and none is needed.
 
+#ifndef WIN32_LEAN_AND_MEAN
+#	define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#	define NOMINMAX  // the build defines it too (xmake.lua)
+#endif
 #include "Fade.h"
 #include "Plugin.h"
+
+#include <Windows.h>  // VirtualQuery, GetModuleHandleExW: whose code a VR call site's call leads into
 
 namespace
 {
@@ -398,6 +406,11 @@ namespace
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
 		{
+			if (REL::Module::IsVR()) {
+				// as Illuminated's VR build: this call's place in VR was never read, so nothing is written there
+				SKSE::log::info("VR: cell animations not hooked; fading lights may show their full strength for part of a frame");
+				return;
+			}
 			REL::Relocation<std::uintptr_t> site{ RELOCATION_ID(18458, 18889), 0x52 };
 			if (!LightKit::IsCallAt(site.address())) {
 				SKSE::log::warn(
@@ -411,25 +424,60 @@ namespace
 
 	void InstallCallSites()
 	{
-		auto&                                                         trampoline = SKSE::GetTrampoline();
-		std::vector<std::pair<REL::RelocationID, REL::VariantOffset>> sites{
-			{ RELOCATION_ID(33603, 34381), REL::VariantOffset(0xAC, 0xE2, 0xE2) },
-			{ RELOCATION_ID(33391, 34151), REL::VariantOffset(0x86, 0xCD, 0x86) },
-			{ RELOCATION_ID(42965, 44222), REL::VariantOffset(0x58, 0x36D, 0x58) }
+		auto& trampoline = SKSE::GetTrampoline();
+		// Skyrim VR's own addresses for the first three: the VR Address Library has no id for these functions (read off its
+		// 0.282.0 file), so they are given as VR offsets - read off ReLight VR 4 (Nexus 193734, RE::Light built for VR), which
+		// hooks these same calls in VR
+		std::vector<REL::Relocation<std::uintptr_t>> sites{
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(33603, 34381, 0x54FAB0), REL::VariantOffset(0xAC, 0xE2, 0xAC) },
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(33391, 34151, 0x547A70), REL::VariantOffset(0x86, 0xCD, 0x86) },
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(42965, 44222, 0x7790E0), REL::VariantOffset(0x58, 0x36D, 0x58) }
 		};
 		if (REL::Module::IsAE()) {
-			sites.push_back({ RELOCATION_ID(33403, 34185), REL::VariantOffset(0x407, 0x407, 0x407) });
+			sites.emplace_back(RELOCATION_ID(33403, 34185), 0x407);
 		}
 		constexpr std::array thunks{ &MagicLight<0>::thunk, &MagicLight<1>::thunk, &MagicLight<2>::thunk, &MagicLight<3>::thunk };
 		const std::array     nexts{ &MagicLight<0>::func, &MagicLight<1>::func, &MagicLight<2>::func, &MagicLight<3>::func };
 		const auto           game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
-		std::size_t          hooked = 0, toGame = 0;
+		// SE / AE: a site's place is the Address Library's, so the call there is the spell-light call (the game's, or another
+		// plugin's hook of it). VR: the places were read off another mod, never off the game here - a site is written only when
+		// its call leads to the game's own function or to RE::Light's hook of it (through the jump an SKSE trampoline slot
+		// holds), so a wrong address is left alone instead of patched
+		const auto known = [&](std::uintptr_t a_site) {
+			if (!LightKit::IsCallAt(a_site)) {
+				return false;
+			}
+			if (!REL::Module::IsVR()) {
+				return true;
+			}
+			std::int32_t rel = 0;
+			std::memcpy(&rel, reinterpret_cast<const void*>(a_site + 1), sizeof(rel));
+			auto to = a_site + 5 + static_cast<std::uintptr_t>(static_cast<std::intptr_t>(rel));
+			if (to == game) {
+				return true;
+			}
+			constexpr std::array<std::uint8_t, 6> kJump{ 0xFF, 0x25, 0, 0, 0, 0 };  // jmp [rip+0], then the hook's address
+			MEMORY_BASIC_INFORMATION              mem{};
+			if (VirtualQuery(reinterpret_cast<LPCVOID>(to), &mem, sizeof(mem)) == 0 || mem.State != MEM_COMMIT ||
+				(mem.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) == 0 || (mem.Protect & PAGE_GUARD) != 0 ||
+				to + kJump.size() + sizeof(to) > reinterpret_cast<std::uintptr_t>(mem.BaseAddress) + mem.RegionSize ||
+				std::memcmp(reinterpret_cast<const void*>(to), kJump.data(), kJump.size()) != 0) {
+				return false;
+			}
+			std::memcpy(&to, reinterpret_cast<const void*>(to + kJump.size()), sizeof(to));
+			HMODULE owner = nullptr;
+			return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+					   reinterpret_cast<LPCWSTR>(to), &owner) != 0 &&
+			       owner == GetModuleHandleW(L"ReLight.dll");
+		};
+		std::size_t hooked = 0, toGame = 0;
 		for (std::size_t i = 0; i < sites.size() && i < thunks.size(); ++i) {
-			REL::Relocation<std::uintptr_t> target{ sites[i].first, sites[i].second };
-			if (!LightKit::IsCallAt(target.address())) {
+			const auto& target = sites[i];
+			if (!known(target.address())) {
 				SKSE::log::warn(
-					"spell lights: a call site is not a call (another plugin rewrote it?); left alone - those spells keep their "
-					"own light handling");
+					"spell lights: call site {} of {} (game offset {:X}) is not the call it should be (another plugin rewrote it, or "
+					"its address is off); left alone - those spells keep their own light handling",
+					i + 1, sites.size(), target.address() - REL::Module::get().base());
 				continue;
 			}
 			const auto old = trampoline.write_call<5>(target.address(), thunks[i]);
@@ -459,9 +507,8 @@ namespace
 		Load3D<RE::BarrierProjectile>::Install();
 		Load3D<RE::Explosion>::Install();
 		Load3D<RE::Hazard>::Install();
-		constexpr std::size_t           kActorUpdate = 0xAD;  // Actor::Update's vtable slot on SE and AE (this mod has no VR build)
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
-		PlayerUpdate::func = vtbl.write_vfunc(kActorUpdate, PlayerUpdate::thunk);
+		PlayerUpdate::func = vtbl.write_vfunc(REL::Relocate(0xAD, 0xAD, 0xAF), PlayerUpdate::thunk);  // Actor::Update (CommonLib's Actor.cpp)
 		EffectUpdate<RE::ShaderReferenceEffect>::Install();
 		EffectUpdate<RE::ModelReferenceEffect>::Install();
 		CellAnimations::Install();
