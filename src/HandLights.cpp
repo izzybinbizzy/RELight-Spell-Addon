@@ -192,10 +192,12 @@ namespace Plugin
 			std::map<RE::ActorValue, std::map<std::uint32_t, std::size_t>> byGroup;
 			const auto                                                     pack = [](const std::uint8_t a_rgb[3]) { return (std::uint32_t{ a_rgb[0] } << 16) | (std::uint32_t{ a_rgb[1] } << 8) | a_rgb[2]; };
 			const auto                                                     packColor = [](const RE::Color& c) { return (std::uint32_t{ c.red } << 16) | (std::uint32_t{ c.green } << 8) | c.blue; };
+			// counted off the data's colors (each key's first layer), not off the switches that are on now: a menu switch then
+			// changes no group's color, so nothing goes stale between re-finds (CodeRabbit, RELight #27)
 			for (const auto& t : gTargets) {
 				if (const auto group = t.effect->data.resistVariable; group != RE::ActorValue::kNone) {
-					if (const Hand* h = Winner(t.key)) {
-						++byGroup[group][pack(h->rgb)];
+					if (const auto it = Hands().find(t.key); it != Hands().end() && !it->second.empty()) {
+						++byGroup[group][pack(it->second.front().rgb)];
 					}
 				}
 			}
@@ -227,7 +229,7 @@ namespace Plugin
 					continue;  // no color to read: it keeps what it has
 				}
 				// a black light is an author's dark on purpose (Colorful Bound Weapons' black summon): black stays dark
-				if ((std::max)({ (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF }) < 16) {
+				if (static_cast<int>((std::max)({ (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF })) < LightKit::kDarkTop) {
 					continue;
 				}
 				auto key = std::format("{}{},{},{}", kAutoPrefix, (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);

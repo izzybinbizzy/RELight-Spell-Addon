@@ -223,6 +223,9 @@ namespace LightKit
 	// nothing, and the mean is scaled so its top channel is 255. No colored layer = no color. The rule the 2026-10-19 research
 	// measured (`Misc\Build work\auto light colors 2026-10-19\`): where it gives a color it points the way the author's own hand
 	// light does on 75 of 80 effects.
+	// a color whose top channel (0..255) is under this reads as black: an automatic light stays dark for it ("black stays dark")
+	inline constexpr int kDarkTop = 16;
+
 	[[nodiscard]] inline std::optional<std::array<std::uint8_t, 3>> ChromaMean(const std::vector<std::array<float, 3>>& a_layers)
 	{
 		std::array<double, 3> sum{};
@@ -232,8 +235,9 @@ namespace LightKit
 			for (std::size_t i = 0; i < 3; ++i) {
 				c[i] = std::isfinite(layer[i]) ? std::round(std::clamp(layer[i], 0.0f, 1.0f) * 255.0) : 0.0;
 			}
+			// a nearly black layer counts for nothing: scaled to a top channel of 255 it would turn bright (CodeRabbit, RELight #27)
 			const double w = std::ranges::max(c) - std::ranges::min(c);
-			if (w <= 0.0) {
+			if (w <= 0.0 || std::ranges::max(c) < kDarkTop) {
 				continue;
 			}
 			for (std::size_t i = 0; i < 3; ++i) {
