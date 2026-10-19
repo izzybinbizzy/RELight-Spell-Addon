@@ -459,7 +459,7 @@ namespace
 			constexpr std::array<std::uint8_t, 6> kJump{ 0xFF, 0x25, 0, 0, 0, 0 };  // jmp [rip+0], then the hook's address
 			MEMORY_BASIC_INFORMATION              mem{};
 			if (VirtualQuery(reinterpret_cast<LPCVOID>(to), &mem, sizeof(mem)) == 0 || mem.State != MEM_COMMIT ||
-				(mem.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) == 0 ||
+				(mem.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) == 0 || (mem.Protect & PAGE_GUARD) != 0 ||
 				to + kJump.size() + sizeof(to) > reinterpret_cast<std::uintptr_t>(mem.BaseAddress) + mem.RegionSize ||
 				std::memcmp(reinterpret_cast<const void*>(to), kJump.data(), kJump.size()) != 0) {
 				return false;
@@ -475,8 +475,9 @@ namespace
 			const auto& target = sites[i];
 			if (!known(target.address())) {
 				SKSE::log::warn(
-					"spell lights: a call site is not the call it should be (another plugin rewrote it, or its address is off); "
-					"left alone - those spells keep their own light handling");
+					"spell lights: call site {} of {} (game offset {:X}) is not the call it should be (another plugin rewrote it, or "
+					"its address is off); left alone - those spells keep their own light handling",
+					i + 1, sites.size(), target.address() - REL::Module::get().base());
 				continue;
 			}
 			const auto old = trampoline.write_call<5>(target.address(), thunks[i]);
