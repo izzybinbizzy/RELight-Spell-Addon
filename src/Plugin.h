@@ -281,6 +281,7 @@ namespace Plugin
 	// ------------------------------------------------------------------ BodyLights.cpp: the body glow while casting
 	void                      UpdateBodyLights();  // every frame, after UpdateHeldLights
 	void                      DropBodyLights();    // a game loads, or a new one starts: the art they hang on is the old game's
+	void                      ForgetBodyArt();     // casting art changed (Dynamic Wards' ranked hand art): its list is learned again
 	[[nodiscard]] std::size_t LiveBodyLights();
 	[[nodiscard]] std::size_t BodyLightsMade();
 

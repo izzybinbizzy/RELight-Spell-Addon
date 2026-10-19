@@ -222,6 +222,13 @@ namespace Plugin
 		}
 		gLive.clear();
 		gFailed.clear();
+		ForgetBodyArt();  // a save may bring other casting art (RefindHandLights)
+	}
+
+	void ForgetBodyArt()
+	{
+		gHandOrWeaponArt.clear();  // learned again on the next update, outside the walk of the effects
+		gArtKnown = false;
 	}
 
 	std::size_t LiveBodyLights() { return gLive.size(); }

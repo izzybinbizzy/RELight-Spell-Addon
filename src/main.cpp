@@ -107,7 +107,10 @@ namespace
 			if (Plugin::WardsSteppedDown()) {
 				SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
 					if (a_m && a_m->type == 'DWAC') {
-						LightKit::Guarded("Dynamic Wards message", []() { Plugin::RefindHandLights(); });
+						LightKit::Guarded("Dynamic Wards message", []() {
+							Plugin::RefindHandLights();
+							Plugin::ForgetBodyArt();  // the casting art the body lights leave out moved too
+						});
 					}
 				});
 			}
