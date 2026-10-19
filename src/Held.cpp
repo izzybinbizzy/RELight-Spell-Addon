@@ -10,7 +10,7 @@
 // hand, so the held light steps aside the frame that light is on its node (ReLightOn). "Hand lights for" (the light budget
 // for big fights) leaves out the same actors here as it does for hand lights. Nothing on any record is edited.
 //
-// CREDIT: how a light is made and registered here (MakeHeldLight) follows ReLight by Truman (github.com/TrumanGIT/ReLight),
+// CREDIT: how a light is made and registered here (MakeOwnLight) follows ReLight by Truman (github.com/TrumanGIT/ReLight),
 // GPL-3.0-or-later, with his permission and kept under the same license. From ReLight: one master NiPointLight made once
 // and cloned for every use (a freshly made light attached straight away crashes), the light's size carried in the
 // radius' z, the create parameters a non-shadow light needs (field of view 90, portal-strict, never fades), and handing
@@ -67,57 +67,6 @@ namespace Plugin
 			}
 		};
 		std::vector<Failed> gFailed;
-
-		// off Community Shaders the reach is set through the game's attenuation call, which writes the same two words as the
-		// light's ambient color; the ambient is written after it, as when the light was made (the audit, 2026-10-14: the
-		// Reach slider moved only the stated radius of a held light on Vanilla and ENB)
-		void SetPlainReach(RE::NiPointLight* a_light, float a_reach, const RE::NiColor& a_color)
-		{
-			a_light->SetLightAttenuation(a_reach);
-			a_light->GetLightRuntimeData().ambient = { a_color.red * 0.1f, a_color.green * 0.1f, a_color.blue * 0.1f };
-		}
-
-		// one light made and registered the ReLight way, on the main thread; nullptr when it could not be
-		RE::BSLight* MakeHeldLight(const Stream& a_s, float a_fade, float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene,
-			RE::NiPointLight*& a_made)
-		{
-			auto* light = LightKit::CloneLight();
-			if (!light) {
-				return nullptr;
-			}
-			light->name = kLightName;
-			light->fadeAmount = kMovingLightMark;
-			auto& data = light->GetLightRuntimeData();
-			data.diffuse = a_s.color;
-			data.fade = a_fade;
-			data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
-			if (InverseSquare()) {
-				light->SetLightAttenuation(a_reach);  // without it the light has no attenuation and lights nothing
-				// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves the
-				// peak with the reach held (at 100%/100% it equals the file's). A light of our own, never made by the game's
-				// GenDynamic, so Community Shaders set none of its flags: the flag word is ours whole - the attenuation's float
-				// left there could read as Disabled (2.2's code review, the hand-light fix)
-				Isl::SetOwn(light);  // a light of our own: Community Shaders' words written whole (LightKit.h)
-				Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
-			} else {
-				// off Community Shaders: an ambient of a tenth of its color, RE::Light's rule (Truman); the caller hands a plain
-				// fade and reach (fade x 1.14, reach x 178 / 133)
-				SetPlainReach(light, a_reach, a_s.color);
-			}
-			light->local.translate = a_s.at;
-			light->local.scale = 1.0f;
-			const RE::NiPointer<RE::NiPointLight> hold(light);  // freed here if it is never registered
-			a_parent->AttachChild(light, true);
-			RE::NiUpdateData update{};
-			light->Update(update);
-			auto* bs = LightKit::AddToScene(a_scene, light);
-			if (!bs) {
-				a_parent->DetachChild(light);
-				return nullptr;
-			}
-			a_made = light;
-			return bs;
-		}
 
 		void TakeOff(Live& a_v, RE::ShadowSceneNode* a_scene)
 		{
@@ -236,6 +185,84 @@ namespace Plugin
 		}
 	}
 
+	namespace
+	{
+		// off Community Shaders the reach is set through the game's attenuation call, which writes the same two words as the
+		// light's ambient color; the ambient is written after it, as when the light was made (the audit, 2026-10-14: the
+		// Reach slider moved only the stated radius of a held light on Vanilla and ENB)
+		void SetPlainReach(RE::NiPointLight* a_light, float a_reach, const RE::NiColor& a_color)
+		{
+			a_light->SetLightAttenuation(a_reach);
+			a_light->GetLightRuntimeData().ambient = { a_color.red * 0.1f, a_color.green * 0.1f, a_color.blue * 0.1f };
+		}
+	}
+
+	// the same Brightness x daylight factor the brightness pass gives every other light of ours (the re-score's P5: held
+	// lights missed Dim in daylight); off Community Shaders a light made for inverse square lighting is drawn plain - the
+	// house light the hand lights take (LightMath.h PlainAt: fade x 1.14, the reach drawn at 178 / 133)
+	OwnScale OwnLightScale()
+	{
+		const bool isl = InverseSquare();
+		return { Brightness() * DaylightFactor() * (isl ? 1.0f : 1.14f), Reach() * (isl ? 1.0f : 178.0f / 133.0f) };
+	}
+
+	// one light made and registered the ReLight way, on the main thread; nullptr when it could not be. Held lights and body
+	// lights (BodyLights.cpp) are both made here
+	RE::BSLight* MakeOwnLight(const Stream& a_s, float a_fade, float a_reach, RE::NiNode* a_parent, RE::ShadowSceneNode* a_scene,
+		const char* a_name, RE::NiPointLight*& a_made)
+	{
+		auto* light = LightKit::CloneLight();
+		if (!light) {
+			return nullptr;
+		}
+		light->name = a_name;
+		light->fadeAmount = kMovingLightMark;
+		auto& data = light->GetLightRuntimeData();
+		data.diffuse = a_s.color;
+		data.fade = a_fade;
+		data.radius = { a_reach, a_reach, a_s.size };  // x and y are the reach; z carries the light's size
+		if (InverseSquare()) {
+			light->SetLightAttenuation(a_reach);  // without it the light has no attenuation and lights nothing
+			// after SetLightAttenuation, which writes the same two words; the cutoff is re-derived so Brightness moves the
+			// peak with the reach held (at 100%/100% it equals the file's). A light of our own, never made by the game's
+			// GenDynamic, so Community Shaders set none of its flags: the flag word is ours whole - the attenuation's float
+			// left there could read as Disabled (2.2's code review, the hand-light fix)
+			Isl::SetOwn(light);  // a light of our own: Community Shaders' words written whole (LightKit.h)
+			Isl::SetCutoff(light, CutoffFor(a_fade, a_reach, a_s.size));
+		} else {
+			// off Community Shaders: an ambient of a tenth of its color, RE::Light's rule (Truman); the caller hands a plain
+			// fade and reach (fade x 1.14, reach x 178 / 133)
+			SetPlainReach(light, a_reach, a_s.color);
+		}
+		light->local.translate = a_s.at;
+		light->local.scale = 1.0f;
+		const RE::NiPointer<RE::NiPointLight> hold(light);  // freed here if it is never registered
+		a_parent->AttachChild(light, true);
+		RE::NiUpdateData update{};
+		light->Update(update);
+		auto* bs = LightKit::AddToScene(a_scene, light);
+		if (!bs) {
+			a_parent->DetachChild(light);
+			return nullptr;
+		}
+		a_made = light;
+		return bs;
+	}
+
+	// the sliders and the daylight onto a light MakeOwnLight made: fade and reach as the caller worked them out
+	void RetuneOwnLight(RE::NiPointLight* a_light, const Stream& a_s, float a_fade, float a_reach, bool a_reachMoved)
+	{
+		auto& d = a_light->GetLightRuntimeData();
+		d.fade = a_fade;
+		d.radius.x = a_reach;
+		d.radius.y = a_reach;
+		if (InverseSquare()) {  // without it these words are ambient color (Plugin.h)
+			Isl::SetCutoff(a_light, CutoffFor(a_fade, a_reach, a_s.size));
+		} else if (a_reachMoved) {
+			SetPlainReach(a_light, a_reach, a_s.color);
+		}
+	}
+
 	void UpdateHeldLights()
 	{
 		auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -267,14 +294,9 @@ namespace Plugin
 			return !keep;
 		});
 		std::erase_if(gFailed, [&](const Failed& f) { return std::ranges::none_of(want, [&f](const Want& w) { return f.Is(w); }); });
-		// the same Brightness x daylight factor the brightness pass gives every other light of ours (the re-score's P5: held
-		// lights missed Dim in daylight); the color is the light's own
-		// 🔁 (his "re add the enb and cs and vanilla versions ... auto detect"): off Community Shaders a held light,
-		// made for inverse square lighting, is drawn plain - the house light the hand lights take (LightKit::PlainOf: fade x 1.14,
-		// the reach drawn at 178 / 133)
-		const bool  isl = InverseSquare();
-		const float scale = Brightness() * DaylightFactor() * (isl ? 1.0f : 1.14f);
-		const float reachScale = Reach() * (isl ? 1.0f : 178.0f / 133.0f);
+		// the sliders, the daylight and (🔁 his "re add the enb and cs and vanilla versions ... auto detect") the plain drawing
+		// off Community Shaders; the color is the light's own
+		const auto [scale, reachScale] = OwnLightScale();
 		for (const auto& w : want) {
 			const bool have = std::ranges::any_of(gLive, [&w](const Live& v) {
 				return w.actor->GetFormID() == v.actor && w.left == v.left && w.firstPerson == v.firstPerson;
@@ -293,7 +315,7 @@ namespace Plugin
 			const float       fade = w.held->fade * scale;
 			const float       reach = w.held->radius * reachScale;
 			RE::NiPointLight* light = nullptr;
-			auto*             bs = MakeHeldLight(*w.held, fade, reach, w.node, scene, light);
+			auto*             bs = MakeOwnLight(*w.held, fade, reach, w.node, scene, kLightName, light);
 			if (!bs) {
 				if (const auto failed = std::ranges::find_if(gFailed, [&w](const Failed& f) { return f.Is(w); }); failed != gFailed.end()) {
 					failed->retryAt = gUpdate + kRetryUpdates;
@@ -318,15 +340,7 @@ namespace Plugin
 			const float fade = v.held->fade * scale;
 			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
-				auto& d = v.light->GetLightRuntimeData();
-				d.fade = fade;
-				d.radius.x = reach;
-				d.radius.y = reach;
-				if (isl) {  // without it these words are ambient color (Plugin.h)
-					Isl::SetCutoff(v.light.get(), CutoffFor(fade, reach, v.held->size));
-				} else if (reach != v.wroteReach) {
-					SetPlainReach(v.light.get(), reach, v.held->color);
-				}
+				RetuneOwnLight(v.light.get(), *v.held, fade, reach, reach != v.wroteReach);
 				v.written = fade;
 				v.wroteReach = reach;
 			}

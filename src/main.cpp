@@ -11,6 +11,7 @@
 //   - a hand light for every spell whose casting art a layer lights, and an automatic one for a spell no layer lights
 //     (HandLights.cpp); off Community Shaders a twin of each lights the ground (GroundLights.cpp);
 //   - a weapon's or staff's own light while it is drawn (Held.cpp); the sprays' and beams' light records kept to them (Streams.cpp);
+//   - the body glow while casting: a light on art the game hangs on an actor - a cloak, a heal (BodyLights.cpp);
 //   - one ward, one dome (Wards.cpp); VAER Reborn's swirls given back (VaerSwirls.cpp);
 //   - the menu's switches, Brightness and Reach, lights off while sneaking, "Hand lights for", and the fading module.
 // Every choice is a setting in the menu (SKSE Menu Framework - the only menu this mod has); the few values the menu does not
@@ -26,7 +27,8 @@
 //   Brightness.cpp  our own brightness slider, which scales this mod's lights and nothing else
 //   Streams.cpp     sprays, breath shouts and beams: RE::Light lights them, the menu reaches their lights
 //   Held.cpp        a weapon's own light while it is drawn (RE::Light reaches a weapon in the hand only by enchantment),
-//                   made and registered the ReLight way (MakeHeldLight)
+//                   made and registered the ReLight way (MakeOwnLight)
+//   BodyLights.cpp  the body glow while casting: a light on art the game hangs on an actor (Truman's way, the held lights' code)
 //   Wards.cpp       one ward, one dome, and the ward color pick - all left to Dynamic Wards when it is loaded
 //   HandLights.cpp  the light on the caster's hands, made in memory - no plugin, no script
 //   GroundLights.cpp off Community Shaders, a twin of each hand light that lights the ground (Illuminated's)
@@ -105,7 +107,10 @@ namespace
 			if (Plugin::WardsSteppedDown()) {
 				SKSE::GetMessagingInterface()->RegisterListener("DynamicWards", [](SKSE::MessagingInterface::Message* a_m) {
 					if (a_m && a_m->type == 'DWAC') {
-						LightKit::Guarded("Dynamic Wards message", []() { Plugin::RefindHandLights(); });
+						LightKit::Guarded("Dynamic Wards message", []() {
+							Plugin::RefindHandLights();
+							Plugin::ForgetBodyArt();  // the casting art the body lights leave out moved too
+						});
 					}
 				});
 			}
@@ -115,6 +120,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
 			Plugin::DropGroundLights();  // the hands and casting lights they follow are the old game's
+			Plugin::DropBodyLights();    // and the art the body lights hang on
 			Fade::OnGameLoading();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -122,6 +128,7 @@ namespace
 			if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
 				// no kPreLoadGame comes before a new game: the last game's twins and fading go here
 				Plugin::DropGroundLights();
+				Plugin::DropBodyLights();
 				Fade::OnGameLoading();
 			}
 			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back

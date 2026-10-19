@@ -73,7 +73,7 @@ namespace DataText
 		int         order{ 0 }, menu{ 0 };
 	};
 
-	// a light on a mesh key: a `stream` (node + r g b fade radius size cutoff x y z) or a `held` (no node)
+	// a light on a mesh key: a `stream` (node + r g b fade radius size cutoff x y z), a `held` or a `body` (no node)
 	struct LightText
 	{
 		std::string           key, node;
@@ -106,7 +106,7 @@ namespace DataText
 		std::vector<std::string> meshes, bases, sprays, beams;  // bases / sprays / beams: forms as written
 		// a spray's or beam's light record that carries his color (2.3): the form as written, and its color 0-255
 		std::vector<std::pair<std::string, std::array<int, 3>>> recordColors;
-		std::vector<LightText>                                  streams, helds;
+		std::vector<LightText>                                  streams, helds, bodies;
 		std::vector<HandText>                                   hands;
 		std::vector<FxText>                                     fx;
 		std::vector<TintText>                                   tints;
@@ -200,6 +200,15 @@ namespace DataText
 				return false;
 			}
 			a_file.helds.push_back(std::move(s));
+			return true;
+		}
+		// body <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>: the light for that art model on an actor (BodyLights.cpp)
+		if (kind == "body" && p.size() == 12) {
+			LightText s{ std::string(p[1]), "-", {} };
+			if (!Numbers(p, 2, s.v)) {
+				return false;
+			}
+			a_file.bodies.push_back(std::move(s));
 			return true;
 		}
 		if (kind == "hand" && p.size() == 11) {

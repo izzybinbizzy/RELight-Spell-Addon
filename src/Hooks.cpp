@@ -9,7 +9,7 @@
 //                 budget ("Hand lights for"), sneaking;
 //   3D loads      of projectiles, explosions and hazards: a switched-off option's light out before its first frame, sneaking;
 //   the player update: the per-frame passes in their order - kept lights swept, sneaking, the switches, held lights,
-//                 Brightness, the fading module, the ground twins;
+//                 body lights, Brightness, the fading module, the ground twins;
 //   effect updates and cell animations: the fading module's other two places.
 //
 // THREADS: every list of game lights here (and in Options.cpp, HandLights.cpp, Held.cpp) is filled and emptied on the
@@ -365,6 +365,7 @@ namespace
 				// here never reaches the screen in between
 				Plugin::UpdateOptionLights();
 				Plugin::UpdateHeldLights();
+				Plugin::UpdateBodyLights();  // the body glow while casting (BodyLights.cpp)
 				// RE::Light has already written this frame's fades (its update runs inside `func` above): the sliders next, then
 				// the fading module as the final pass, on what the sliders wrote (each fade it writes is reported back -
 				// Brightness.cpp's NoteFadeWrite)

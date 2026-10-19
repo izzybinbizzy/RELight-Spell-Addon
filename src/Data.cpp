@@ -20,6 +20,8 @@
 //   held <key or 0xID~Plugin> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   a weapon's own light while it is
 //        drawn (Held.cpp); a key is matched exactly against the weapon's model (its full path key, then its bare name), or
 //        its first-person model in first person
+//   body <key> <r> <g> <b> <fade> <radius> <size> <cutoff> <x> <y> <z>   the light for that art model when the game hangs
+//        it on an actor (a cloak, a heal - BodyLights.cpp; never a spell's casting art); matched exactly, as `held` is
 //
 // Objects are matched as RE::Light matches them: a form first, then the bare mesh key ("Magic\RuneFire01.nif" is
 // "runefire01"), exactly, then the longest of our keys the object's key contains.
@@ -49,6 +51,7 @@ namespace Plugin
 		StringMap<Stream>                           gStreams;    // key -> recipe (highest order wins)
 		StringMap<Stream>                           gHeld;       // weapon mesh key -> its held light (highest order wins)
 		std::unordered_map<RE::FormID, Stream>      gHeldBase;   // weapon form -> its held light (highest order wins)
+		StringMap<Stream>                           gBody;       // art model key -> its body light (highest order wins)
 		// key -> EVERY layer's hand light, highest order first: a switched-off option hands the hand to the next layer
 		StringMap<std::vector<Hand>>   gHands;
 		std::unordered_set<RE::FormID> gSprayLights;
@@ -74,6 +77,7 @@ namespace Plugin
 		std::unordered_map<RE::FormID, const Stream*>      gStreamCache;
 		std::unordered_map<RE::FormID, const RE::NiColor*> gTintCache;
 		std::unordered_map<RE::FormID, const Stream*>      gHeldCache[2];  // [first person]: asked every frame per drawn weapon
+		std::unordered_map<RE::FormID, const Stream*>      gBodyCache;     // art object -> its body light: asked every frame per art
 
 		[[nodiscard]] RE::NiColor ColorOf(float a_r, float a_g, float a_b) { return { a_r / 255.0f, a_g / 255.0f, a_b / 255.0f }; }
 
@@ -152,12 +156,15 @@ namespace Plugin
 				s.at = { v[7], v[8], v[9] };
 				return s;
 			};
-			std::vector<Stream> streams, helds;
+			std::vector<Stream> streams, helds, bodies;
 			for (const auto& s : file.streams) {
 				streams.push_back(light(s));
 			}
 			for (const auto& s : file.helds) {
 				helds.push_back(light(s));
+			}
+			for (const auto& s : file.bodies) {
+				bodies.push_back(light(s));
 			}
 			const auto idx = gOptions.size();
 			opt.meshes = file.meshes.size();
@@ -208,6 +215,12 @@ namespace Plugin
 				} else if (const auto id = ResolveBase(key)) {
 					KeepHighest(gHeldBase, id, std::move(s), opt.order);
 				}
+			}
+			for (auto& s : bodies) {
+				s.order = opt.order;
+				s.option = idx;
+				const auto key = s.key;
+				KeepHighest(gBody, key, std::move(s), opt.order);
 			}
 			for (const auto& fx : file.fx) {
 				KeepHighest(gHandFx, fx.key, HandFx{ fx.flicker, fx.perSecond, fx.intensity, opt.order }, opt.order);
@@ -376,6 +389,7 @@ namespace Plugin
 		gStreams.clear();
 		gHeld.clear();
 		gHeldBase.clear();
+		gBody.clear();
 		gHands.clear();
 		gSprayLights.clear();
 		gBeamLights.clear();
@@ -391,6 +405,7 @@ namespace Plugin
 			gTintCache.clear();
 			gHeldCache[0].clear();
 			gHeldCache[1].clear();
+			gBodyCache.clear();
 		}
 		gFiles = 0;
 		std::vector<fs::path> files;
@@ -427,9 +442,9 @@ namespace Plugin
 		const auto switches = std::ranges::count_if(gOptions, &Option::switchable);
 		SKSE::log::info(
 			"data: {} file(s) read, {} did not; {} switch(es), {} object key(s), {} form(s), {} stream(s), {} hand key(s), "
-			"{} tint(s), {} held weapon light(s)",
+			"{} tint(s), {} held weapon light(s), {} body light(s)",
 			gFiles, bad, switches, gMeshOwner.size(), gBaseOwner.size(), gStreams.size(), gHands.size(),
-			gMeshTints.size() + gBaseTints.size(), gHeld.size() + gHeldBase.size());
+			gMeshTints.size() + gBaseTints.size(), gHeld.size() + gHeldBase.size(), gBody.size());
 	}
 
 	std::vector<Option>& Options() { return gOptions; }
@@ -519,6 +534,26 @@ namespace Plugin
 			};
 			const Stream* first = a_firstPerson ? find(a_weapon->firstPersonModelObject) : nullptr;
 			return first ? first : find(a_weapon);
+		});
+	}
+
+	const Stream* BodyOf(const RE::BGSArtObject* a_art)
+	{
+		if (!a_art || gBody.empty()) {
+			return nullptr;
+		}
+		// exact, as RE::Light's enchantment light and our held lights match: the art's model by its full path, then its bare
+		// name - never a key inside another (the silver bowls, 2.2)
+		return Cached(gBodyCache, a_art, [&]() -> const Stream* {
+			const char* path = a_art->GetModel();
+			if (!path || !*path) {
+				return nullptr;
+			}
+			auto it = gBody.find(PathKey(path));
+			if (it == gBody.end()) {
+				it = gBody.find(MeshKey(path));
+			}
+			return it != gBody.end() ? &it->second : nullptr;
 		});
 	}
 
