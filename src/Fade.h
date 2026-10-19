@@ -165,30 +165,23 @@ namespace Fade
 	[[nodiscard]] std::vector<std::pair<float, float>> ArtNow();           // each art mesh's emissive scale: its base, and what we wrote
 	[[nodiscard]] std::size_t                          FrozenLightCount();
 
-	// The HUD (the charge gems and the reticle), published once a frame at the end of UpdateHands: the render thread draws
-	// from this small copy and never waits on the per-frame pass. [0] is the player's left hand, [1] the right.
+	// The HUD (the charge gems, and the bars offered to Reticle Arcs), published once a frame at the end of UpdateHands: the
+	// render thread and Reticle Arcs' updates read this small copy and never wait on the per-frame pass. [0] is the player's
+	// left hand, [1] the right.
 	struct HudHand
 	{
-		bool      shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
-		bool      spell{ false }, bound{ false };
-		float     fraction{ 1.0f };
-		Glow::Rgb color{ 0.32f, 0.58f, 1.0f };  // a spell's own light at full (his ask: the reticle in the spell's color)
-		int       element{ -1 };                // Element of a spell's strongest effect, -1 none (the bar under the crosshair's sigil)
-		int       school{ -1 };                 // 0 Destruction .. 4 Illusion, -1 none
-		int       skill{ 0 };                   // the player's level in that school
+		bool  shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
+		bool  spell{ false }, bound{ false };
+		float fraction{ 1.0f };
 	};
 	struct HudState
 	{
-		bool                   gems{ false }, reticle{ false };  // the two switches (and the module is on)
-		bool                   drawn{ false };                   // the player's weapons or spells are out
-		int                    reticleStyle{ 0 };                // 0 the bars beside the crosshair, 1 the bar under the crosshair
-		float                  reticleSize{ 1.0f }, reticleOpacity{ 0.85f };
-		int                    reticleDotSize{ 1 }, reticleDotClear{ 0 };  // the dot in the middle: 0 small .. 2 big; 0 full .. 2 clear
+		bool                   gems{ false };   // the gems' switch (and the module is on)
+		bool                   drawn{ false };  // the player's weapons or spells are out
 		float                  gemSize{ 1.0f }, gemOpacity{ 0.9f };
 		bool                   gemPercent{ true };
-		bool                   gemFull{ false };   // a gem at full charge too (the HUD page's Show at full charge)
-		float                  low{ 0.15f };       // the sputter point: under it the reticle turns ember
-		float                  regenWait{ 3.0f };  // the game's fMagickaRegenDelay: how long magicka normally waits before it comes back
+		bool                   gemFull{ false };  // a gem at full charge too (the HUD page's Show at full charge)
+		float                  low{ 0.15f };      // the sputter point: under it a Reticle Arcs bar reads low
 		std::array<HudHand, 2> hands{};
 	};
 	[[nodiscard]] HudState Hud();
@@ -208,9 +201,7 @@ namespace Fade
 		void Load();
 		// the fading module's own: [Fading] (Glow::Tuning's values the menu does not show) and [HUD] (where the HUD sits)
 		inline std::atomic<float>  gMinReach{ 0.35f }, gPulseSeconds{ 0.30f }, gFlareSeconds{ 0.70f }, gFallSeconds{ 0.15f }, gRiseSeconds{ 0.35f };
-		inline std::atomic<float>  gGemDistance{ 215.0f }, gGemHeight{ 62.0f }, gReticleGap{ 30.0f }, gReticleLength{ 56.0f };
-		inline std::atomic<float>  gBarWidth{ 300.0f }, gBarDrop{ 70.0f }, gEmptyPulseSpeed{ 2.6f }, gFullPulseSeconds{ 0.9f };
-		inline std::atomic<float>  gReticleHold{ 1.0f };
+		inline std::atomic<float>  gGemDistance{ 215.0f }, gGemHeight{ 62.0f };
 		[[nodiscard]] inline float Get(const std::atomic<float>& a_v) noexcept { return a_v.load(std::memory_order_relaxed); }
 	}
 
@@ -231,6 +222,22 @@ namespace Fade
 	// ------------------------------------------------------------------ FadeMenu.cpp
 	void RegisterMenu();
 
+	// ------------------------------------------------------------------ FadeArcs.cpp: the bars offered to Reticle Arcs
+	enum class ArcsState : int
+	{
+		kAbsent,    // Reticle Arcs is not loaded: nothing offered
+		kTooOld,    // it has no add-on interface
+		kOurs,      // it took this copy's bars (ArcsView::taken of them)
+		kOtherCopy  // it refused every one: the same ids are already taken (the other mod carrying this module)
+	};
+	struct ArcsView
+	{
+		ArcsState state{ ArcsState::kAbsent };
+		int       taken{ 0 };
+	};
+	void                   RegisterArcBars();  // SKSE's post-load: Reticle Arcs takes add-on bars only until data load
+	[[nodiscard]] ArcsView ArcsNow() noexcept;
+
 	// ------------------------------------------------------------------ FadeDevBench.cpp
 	void OfferToDevBench();
 	void RulesLoaded();
@@ -238,8 +245,8 @@ namespace Fade
 	// ------------------------------------------------------------------ FadeMain.cpp: called by the plugin's main.cpp
 	void OnPluginLoad();  // SKSE's post-load (every plugin loaded, the game's data not read yet)
 	void OnPostLoad();
-	// Reticle Arcs is loaded: our reticle stays off beside it, everything else works (his order).
-	// Read once at OnPluginLoad; any thread may ask
+	// Reticle Arcs is loaded: the module's bars are offered to it (FadeArcs.cpp) - the module draws no reticle of its own (his
+	// order 2026-10-19). Read once at OnPluginLoad; any thread may ask
 	[[nodiscard]] bool OtherReticleLoaded();
 	void               OnDataLoaded();
 	void               OnGameLoading();  // a save is about to load, or a new game starts

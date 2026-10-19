@@ -33,12 +33,6 @@
 //   HudGemOpacity=90          percent, 10 to 100
 //   HudGemPercent=1           the percent under each gem
 //   HudGemFull=0              a gem for every enchanted or bound weapon in hand, full ones too (0: once its charge drops)
-//   Reticle=0                 the spell reticle beside the crosshair, draining with magicka (needs SKSE Menu Framework)
-//   ReticleStyle=0            0 a bar per hand beside the crosshair, 1 one bar under the crosshair
-//   ReticleSize=100           percent, 50 to 200
-//   ReticleOpacity=85         percent, 10 to 100
-//   ReticleDotSize=1          the dot in the middle: 0 small, 1 medium, 2 big
-//   ReticleDotClear=0         how see-through the dot is: 0 full, 1 medium, 2 clear
 //   DebugLog=0
 //   Fire=1 Frost=1 Shock=1 Absorb=1 SoulTrap=1 Paralyze=1 FearTurnBanish=1 OtherEffects=1
 //                             by effect: an enchantment's or a spell's strongest effect, for weapons and spells alike
@@ -96,12 +90,6 @@ namespace Fade
 		float               hudGemOpacity{ 0.9f };
 		bool                hudGemPercent{ true };  // the percent under each gem
 		bool                hudGemFull{ false };    // a gem at full charge too (his ask 2026-10-16); off: once the charge drops
-		bool                reticle{ false };       // FadeMenu.cpp's reticle: a bar per hand of the player beside the crosshair
-		int                 reticleStyle{ 0 };      // 0 the bars beside the crosshair, 1 the bar under the crosshair (his pick)
-		float               reticleSize{ 1.0f };
-		float               reticleOpacity{ 0.85f };
-		int                 reticleDotSize{ 1 };   // his list: a dot in the middle, "big medium and small"
-		int                 reticleDotClear{ 0 };  // and "full medium clear for transparency"
 		bool                debugLog{ false };
 
 		bool operator==(const Settings&) const = default;
@@ -208,13 +196,6 @@ namespace Fade
 				[](Settings& s, int v) { s.hudGemOpacity = Pct(v, 10, 100); } },
 			{ "HudGemPercent", [](const Settings& s) { return s.hudGemPercent ? 1 : 0; }, [](Settings& s, int v) { s.hudGemPercent = v != 0; } },
 			{ "HudGemFull", [](const Settings& s) { return s.hudGemFull ? 1 : 0; }, [](Settings& s, int v) { s.hudGemFull = v != 0; } },
-			{ "Reticle", [](const Settings& s) { return s.reticle ? 1 : 0; }, [](Settings& s, int v) { s.reticle = v != 0; } },
-			{ "ReticleStyle", [](const Settings& s) { return s.reticleStyle; }, [](Settings& s, int v) { s.reticleStyle = std::clamp(v, 0, 1); } },
-			{ "ReticleSize", [](const Settings& s) { return ToPct(s.reticleSize); }, [](Settings& s, int v) { s.reticleSize = Pct(v, 50, 200); } },
-			{ "ReticleOpacity", [](const Settings& s) { return ToPct(s.reticleOpacity); },
-				[](Settings& s, int v) { s.reticleOpacity = Pct(v, 10, 100); } },
-			{ "ReticleDotSize", [](const Settings& s) { return s.reticleDotSize; }, [](Settings& s, int v) { s.reticleDotSize = std::clamp(v, 0, 2); } },
-			{ "ReticleDotClear", [](const Settings& s) { return s.reticleDotClear; }, [](Settings& s, int v) { s.reticleDotClear = std::clamp(v, 0, 2); } },
 			{ "DebugLog", [](const Settings& s) { return s.debugLog ? 1 : 0; }, [](Settings& s, int v) { s.debugLog = v != 0; } },
 			{ "Fire", [](const Settings& s) { return s.elements[0] ? 1 : 0; }, [](Settings& s, int v) { s.elements[0] = v != 0; } },
 			{ "Frost", [](const Settings& s) { return s.elements[1] ? 1 : 0; }, [](Settings& s, int v) { s.elements[1] = v != 0; } },
@@ -233,8 +214,10 @@ namespace Fade
 
 		// keys an older version wrote: read past without a warning, never written again (OwnLight, OwnLightReach: HIS ORDER,
 		// "completely remove own light for unlit weapons option"; ColorCoolingTint: his word, "the only option will be grey,
-		// ember cooling only for fire spell types that are orange" - Glow::TintFor decides)
-		inline constexpr std::string_view kRetired[]{ "OwnLight", "OwnLightReach", "ColorCoolingTint" };
+		// ember cooling only for fire spell types that are orange" - Glow::TintFor decides; the six Reticle keys: his order
+		// 2026-10-19, "completely remove our reticle options ... no settings in our mod")
+		inline constexpr std::string_view kRetired[]{ "OwnLight", "OwnLightReach", "ColorCoolingTint", "Reticle", "ReticleStyle", "ReticleSize",
+			"ReticleOpacity", "ReticleDotSize", "ReticleDotClear" };
 
 		using LightKit::SameText;  // LightMath.h: the one case-blind compare
 

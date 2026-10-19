@@ -60,8 +60,7 @@ namespace Glow
 	[[nodiscard]] inline float Clamp01(float a_v) noexcept { return std::clamp(a_v, 0.0f, 1.0f); }
 
 	// how big the HUD elements draw on a screen this many lines tall: 1 at 1080, held between 0.6 and 2.5. The charge gems
-	// and the reticle both take it (his answer 2026-10-13: the reticle grows with the screen like the gems - 1440p and 4K
-	// no smaller against the screen)
+	// take it (his answer 2026-10-13: the HUD grows with the screen - 1440p and 4K no smaller against the screen)
 	[[nodiscard]] inline float ScreenScale(float a_lines) noexcept
 	{
 		return std::isfinite(a_lines) ? std::clamp(a_lines / 1080.0f, 0.6f, 2.5f) : 1.0f;

@@ -204,21 +204,6 @@ namespace Plugin
 
 	float DaylightFactor() { return gDaylight; }
 
-	// ------------------------------------------------------------------ an effect's element (the automatic hand lights' color)
-	int ElementOf(const RE::EffectSetting* a_effect)
-	{
-		switch (a_effect ? a_effect->data.resistVariable : RE::ActorValue::kNone) {
-		case RE::ActorValue::kResistFire:
-			return 1;
-		case RE::ActorValue::kResistFrost:
-			return 2;
-		case RE::ActorValue::kResistShock:
-			return 3;
-		default:
-			return 0;
-		}
-	}
-
 	void ForgetSliderLights(const GoneLights& a_gone)
 	{
 		{

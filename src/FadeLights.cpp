@@ -104,11 +104,8 @@ namespace Fade
 			std::uint64_t    key{ 0 };              // its own place in gHands (Key, or SpellKey for a spell hand)
 			const RE::Actor* actorSeen{ nullptr };  // the actor as last read on the main thread: only compared, never used
 			bool             left{ false };
-			bool             spell{ false };                  // a spell in hand (FadeSpells.cpp): follows magicka, keyed apart (SpellKey)
-			bool             fire{ false };                   // its strongest effect is fire: an orange light cools to ember (Glow::TintFor)
-			Glow::Rgb        hudColor{ 0.32f, 0.58f, 1.0f };  // a spell hand's own light at full, for the reticle
-			int              school{ -1 };                    // a spell hand's school (Kind::school), for the bar under the crosshair
-			int              element{ -1 };
+			bool             spell{ false };  // a spell in hand (FadeSpells.cpp): follows magicka, keyed apart (SpellKey)
+			bool             fire{ false };   // its strongest effect is fire: an orange light cools to ember (Glow::TintFor)
 			bool             active{ false };
 			std::uint32_t    frame{ 0 };
 			// a spell hand's kind (KindOf), worked out again only when the spell in hand changes
@@ -502,8 +499,6 @@ namespace Fade
 			}
 			const Kind kind = h.kind;
 			h.fire = kind.element == Element::kFire;
-			h.element = static_cast<int>(kind.element);
-			h.school = kind.school;
 			if (const auto off = KindOff(a_s, kind); !off.empty()) {
 				if (h.active || h.weapon != sp.spell) {
 					h.weaponLabel = Label(sp.spell);
@@ -557,69 +552,19 @@ namespace Fade
 				}
 				ApplyLight(sp.casterLight, h);
 			}
-			// the reticle's color (his ask: "change color with spells"): the spell's own light as it is before any
-			// cooling - the casting light, else the brightest light at the hand; none: magicka blue
-			RE::NiPointLight* own = sp.casterLight;
-			float             best = 0.0f;
-			if (!own) {
-				for (auto* node : sp.nodes) {
-					if (!node) {
-						continue;
-					}
-					RE::BSVisit::TraverseScenegraphLights(node, [&](RE::NiPointLight* a_light) {
-						if (a_light) {
-							const auto& d = a_light->GetLightRuntimeData();
-							const float s = std::fabs(d.fade) * (std::max)({ d.diffuse.red, d.diffuse.green, d.diffuse.blue });
-							if (std::isfinite(s) && s > best) {
-								best = s;
-								own = a_light;
-							}
-						}
-						return RE::BSVisit::BSVisitControl::kContinue;
-					});
-				}
-			}
-			if (own) {
-				const auto  it = gLights.find(own);
-				const auto& c = it != gLights.end() && it->second.color.touched ? it->second.color.base : own->GetLightRuntimeData().diffuse;
-				const float top = (std::max)({ c.red, c.green, c.blue });
-				if (top > 0.02f && std::isfinite(top)) {
-					h.hudColor = { c.red / top, c.green / top, c.blue / top };
-				}
-			} else {
-				h.hudColor = { 0.32f, 0.58f, 1.0f };
-			}
 		}
 
 		// what the HUD shows this frame: the player's hands that fade (not one left alone), the switches, and whether her
-		// weapons or spells are out (the reticle shows only then). Main thread, under gLock.
+		// weapons or spells are out (the gems and Reticle Arcs' bars show only then). Main thread, under gLock.
 		void PublishHud(const Settings& a_s)
 		{
 			HudState hud;
 			hud.gems = a_s.enabled && a_s.hudGems;
-			hud.reticle = a_s.enabled && a_s.reticle && !OtherReticleLoaded();  // off beside Reticle Arcs (FadeMain.cpp)
-			hud.reticleStyle = a_s.reticleStyle;
-			hud.reticleSize = a_s.reticleSize;
-			hud.reticleOpacity = a_s.reticleOpacity;
-			hud.reticleDotSize = a_s.reticleDotSize;
-			hud.reticleDotClear = a_s.reticleDotClear;
 			hud.gemSize = a_s.hudGemSize;
 			hud.gemOpacity = a_s.hudGemOpacity;
 			hud.gemPercent = a_s.hudGemPercent;
 			hud.gemFull = a_s.hudGemFull;
 			hud.low = a_s.tuning.sputterBelow;
-			// the reticle stays through the game's own pause before magicka comes back (his rule: it goes only when magicka
-			// "doesn't return like it does normally"); a mod may change the setting, so it is read each frame
-			// looked up again until found (CodeRabbit, Illuminated #9: a lookup before the settings exist must not be kept)
-			static RE::Setting* regenDelay = nullptr;
-			if (!regenDelay) {
-				if (auto* gmst = RE::GameSettingCollection::GetSingleton()) {
-					regenDelay = gmst->GetSetting("fMagickaRegenDelay");
-				}
-			}
-			if (regenDelay && std::isfinite(regenDelay->GetFloat())) {
-				hud.regenWait = std::clamp(regenDelay->GetFloat(), 0.0f, 30.0f);
-			}
 			auto*       player = RE::PlayerCharacter::GetSingleton();
 			const auto* state = player ? player->AsActorState() : nullptr;
 			hud.drawn = state && state->IsWeaponDrawn();
@@ -635,16 +580,6 @@ namespace Fade
 						side.spell = h.spell;
 						side.bound = h.reading.bound;
 						side.fraction = Glow::Clamp01(h.hudFraction);
-						if (h.spell) {
-							side.color = h.hudColor;
-							side.element = h.element;
-							side.school = h.school;
-							if (const auto* av = h.school >= 0 && h.school < 5 ? player->AsActorValueOwner() : nullptr) {
-								static constexpr RE::ActorValue kSkill[]{ RE::ActorValue::kDestruction, RE::ActorValue::kRestoration,
-									RE::ActorValue::kConjuration, RE::ActorValue::kAlteration, RE::ActorValue::kIllusion };
-								side.skill = static_cast<int>(av->GetActorValue(kSkill[h.school]));
-							}
-						}
 					}
 				}
 			}

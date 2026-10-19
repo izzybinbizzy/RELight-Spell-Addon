@@ -13,9 +13,10 @@
 // AUTOMATIC HAND LIGHTS (Illuminated's, ported - his "add everything from illuminated into relight"): a spell
 // whose casting art no layer lights (another mod's spell this mod has no patch for) would be dark - RE::Light switches its
 // casting light off, having no config for it. Behind the setting "Light spells this mod has no patch for" it gets a hand
-// light of ours instead: in the color of its own casting light when it has one, else its element's (the color most of the
-// tuned spells of that element wear: fire, frost, shock), at the middle strength and reach of the tuned hand lights. A spell
-// with neither keeps what it has: no color is guessed.
+// light of ours instead, at the middle strength and reach of the tuned hand lights. Its color, in his order of 2026-10-18
+// (Illuminated's CLAUDE.md §1 - the same order there): its own casting light's, else the light of the projectile it fires,
+// else its art's (LightKit.h ArtColor), else the color most of the tuned spells of its resistance group wear (every group).
+// A spell with none of them keeps what it has: no color is guessed.
 
 #include "Fade.h"
 #include "Plugin.h"
@@ -176,8 +177,9 @@ namespace Plugin
 				}
 				gTargets.push_back({ effect, ownOf(effect), std::move(key) });
 			}
-			// the automatic hand lights: the middle of the tuned hand lights (by fade x radius²), and each element's color
-			// as most of the tuned spells of that element wear it
+			// the automatic hand lights: the middle of the tuned hand lights (by fade x radius²), and each resistance group's
+			// color as most of the tuned spells of that group wear it (every group - his ruling 2026-10-18; a spell no
+			// resistance applies to is in none)
 			std::vector<const Hand*> tuned;
 			for (const auto& [key, list] : Hands()) {
 				if (!list.empty()) {
@@ -185,31 +187,46 @@ namespace Plugin
 				}
 			}
 			std::ranges::sort(tuned, {}, [](const Hand* h) { return h->fade * h->radius * h->radius; });
-			std::map<int, std::map<std::uint32_t, std::size_t>> byElement;
-			const auto                                          pack = [](const std::uint8_t a_rgb[3]) { return (std::uint32_t{ a_rgb[0] } << 16) | (std::uint32_t{ a_rgb[1] } << 8) | a_rgb[2]; };
+			std::map<RE::ActorValue, std::map<std::uint32_t, std::size_t>> byGroup;
+			const auto                                                     pack = [](const std::uint8_t a_rgb[3]) { return (std::uint32_t{ a_rgb[0] } << 16) | (std::uint32_t{ a_rgb[1] } << 8) | a_rgb[2]; };
+			const auto                                                     packColor = [](const RE::Color& c) { return (std::uint32_t{ c.red } << 16) | (std::uint32_t{ c.green } << 8) | c.blue; };
 			for (const auto& t : gTargets) {
-				if (const int e = ElementOf(t.effect); e > 0) {
+				if (const auto group = t.effect->data.resistVariable; group != RE::ActorValue::kNone) {
 					if (const Hand* h = Winner(t.key)) {
-						++byElement[e][pack(h->rgb)];
+						++byGroup[group][pack(h->rgb)];
 					}
 				}
 			}
 			for (auto* effect : uncovered) {
+				// a ward's hand (any art named wardinhandfx - the game's, Dynamic Wards' per rank, ours) is the wards' own: Dynamic
+				// Wards dresses every ward when it is installed, Wards.cpp when it is not (Illuminated measured 32 ward effects on
+				// Dynamic Wards' uncolored art taking an orange / red light 2026-10-19)
 				if (tuned.empty() || effect->data.castingType == RE::MagicSystem::CastingType::kConstantEffect ||
-					effect->data.archetype == RE::EffectArchetypes::ArchetypeID::kLight || SkippedPrefix(effect)) {
+					effect->data.archetype == RE::EffectArchetypes::ArchetypeID::kLight || SkippedPrefix(effect) ||
+					MeshKey(effect->data.castingArt->GetModel()).contains("wardinhandfx")) {
 					continue;
 				}
 				std::uint32_t rgb = 0;
-				bool          found = false;
+				bool          found = true;
+				const auto*   shot = effect->data.projectileBase ? effect->data.projectileBase->data.light : nullptr;
+				const auto    group = effect->data.resistVariable != RE::ActorValue::kNone ? byGroup.find(effect->data.resistVariable) : byGroup.end();
 				if (const auto* l = ownOf(effect)) {
-					rgb = (std::uint32_t{ l->data.color.red } << 16) | (std::uint32_t{ l->data.color.green } << 8) | l->data.color.blue;
-					found = true;
-				} else if (const auto it = byElement.find(ElementOf(effect)); it != byElement.end() && !it->second.empty()) {
-					rgb = std::ranges::max_element(it->second, {}, [](const auto& kv) { return kv.second; })->first;
-					found = true;
+					rgb = packColor(l->data.color);
+				} else if (shot) {
+					rgb = packColor(shot->data.color);
+				} else if (const auto art = LightKit::ArtColor(effect->data.castingArt->GetModel())) {
+					rgb = packColor(*art);
+				} else if (group != byGroup.end() && !group->second.empty()) {
+					rgb = std::ranges::max_element(group->second, {}, [](const auto& kv) { return kv.second; })->first;
+				} else {
+					found = false;
 				}
 				if (!found) {
 					continue;  // no color to read: it keeps what it has
+				}
+				// a black light is an author's dark on purpose (Colorful Bound Weapons' black summon): black stays dark
+				if ((std::max)({ (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF }) < 16) {
+					continue;
 				}
 				auto key = std::format("{}{},{},{}", kAutoPrefix, (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 				if (!gAutoHands.contains(key)) {

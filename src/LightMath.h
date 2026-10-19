@@ -16,6 +16,7 @@
 //   KeyAt              a fade controller's value at a time (Truman's KeyframeSequence maths, RE::Light's controller.h)
 //   kFleshLooks        the five flesh spells' light colors when FleshFX's look wins on them; AtStrengthOf, a color carried
 //                      at another light's strength
+//   ChromaMean         an art's color off its effect shaders' emissive colors (an automatic hand light's third source)
 
 #pragma once
 
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -214,5 +216,39 @@ namespace LightKit
 		}
 		const float k = want / top;
 		return { a_hue[0] * k, a_hue[1] * k, a_hue[2] * k };
+	}
+
+	// an art's color off its effect shaders' emissive colors (0..1 each), for an automatic hand light (LightKit.h ArtColor): each
+	// layer weighs by its chroma (top channel minus bottom one, on the 0..255 scale), so grey and white layers count for
+	// nothing, and the mean is scaled so its top channel is 255. No colored layer = no color. The rule the 2026-10-19 research
+	// measured (`Misc\Build work\auto light colors 2026-10-19\`): where it gives a color it points the way the author's own hand
+	// light does on 75 of 80 effects.
+	[[nodiscard]] inline std::optional<std::array<std::uint8_t, 3>> ChromaMean(const std::vector<std::array<float, 3>>& a_layers)
+	{
+		std::array<double, 3> sum{};
+		double                weight = 0.0;
+		for (const auto& layer : a_layers) {
+			std::array<double, 3> c{};
+			for (std::size_t i = 0; i < 3; ++i) {
+				c[i] = std::isfinite(layer[i]) ? std::round(std::clamp(layer[i], 0.0f, 1.0f) * 255.0) : 0.0;
+			}
+			const double w = std::ranges::max(c) - std::ranges::min(c);
+			if (w <= 0.0) {
+				continue;
+			}
+			for (std::size_t i = 0; i < 3; ++i) {
+				sum[i] += c[i] * w;
+			}
+			weight += w;
+		}
+		if (weight <= 0.0) {
+			return std::nullopt;
+		}
+		const double                top = std::ranges::max(sum) / weight;  // > 0: a layer with chroma has a channel above 0
+		std::array<std::uint8_t, 3> out{};
+		for (std::size_t i = 0; i < 3; ++i) {
+			out[i] = static_cast<std::uint8_t>((std::min)(255.0, std::round(sum[i] / weight * 255.0 / top)));
+		}
+		return out;
 	}
 }

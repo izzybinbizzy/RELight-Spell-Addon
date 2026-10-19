@@ -2,18 +2,19 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
-// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section, in his order: HUD (the charge bar, the
-// charge gems and the reticle) right below the mod's Configs page, then Fading, then Lights by Item (FadeItems.cpp) - his
+// Pages in SKSE Menu Framework's Mod Control Panel, under the mod's own section, in his order: HUD (the charge bar and the
+// charge gems) right below the mod's Configs page, then Fading, then Lights by Item (FadeItems.cpp) - his
 // answer 2026-10-13: "HUD right below Configs, Lights by Item after Fading". Settings ("Fading"): every other setting of the
 // module (his rule: settings live in the SKSE menu only), live on the next frame and saved on the game's main thread (never
 // the render thread); the rule files pick weapons one by one. Debug (ONLY in the testing DLL of the PDB and Source download - his call: "remove fading
 // debug entirely only keep it with source and pdb as an in game testing dll"; built with FADE_DEBUG_PAGE): the debug log,
 // each tracked hand's weapon, charge, the numbers on its lights and how many lights were found, plus the rule files and
 // their problems - what a bug report needs.
-// The look is the shared MenuStyle.h with these pages' warm glowing headings; two optional HUD elements show one charge
-// gem per hand of the player beside the health bar (HudGems) and the reticle (Reticle): a spell hand's magicka, as a bar per
-// hand beside the crosshair or one bar under it (drawn from our Crossfire struggle bar, his pick). Both draw from Hud() (FadeLights.cpp), a small copy the
-// main thread publishes once a frame, so the render thread never waits on the per-frame pass.
+// The look is the shared MenuStyle.h with these pages' warm glowing headings; an optional HUD element shows one charge gem
+// per hand of the player beside the health bar (HudGems), drawn from Hud() (FadeLights.cpp), a small copy the main thread
+// publishes once a frame, so the render thread never waits on the per-frame pass. There is no reticle of ours (his order
+// 2026-10-19: "only have reticle available through reticle arcs mod. no settings in our mod") - FadeArcs.cpp offers the
+// module's bars to Reticle Arcs.
 
 #ifndef WIN32_LEAN_AND_MEAN
 #	define WIN32_LEAN_AND_MEAN
@@ -281,8 +282,8 @@ namespace Fade
 		// HIS MENU: "make a HUD submenu placed right below configs. add logical and simple options for
 		// toggling and messing with our hud stuff" - its own page (registered first of the module's pages, so it sits right
 		// below the mod's Configs page; his answer 2026-10-13):
-		// the charge bar, the charge gems (size, opacity, the percent) and the reticle (size, opacity). The gems
-		// and the reticle show what the fading module tracks, so they need Fading's Enabled on.
+		// the charge bar and the charge gems (size, opacity, the percent). The gems show what the fading module tracks, so they
+		// need Fading's Enabled on.
 		void __stdcall RenderHudSettings()
 		{
 			const GlowStyle style;
@@ -318,39 +319,6 @@ namespace Fade
 				"On: a gem for every enchanted or bound weapon in your hands whose light fades (What fades), full ones too, while they "
 				"are out. Off: a gem shows once the charge starts dropping.",
 				save);
-			ImGuiMCP::EndDisabled();
-
-			GlowHeading(Icon::kTarget, "Reticle");
-			const bool otherReticle = OtherReticleLoaded();  // our reticle stays off beside Reticle Arcs (FadeMain.cpp)
-			ImGuiMCP::BeginDisabled(otherReticle);
-			Toggle("Reticle", s.reticle,
-				otherReticle ? "Reticle Arcs is installed, so this reticle stays off." :
-							   "For spells: it goes down as your magicka runs low and fills as it comes back, in the color of the spell in "
-							   "your hand. It pulses softly when you are out of magicka and when it is full again, and turns ember near "
-							   "empty. Needs Fading on (and Spells under What fades).",
-				save);
-			ImGuiMCP::BeginDisabled(!s.reticle);
-			{
-				// his pick: "a hud option with our crossfire info to make the widget fill as magicka regenerates then
-				// does a soft pulse when full" - a style of the reticle, not another widget
-				// his answer 2026-10-13: "Crossfire bar" renamed "Bar under the crosshair" everywhere
-				static const char* const kStyles[] = { TR_MARK("Bars beside the crosshair"), TR_MARK("Bar under the crosshair") };
-				Choice("Reticle style", s.reticleStyle, kStyles, 2,
-					"Bars beside the crosshair: one bar each side of the crosshair, one per hand. Bar under the crosshair: one bar under "
-					"it, filling as your magicka comes back, with each hand's spell sigil and its school at the ends.",
-					save);
-			}
-			Percent("Reticle size", s.reticleSize, 50, 200, "How big the reticle's bars are.", save);
-			Percent("Reticle opacity", s.reticleOpacity, 10, 100, "How strongly the reticle shows over the game.", save);
-			{
-				// his list: "a dot in the middle that can be resized and made transparent ... just big medium and small.
-				// and full medium clear for transparency. make the dot follow reticle color"
-				static const char* const kDotSizes[] = { TR_MARK("Small"), TR_MARK("Medium"), TR_MARK("Big") };
-				static const char* const kDotClear[] = { TR_MARK("Full"), TR_MARK("Medium"), TR_MARK("Clear") };
-				Choice("Center dot size", s.reticleDotSize, kDotSizes, 3, "The dot in the middle of the reticle, in the spell's color.", save);
-				Choice("Center dot see-through", s.reticleDotClear, kDotClear, 3, "Full: solid. Medium: half see-through. Clear: faint.", save);
-			}
-			ImGuiMCP::EndDisabled();
 			ImGuiMCP::EndDisabled();
 			ImGuiMCP::EndDisabled();
 			ImGuiMCP::PopItemWidth();
@@ -751,7 +719,7 @@ namespace Fade
 				for (std::size_t i = 0; i < 2; ++i) {
 					const auto& h = hud.hands[i];
 					if (!h.shown || h.spell || (h.fraction >= 0.995f && !hud.gemFull)) {
-						continue;  // a spell's magicka is the reticle's; a full weapon shows nothing unless Show at full charge is on
+						continue;  // a spell's magicka is not a gem's; a full weapon shows nothing unless Show at full charge is on
 					}
 					here[i] = true;
 					fill[i] = std::isfinite(h.fraction) ? std::clamp(h.fraction, 0.0f, 1.0f) : 0.0f;
@@ -814,314 +782,6 @@ namespace Fade
 				ImDrawListManager::AddText(dl, ImVec2{ c.x - tw * 0.5f, c.y + hh + 3.0f * k }, col(0.93f, 0.90f, 0.82f, 0.95f), text);
 			}
 		}
-
-		// The reticle's two soft pulses (his word: "make the reticles softly pulse when out of magicka and also when
-		// fully regenerated"): out of magicka, a slow breath as long as it lasts; full again, one swell that settles.
-		struct Pulse
-		{
-			double fullAt{ -10.0 };  // when the fill last reached full
-			bool   wasFull{ true };
-
-			// 0..1, how strongly the reticle glows this frame
-			float Glow(float a_fill, double a_now)
-			{
-				const bool full = a_fill >= 0.995f;
-				if (full && !wasFull) {
-					fullAt = a_now;
-				}
-				wasFull = full;
-				if (a_fill <= 0.02f) {
-					return 0.5f + 0.5f * static_cast<float>(std::sin(a_now * Tuning::Get(Tuning::gEmptyPulseSpeed)));  // empty: breathing
-				}
-				const double since = a_now - fullAt;
-				const double swell = Tuning::Get(Tuning::gFullPulseSeconds);
-				if (since >= 0.0 && since < swell) {
-					return static_cast<float>(std::sin(3.14159265 * since / swell));  // refilled: one swell
-				}
-				return 0.0f;
-			}
-		};
-
-		// WHEN THE RETICLE SHOWS (his rule 2026-10-11: "our reticle should only show up when magicka is being spent. it can fade
-		// in when magicka is being spent and stay for a second after 0 but disappear if magicka doesn't return like it does
-		// normally ... and when magicka is full it stays for a second to show the pulse of magicka being full then fades out
-		// until being used again"). A drop arms it; while armed it shows, through the game's own pause before magicka comes
-		// back; at full it stays the hold (at least the full swell) and goes; at empty it stays the hold, hides, and comes back
-		// if magicka starts to return; magicka that does not move for the game's pause plus the hold (a poison, a drain)
-		// ends it. Magicka coming back without a spend never shows it.
-		struct Spend
-		{
-			float  last{ -1.0f };      // last frame's fraction, -1 = none yet
-			double movedAt{ -100.0 };  // when it last went down or up
-			bool   armed{ false };
-
-			void Reset() noexcept { *this = Spend{}; }
-
-			bool Shown(float a_fill, double a_now, float a_regenWait) noexcept
-			{
-				constexpr float kEps = 1e-5f;
-				if (last >= 0.0f) {
-					const float d = a_fill - last;
-					if (d < -kEps) {
-						armed = true;  // spent: in
-						movedAt = a_now;
-					} else if (d > kEps && armed) {
-						movedAt = a_now;  // coming back: stays
-					}
-				}
-				last = a_fill;
-				if (!armed) {
-					return false;
-				}
-				const double still = a_now - movedAt;
-				const double hold = Tuning::Get(Tuning::gReticleHold);
-				if (a_fill >= 0.995f) {
-					armed = still <= (std::max)(hold, static_cast<double>(Tuning::Get(Tuning::gFullPulseSeconds)));
-					return armed;
-				}
-				if (still > a_regenWait + hold) {
-					armed = false;  // it did not come back as it normally does
-					return false;
-				}
-				return a_fill > 0.02f || still <= hold;  // empty: the hold, then hidden until it starts to come back
-			}
-		};
-
-		// a spell's sigil for the bar under the crosshair (our Crossfire's DrawSigil): a ring in the spell's color with its element's mark
-		void DrawSigil(ImGuiMCP::ImDrawList* a_dl, ImGuiMCP::ImVec2 a_c, float a_r, int a_element, ImGuiMCP::ImU32 a_color, float a_alpha)
-		{
-			using namespace ImGuiMCP;
-			const ImU32 back = ColorConvertFloat4ToU32(ImVec4{ 0.0f, 0.0f, 0.0f, 0.55f * a_alpha });
-			const float t = std::max(1.0f, a_r * 0.16f);
-			const auto  at = [&](float x, float y) { return ImVec2{ a_c.x + x * a_r, a_c.y + y * a_r }; };
-			ImDrawListManager::AddCircleFilled(a_dl, a_c, a_r, back, 32);
-			ImDrawListManager::AddCircle(a_dl, a_c, a_r, a_color, 32, t);
-			switch (static_cast<Element>(a_element)) {
-			case Element::kFire:  // a flame: a tongue rising off a round base
-				ImDrawListManager::AddCircleFilled(a_dl, at(0.0f, 0.22f), a_r * 0.3f, a_color, 16);
-				ImDrawListManager::AddTriangleFilled(a_dl, at(-0.3f, 0.18f), at(0.08f, -0.62f), at(0.3f, 0.18f), a_color);
-				break;
-			case Element::kFrost:  // a snowflake: three crossed strokes
-				for (int i = 0; i < 3; ++i) {
-					const float ang = 1.5708f + static_cast<float>(i) * 1.0472f;
-					ImDrawListManager::AddLine(a_dl, at(std::cos(ang) * 0.6f, -std::sin(ang) * 0.6f), at(-std::cos(ang) * 0.6f, std::sin(ang) * 0.6f), a_color, t);
-				}
-				break;
-			case Element::kShock:
-				{  // a bolt
-					const ImVec2 bolt[]{ at(0.15f, -0.62f), at(-0.25f, 0.05f), at(0.08f, 0.05f), at(-0.15f, 0.62f) };
-					ImDrawListManager::AddPolyline(a_dl, bolt, 4, a_color, 0, t * 1.2f);
-					break;
-				}
-			case Element::kAbsorb:  // a ring inside the ring
-				ImDrawListManager::AddCircle(a_dl, a_c, a_r * 0.45f, a_color, 24, t);
-				ImDrawListManager::AddCircleFilled(a_dl, a_c, a_r * 0.15f, a_color, 12);
-				break;
-			default:  // anything else: a four-point star
-				ImDrawListManager::AddQuadFilled(a_dl, at(0.0f, -0.6f), at(0.14f, 0.0f), at(0.0f, 0.6f), at(-0.14f, 0.0f), a_color);
-				ImDrawListManager::AddQuadFilled(a_dl, at(-0.6f, 0.0f), at(0.0f, 0.14f), at(0.6f, 0.0f), at(0.0f, -0.14f), a_color);
-				break;
-			}
-		}
-
-		// THE RETICLE (his order: "a reticule toggle ... build something from our crossfire bar"). Our own Crossfire
-		// struggle bar (Illuminated Salvage\Crossfire\src\Menu.cpp, DrawStruggleBar). 🔁 HIS WORDS: "vice versa for
-		// reticles, they are only meant for spells", "i want the reticles to change color with spells", the two soft pulses,
-		// and a style drawn from our Crossfire bar (his pick: a style of the reticle). So it shows a SPELL hand's magicka only, in the color of
-		// that spell's own light (ember under the sputter point), and
-		//   Bars (style 0): the bar stood on end beside the crosshair, one per hand - the left hand left, the right right - its
-		//     dark slot, the fill faint at the bottom and brightest at its top, a tick at both ends, the diamond
-		//     riding the top of the fill with its breathing glow;
-		//   Bar under the crosshair (style 1 - "Crossfire bar" until his answer 2026-10-13 renamed it): the struggle bar itself
-		//     under the crosshair, filling from the left as magicka comes back -
-		//     the left hand's spell color at the left end, the right hand's at the right - each hand's sigil beyond its end and
-		//     its school and skill under it, the diamond at the edge of the fill.
-		// Each fades in and out, and only while her spells are drawn and no menu is open. Render thread: it reads only Hud().
-		void __stdcall RenderReticle()
-		{
-			using namespace ImGuiMCP;
-			static std::array<float, 2>  shown{ 0.0f, 0.0f };  // each side's fade, 0..1
-			static std::array<float, 2>  fill{ 1.0f, 1.0f };   // each side's last fraction (kept while it fades out)
-			static std::array<ImVec4, 2> tint{ ImVec4{ 0.32f, 0.58f, 1.0f, 1.0f }, ImVec4{ 0.32f, 0.58f, 1.0f, 1.0f } };
-			static std::array<int, 2>    element{ -1, -1 }, school{ -1, -1 }, skill{ 0, 0 };
-			static std::array<Pulse, 2>  pulse{};
-			static std::array<Spend, 2>  spend{};
-			const auto                   hud = Hud();
-			auto*                        io = GetIO();
-			if (!io) {
-				return;
-			}
-			const double        clock = GetTime();
-			std::array<bool, 2> here{ false, false };
-			const bool          on = hud.reticle && hud.drawn;
-			const bool          hidden = on && HideHud();  // once per pass, only when drawn: both hands see one menu state (CodeRabbit, Illuminated #9 / RELight #11)
-			for (std::size_t i = 0; i < 2; ++i) {
-				const auto& h = hud.hands[i];
-				if (!on || !h.shown || !h.spell) {
-					spend[i].Reset();  // a weapon's charge is the gems'; hands down or a new spell starts unarmed
-					continue;
-				}
-				// tracked even while a menu hides it, so a menu never looks like a spend
-				const bool spent = spend[i].Shown(std::clamp(h.fraction, 0.0f, 1.0f), clock, hud.regenWait);
-				if (!hidden && spent) {
-					here[i] = true;
-					fill[i] = std::clamp(h.fraction, 0.0f, 1.0f);
-					tint[i] = ImVec4{ h.color.r, h.color.g, h.color.b, 1.0f };
-					element[i] = h.element;
-					school[i] = h.school;
-					skill[i] = h.skill;
-				}
-			}
-			const float dt = std::isfinite(io->DeltaTime) ? std::clamp(io->DeltaTime, 0.0f, 0.25f) : 0.0f;
-			for (std::size_t i = 0; i < 2; ++i) {
-				shown[i] = std::clamp(shown[i] + (here[i] ? dt : -dt) * 4.0f, 0.0f, 1.0f);
-			}
-			if (shown[0] <= 0.0f && shown[1] <= 0.0f) {
-				return;
-			}
-			auto* dl = GetForegroundDrawList();
-			if (!dl) {
-				return;
-			}
-			const double now = GetTime();
-			// sized to the screen like the gems (1080 lines = 1; his answer 2026-10-13), times the HUD page's Reticle size
-			const float k = Glow::ScreenScale(io->DisplaySize.y) * std::clamp(hud.reticleSize, 0.5f, 2.0f);
-			const float cx = io->DisplaySize.x * 0.5f, cy = io->DisplaySize.y * 0.5f;
-			const float low = hud.low;
-			const auto  colOf = [](float a) {
-				return [a](float r, float g, float b, float o) { return ColorConvertFloat4ToU32(ImVec4{ r, g, b, o * a }); };
-			};
-			const auto hueOf = [&](std::size_t i) { return fill[i] < low ? ImVec4{ 1.0f, 0.42f, 0.18f, 1.0f } : tint[i]; };
-			// the dot in the middle, in the shown hand's color (the right hand's when both show), a soft glow round a bright core
-			const auto centerDot = [&] {
-				static constexpr float kRadius[]{ 1.6f, 2.6f, 4.0f };
-				static constexpr float kAlpha[]{ 1.0f, 0.55f, 0.25f };
-				const std::size_t      side = shown[1] > 0.0f ? 1 : 0;
-				const auto             hue = hueOf(side);
-				const float            r = kRadius[std::clamp(hud.reticleDotSize, 0, 2)] * k;
-				const auto             col = colOf(std::clamp(hud.reticleOpacity, 0.1f, 1.0f) * kAlpha[std::clamp(hud.reticleDotClear, 0, 2)] * shown[side]);
-				for (int g = 0; g < 4; ++g) {
-					ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r * (3.2f - static_cast<float>(g) * 0.55f), col(hue.x, hue.y, hue.z, 0.06f + static_cast<float>(g) * 0.04f), 20);
-				}
-				ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r, col(hue.x, hue.y, hue.z, 1.0f), 20);
-				ImDrawListManager::AddCircleFilled(dl, ImVec2{ cx, cy }, r * 0.45f, col(1.0f, 0.96f, 0.88f, 0.9f), 12);
-			};
-
-			if (hud.reticleStyle == 1) {
-				// THE BAR UNDER THE CROSSHAIR: one bar, magicka is one pool - the fuller side's fill (both hands read the same magicka)
-				const float a = std::clamp(hud.reticleOpacity, 0.1f, 1.0f) * (std::max)(shown[0], shown[1]);
-				const auto  col = colOf(a);
-				const float f = (std::max)(shown[0] > 0.0f ? fill[0] : 0.0f, shown[1] > 0.0f ? fill[1] : 0.0f);
-				const float glow = pulse[0].Glow(f, now);
-				const auto  left = shown[0] > 0.0f ? hueOf(0) : hueOf(1);
-				const auto  right = shown[1] > 0.0f ? hueOf(1) : hueOf(0);
-				const float w = Tuning::Get(Tuning::gBarWidth) * k, h = 6.0f * k;
-				const float x0 = cx - w * 0.5f, x1 = cx + w * 0.5f, yc = cy + Tuning::Get(Tuning::gBarDrop) * k;
-				const float edge = x0 + w * f;
-				const ImU32 bone = col(0.86f, 0.82f, 0.73f, 0.9f);
-				ImDrawListManager::AddRectFilled(dl, ImVec2{ x0, yc - h * 0.5f - 1.0f }, ImVec2{ x1, yc + h * 0.5f + 1.0f }, col(0.0f, 0.0f, 0.0f, 0.6f), 0.0f, 0);
-				ImDrawListManager::AddRect(dl, ImVec2{ x0, yc - h * 0.5f - 1.0f }, ImVec2{ x1, yc + h * 0.5f + 1.0f }, col(0.78f, 0.75f, 0.65f, 0.45f), 0.0f, 0, 1.0f);
-				if (f > 0.0f) {
-					// the left hand's color at the left end, the right hand's toward the fill's edge, faint to bright
-					ImDrawListManager::AddRectFilledMultiColor(dl, ImVec2{ x0, yc - h * 0.5f }, ImVec2{ edge, yc + h * 0.5f },
-						col(left.x, left.y, left.z, 0.45f), col(right.x, right.y, right.z, 1.0f), col(right.x, right.y, right.z, 1.0f),
-						col(left.x, left.y, left.z, 0.45f));
-				}
-				// a tick at both ends (his list: "i dont like the arrows" - the chevrons are gone)
-				for (const float x : { x0, x1 }) {
-					ImDrawListManager::AddLine(dl, ImVec2{ x, yc - h * 1.6f }, ImVec2{ x, yc + h * 1.6f }, bone, std::max(1.0f, k));
-				}
-				// the glow at the fill's edge, breathing; and the pulse over the whole bar
-				const float breath = 0.85f + 0.15f * static_cast<float>(std::sin(now * (f < low ? 9.0 : 4.0)));
-				for (int g = 0; g < 7; ++g) {
-					const float r = (22.0f - static_cast<float>(g) * 2.6f) * k * breath;
-					ImDrawListManager::AddCircleFilled(dl, ImVec2{ edge, yc }, r, col(right.x, right.y, right.z, 0.04f + static_cast<float>(g) * 0.012f), 24);
-				}
-				if (glow > 0.0f) {
-					ImDrawListManager::AddRectFilled(dl, ImVec2{ x0 - 4.0f * k, yc - h * 1.4f }, ImVec2{ x1 + 4.0f * k, yc + h * 1.4f },
-						col(right.x, right.y, right.z, 0.22f * glow), 3.0f * k, 0);
-				}
-				const float r = 6.0f * k;
-				ImDrawListManager::AddQuadFilled(dl, ImVec2{ edge, yc - r }, ImVec2{ edge + r, yc }, ImVec2{ edge, yc + r }, ImVec2{ edge - r, yc },
-					col(0.96f, 0.93f, 0.82f, 1.0f));
-				ImDrawListManager::AddQuad(dl, ImVec2{ edge, yc - r }, ImVec2{ edge + r, yc }, ImVec2{ edge, yc + r }, ImVec2{ edge - r, yc },
-					col(0.16f, 0.13f, 0.10f, 1.0f), 1.0f);
-				// each hand's sigil beyond its end, its school and skill under it (our Crossfire bar's info)
-				static constexpr const char* kSchools[]{ "Destruction", "Restoration", "Conjuration", "Alteration", "Illusion" };
-				auto*                        font = GetFont();
-				const float                  fs = GetFontSize() * 0.8f * k;
-				for (std::size_t i = 0; i < 2; ++i) {
-					if (shown[i] <= 0.0f) {
-						continue;
-					}
-					const auto  hue = hueOf(i);
-					const float sx = i == 0 ? x0 - 30.0f * k : x1 + 30.0f * k;
-					DrawSigil(dl, ImVec2{ sx, yc }, 10.0f * k, element[i], col(hue.x, hue.y, hue.z, 1.0f), a * shown[i]);
-					if (school[i] >= 0 && school[i] < 5) {
-						char info[48];
-						std::snprintf(info, sizeof(info), "%s %d", Translation::T(kSchools[school[i]]), skill[i]);
-						for (char* c = info; *c; ++c) {
-							*c = static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
-						}
-						const float tw = CalcTextSize(info).x * fs / GetFontSize();
-						const float tx = i == 0 ? x0 : x1 - tw;
-						ImDrawListManager::AddText(dl, font, fs, ImVec2{ tx + 1.0f, yc + h * 1.6f + 3.0f * k + 1.0f }, col(0.0f, 0.0f, 0.0f, 0.8f), info);
-						ImDrawListManager::AddText(dl, font, fs, ImVec2{ tx, yc + h * 1.6f + 3.0f * k }, col(0.75f, 0.71f, 0.63f, 1.0f), info);
-					}
-				}
-				centerDot();
-				return;
-			}
-
-			// THE BARS beside the crosshair, one per hand
-			const float gap = Tuning::Get(Tuning::gReticleGap) * k, h = Tuning::Get(Tuning::gReticleLength) * k, w = 5.0f * k;
-			const float y0 = cy - h * 0.5f, y1 = cy + h * 0.5f;
-			for (std::size_t i = 0; i < 2; ++i) {
-				if (shown[i] <= 0.0f) {
-					continue;
-				}
-				const float a = std::clamp(hud.reticleOpacity, 0.1f, 1.0f) * shown[i];
-				const auto  col = colOf(a);
-				const float f = fill[i];
-				const bool  ember = f < low;
-				const auto  hue = hueOf(i);
-				const auto  shade = [&](float o) { return col(hue.x, hue.y, hue.z, o); };
-				const ImU32 bone = col(0.86f, 0.82f, 0.73f, 0.9f);
-				const float x = cx + (i == 0 ? -gap : gap);
-				const float yf = y1 - h * f;
-				const float glow = pulse[i].Glow(f, now);
-				// the track: a dark slot with a faint bone edge
-				ImDrawListManager::AddRectFilled(dl, ImVec2{ x - w * 0.5f - 1.0f, y0 }, ImVec2{ x + w * 0.5f + 1.0f, y1 }, col(0.0f, 0.0f, 0.0f, 0.6f), 0.0f, 0);
-				ImDrawListManager::AddRect(dl, ImVec2{ x - w * 0.5f - 1.0f, y0 }, ImVec2{ x + w * 0.5f + 1.0f, y1 }, col(0.78f, 0.75f, 0.65f, 0.45f), 0.0f, 0, 1.0f);
-				// the fill, faint at the bottom and brightest at its top
-				if (f > 0.0f) {
-					ImDrawListManager::AddRectFilledMultiColor(dl, ImVec2{ x - w * 0.5f, yf }, ImVec2{ x + w * 0.5f, y1 }, shade(1.0f), shade(1.0f),
-						shade(0.4f), shade(0.4f));
-				}
-				// the soft pulse: the whole slot glows (out of magicka, breathing; refilled, one swell)
-				if (glow > 0.0f) {
-					ImDrawListManager::AddRectFilled(dl, ImVec2{ x - w * 1.5f, y0 - 3.0f * k }, ImVec2{ x + w * 1.5f, y1 + 3.0f * k }, shade(0.22f * glow),
-						3.0f * k, 0);
-				}
-				// the bracket ends: a tick (his list: "i dont like the arrows" - the chevrons are gone)
-				for (const float y : { y0, y1 }) {
-					ImDrawListManager::AddLine(dl, ImVec2{ x - w * 1.6f, y }, ImVec2{ x + w * 1.6f, y }, bone, std::max(1.0f, k));
-				}
-				// the glow round the top of the fill, breathing (faster when nearly empty)
-				const float breath = 0.85f + 0.15f * static_cast<float>(std::sin(now * (ember ? 9.0 : 4.0)));
-				for (int g = 0; g < 6; ++g) {
-					const float r = (14.0f - static_cast<float>(g) * 1.8f) * k * breath;
-					ImDrawListManager::AddCircleFilled(dl, ImVec2{ x, yf }, r, shade(0.04f + static_cast<float>(g) * 0.012f), 24);
-				}
-				// the diamond on the top of the fill
-				const float r = 4.5f * k;
-				ImDrawListManager::AddQuadFilled(dl, ImVec2{ x, yf - r }, ImVec2{ x + r, yf }, ImVec2{ x, yf + r }, ImVec2{ x - r, yf },
-					col(0.96f, 0.93f, 0.82f, 1.0f));
-				ImDrawListManager::AddQuad(dl, ImVec2{ x, yf - r }, ImVec2{ x + r, yf }, ImVec2{ x, yf + r }, ImVec2{ x - r, yf }, col(0.16f, 0.13f, 0.10f, 1.0f),
-					1.0f);
-			}
-			centerDot();
-		}
 	}
 
 	bool MenusHideHud() noexcept { return MenuWatch::Get().hide.load(std::memory_order_relaxed); }
@@ -1147,7 +807,6 @@ namespace Fade
 		SKSEMenuFramework::AddSectionItem(T("Fading - debug"), RenderDebug);
 #endif
 		SKSEMenuFramework::AddHudElement(RenderHud);
-		SKSEMenuFramework::AddHudElement(RenderReticle);
 		SKSE::log::info("settings pages added to SKSE Menu Framework {}", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 }
