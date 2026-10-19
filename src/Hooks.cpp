@@ -398,6 +398,11 @@ namespace
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
 		{
+			if (REL::Module::IsVR()) {
+				// as Illuminated's VR build: this call's place in VR was never read, so nothing is written there
+				SKSE::log::info("VR: cell animations not hooked; fading lights may show their full strength for part of a frame");
+				return;
+			}
 			REL::Relocation<std::uintptr_t> site{ RELOCATION_ID(18458, 18889), 0x52 };
 			if (!LightKit::IsCallAt(site.address())) {
 				SKSE::log::warn(
@@ -411,21 +416,24 @@ namespace
 
 	void InstallCallSites()
 	{
-		auto&                                                         trampoline = SKSE::GetTrampoline();
-		std::vector<std::pair<REL::RelocationID, REL::VariantOffset>> sites{
-			{ RELOCATION_ID(33603, 34381), REL::VariantOffset(0xAC, 0xE2, 0xE2) },
-			{ RELOCATION_ID(33391, 34151), REL::VariantOffset(0x86, 0xCD, 0x86) },
-			{ RELOCATION_ID(42965, 44222), REL::VariantOffset(0x58, 0x36D, 0x58) }
+		auto& trampoline = SKSE::GetTrampoline();
+		// Skyrim VR's own addresses for the first three: the VR Address Library has no id for these functions (read off its
+		// 0.282.0 file), so they are given as VR offsets - read off ReLight VR 4 (Nexus 193734, RE::Light built for VR), which
+		// hooks these same calls in VR
+		std::vector<REL::Relocation<std::uintptr_t>> sites{
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(33603, 34381, 0x54FAB0), REL::VariantOffset(0xAC, 0xE2, 0xAC) },
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(33391, 34151, 0x547A70), REL::VariantOffset(0x86, 0xCD, 0x86) },
+			REL::Relocation<std::uintptr_t>{ REL::VariantID(42965, 44222, 0x7790E0), REL::VariantOffset(0x58, 0x36D, 0x58) }
 		};
 		if (REL::Module::IsAE()) {
-			sites.push_back({ RELOCATION_ID(33403, 34185), REL::VariantOffset(0x407, 0x407, 0x407) });
+			sites.emplace_back(RELOCATION_ID(33403, 34185), 0x407);
 		}
 		constexpr std::array thunks{ &MagicLight<0>::thunk, &MagicLight<1>::thunk, &MagicLight<2>::thunk, &MagicLight<3>::thunk };
 		const std::array     nexts{ &MagicLight<0>::func, &MagicLight<1>::func, &MagicLight<2>::func, &MagicLight<3>::func };
 		const auto           game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
 		std::size_t          hooked = 0, toGame = 0;
 		for (std::size_t i = 0; i < sites.size() && i < thunks.size(); ++i) {
-			REL::Relocation<std::uintptr_t> target{ sites[i].first, sites[i].second };
+			const auto& target = sites[i];
 			if (!LightKit::IsCallAt(target.address())) {
 				SKSE::log::warn(
 					"spell lights: a call site is not a call (another plugin rewrote it?); left alone - those spells keep their "
@@ -459,9 +467,8 @@ namespace
 		Load3D<RE::BarrierProjectile>::Install();
 		Load3D<RE::Explosion>::Install();
 		Load3D<RE::Hazard>::Install();
-		constexpr std::size_t           kActorUpdate = 0xAD;  // Actor::Update's vtable slot on SE and AE (this mod has no VR build)
 		REL::Relocation<std::uintptr_t> vtbl{ RE::PlayerCharacter::VTABLE[0] };
-		PlayerUpdate::func = vtbl.write_vfunc(kActorUpdate, PlayerUpdate::thunk);
+		PlayerUpdate::func = vtbl.write_vfunc(REL::Relocate(0xAD, 0xAD, 0xAF), PlayerUpdate::thunk);  // Actor::Update (CommonLib's Actor.cpp)
 		EffectUpdate<RE::ShaderReferenceEffect>::Install();
 		EffectUpdate<RE::ModelReferenceEffect>::Install();
 		CellAnimations::Install();

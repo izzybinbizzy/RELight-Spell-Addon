@@ -10,9 +10,12 @@ set_runtimes("MT")
 add_rules("mode.releasedbg")
 set_defaultmode("releasedbg")
 
-set_config("skyrim_se", true)
-set_config("skyrim_ae", true)
-set_config("skyrim_vr", false)
+-- GLOW_VR=1 (set by PC Runner\pluginbuild.py for the optional VR download) builds for Skyrim VR only;
+-- anything else is the SE + AE build every main download ships
+local vr_only = os.getenv("GLOW_VR") == "1"
+set_config("skyrim_se", not vr_only)
+set_config("skyrim_ae", not vr_only)
+set_config("skyrim_vr", vr_only)
 
 -- REPRODUCIBLE BUILDS: the same source gives the same DLL, byte for byte, in whatever folder it is built - no time stamp
 -- (/Brepro: the compiler and the linker stamp a hash of the contents), no source folder in the code (/pathmap: this folder
