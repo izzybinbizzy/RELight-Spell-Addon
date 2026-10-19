@@ -431,13 +431,26 @@ namespace
 		constexpr std::array thunks{ &MagicLight<0>::thunk, &MagicLight<1>::thunk, &MagicLight<2>::thunk, &MagicLight<3>::thunk };
 		const std::array     nexts{ &MagicLight<0>::func, &MagicLight<1>::func, &MagicLight<2>::func, &MagicLight<3>::func };
 		const auto           game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
-		std::size_t          hooked = 0, toGame = 0;
+		const auto           code = REL::Module::get().segment(REL::Segment::textx);
+		// a site is written only when it is a call that leads to the game's own function or out of the game's code (another
+		// plugin's hook - RE::Light's): a call to anything else means the address is not the one we know (the VR ones were
+		// read off another mod, never off the game here)
+		const auto known = [&](std::uintptr_t a_site) {
+			if (!LightKit::IsCallAt(a_site)) {
+				return false;
+			}
+			std::int32_t rel = 0;
+			std::memcpy(&rel, reinterpret_cast<const void*>(a_site + 1), sizeof(rel));
+			const auto to = a_site + 5 + static_cast<std::uintptr_t>(static_cast<std::intptr_t>(rel));
+			return to == game || to < code.address() || to >= code.address() + code.size();
+		};
+		std::size_t hooked = 0, toGame = 0;
 		for (std::size_t i = 0; i < sites.size() && i < thunks.size(); ++i) {
 			const auto& target = sites[i];
-			if (!LightKit::IsCallAt(target.address())) {
+			if (!known(target.address())) {
 				SKSE::log::warn(
-					"spell lights: a call site is not a call (another plugin rewrote it?); left alone - those spells keep their "
-					"own light handling");
+					"spell lights: a call site is not the call it should be (another plugin rewrote it, or its address is off); "
+					"left alone - those spells keep their own light handling");
 				continue;
 			}
 			const auto old = trampoline.write_call<5>(target.address(), thunks[i]);
