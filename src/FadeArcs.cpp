@@ -42,9 +42,6 @@ namespace Fade
 	{
 		using ReticleArcsAPI::BarState;
 
-		std::atomic<int> gState{ static_cast<int>(ArcsState::kAbsent) };
-		std::atomic<int> gTaken{ 0 };
-
 		// a spell bar stays this long once magicka is full again (his 2026-10-11 rule: "when magicka is full it stays for a second")
 		constexpr float kHoldSeconds = 1.0f;
 
@@ -89,13 +86,14 @@ namespace Fade
 			}
 		}
 
-		// an enchanted weapon's charge: once it starts dropping (full ones too with the gems' Show at full charge)
+		// an enchanted weapon's charge, once it starts dropping (no setting of ours changes that - his order of 2026-10-19; the
+		// gems' Show at full charge is the gems' own)
 		template <std::size_t Hand>
 		void Charge(float, BarState& a_state)
 		{
 			const auto  hud = Hud();
 			const auto& h = hud.hands[Hand];
-			if (hud.drawn && h.shown && !h.spell && !h.bound && (h.fraction < 0.999f || hud.gemFull)) {
+			if (hud.drawn && h.shown && !h.spell && !h.bound && h.fraction < 0.999f) {
 				Show(a_state, h.fraction, hud.low);
 			}
 		}
@@ -138,7 +136,6 @@ namespace Fade
 		}
 		auto* arcs = ReticleArcsAPI::Request();
 		if (!arcs) {
-			gState = static_cast<int>(ArcsState::kTooOld);
 			SKSE::log::info("Reticle Arcs is too old for add-on bars; {}'s bars are not offered to it", Mod::kName);
 			return;
 		}
@@ -154,11 +151,7 @@ namespace Fade
 			bar.preview = ArcPreview;
 			taken += arcs->RegisterBar(bar) ? 1 : 0;
 		}
-		gTaken = taken;
-		gState = static_cast<int>(taken > 0 ? ArcsState::kOurs : ArcsState::kOtherCopy);
 		SKSE::log::info("Reticle Arcs (interface {}) took {} of {} bars{}", arcs->GetVersion(), taken, kArcs,
 			taken < static_cast<int>(kArcs) ? " - the rest are refused (ReticleArcs.log says why; the other mod with this module may hold them)" : "");
 	}
-
-	ArcsView ArcsNow() noexcept { return { static_cast<ArcsState>(gState.load()), gTaken.load() }; }
 }

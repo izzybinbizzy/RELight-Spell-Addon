@@ -302,13 +302,18 @@ namespace LightKit
 
 	// An art model's color off the emissive colors of its effect shaders (LightMath.h ChromaMean), for an automatic hand light
 	// whose spell has no light of its own and fires no lit projectile (his order of 2026-10-18). The model is read through the
-	// game's own model loader, once per model for the session. Main thread only (data load, a save load). Not on VR: the
-	// loader's address is read off the SE / AE Address Library only.
-	[[nodiscard]] inline std::optional<RE::Color> ArtColor(const char* a_model)
+	// game's own model loader, once per model for the session, and only while a_load is true (the data load): later callers may
+	// hold a lock a game thread waits on, so they get only what was read before. Main thread only. Not on VR: the loader's
+	// address is read off the SE / AE Address Library only.
+	[[nodiscard]] inline std::optional<RE::Color> ArtColor(const char* a_model, bool a_load = true)
 	{
 		static std::unordered_map<std::string, std::optional<RE::Color>> read;  // model -> its color, or none
 		if (REL::Module::IsVR() || !a_model || !*a_model) {
 			return std::nullopt;
+		}
+		if (!a_load) {
+			const auto known = read.find(Lower(a_model));
+			return known != read.end() ? known->second : std::nullopt;
 		}
 		const auto [it, added] = read.try_emplace(Lower(a_model));
 		if (!added) {

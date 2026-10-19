@@ -223,20 +223,7 @@ namespace Fade
 	void RegisterMenu();
 
 	// ------------------------------------------------------------------ FadeArcs.cpp: the bars offered to Reticle Arcs
-	enum class ArcsState : int
-	{
-		kAbsent,    // Reticle Arcs is not loaded: nothing offered
-		kTooOld,    // it has no add-on interface
-		kOurs,      // it took this copy's bars (ArcsView::taken of them)
-		kOtherCopy  // it refused every one: the same ids are already taken (the other mod carrying this module)
-	};
-	struct ArcsView
-	{
-		ArcsState state{ ArcsState::kAbsent };
-		int       taken{ 0 };
-	};
-	void                   RegisterArcBars();  // SKSE's post-load: Reticle Arcs takes add-on bars only until data load
-	[[nodiscard]] ArcsView ArcsNow() noexcept;
+	void RegisterArcBars();  // SKSE's post-load: Reticle Arcs takes add-on bars only then (its log says how many it took)
 
 	// ------------------------------------------------------------------ FadeDevBench.cpp
 	void OfferToDevBench();

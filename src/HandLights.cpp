@@ -129,9 +129,11 @@ namespace Plugin
 	namespace
 	{
 		// Which magic effects wear a lit mesh. Found at data load and again when a save loads, because another plugin
-		// (Dynamic Wards) can change casting art in memory too. An effect's own light is kept across a re-find.
+		// (Dynamic Wards) can change casting art in memory too. An effect's own light is kept across a re-find. a_loadArt: an
+		// art's color may be read off its model (LightKit::ArtColor) - only at data load: a re-find during play runs under
+		// gLock, which the game threads' light hooks take, so it uses only the colors read then.
 		// -> how many matched by full path
-		std::size_t FindTargets()
+		std::size_t FindTargets(bool a_loadArt)
 		{
 			std::unordered_map<RE::EffectSetting*, RE::TESObjectLIGH*> own;
 			for (auto& t : gTargets) {
@@ -198,12 +200,12 @@ namespace Plugin
 				}
 			}
 			for (auto* effect : uncovered) {
-				// a ward's hand (any art named wardinhandfx - the game's, Dynamic Wards' per rank, ours) is the wards' own: Dynamic
-				// Wards dresses every ward when it is installed, Wards.cpp when it is not (Illuminated measured 32 ward effects on
-				// Dynamic Wards' uncolored art taking an orange / red light 2026-10-19)
+				// a ward (its effect raises Ward Power) and any spell on a ward's hand art (named wardinhandfx - the game's, Dynamic
+				// Wards' per rank, ours) are the wards' own: Dynamic Wards dresses every ward when it is installed, Wards.cpp when it
+				// is not (Illuminated measured 32 ward effects on Dynamic Wards' uncolored art taking an orange / red light 2026-10-19)
 				if (tuned.empty() || effect->data.castingType == RE::MagicSystem::CastingType::kConstantEffect ||
 					effect->data.archetype == RE::EffectArchetypes::ArchetypeID::kLight || SkippedPrefix(effect) ||
-					MeshKey(effect->data.castingArt->GetModel()).contains("wardinhandfx")) {
+					effect->data.primaryAV == RE::ActorValue::kWardPower || MeshKey(effect->data.castingArt->GetModel()).contains("wardinhandfx")) {
 					continue;
 				}
 				std::uint32_t rgb = 0;
@@ -214,7 +216,7 @@ namespace Plugin
 					rgb = packColor(l->data.color);
 				} else if (shot) {
 					rgb = packColor(shot->data.color);
-				} else if (const auto art = LightKit::ArtColor(effect->data.castingArt->GetModel())) {
+				} else if (const auto art = LightKit::ArtColor(effect->data.castingArt->GetModel(), a_loadArt)) {
 					rgb = packColor(*art);
 				} else if (group != byGroup.end() && !group->second.empty()) {
 					rgb = std::ranges::max_element(group->second, {}, [](const auto& kv) { return kv.second; })->first;
@@ -267,7 +269,7 @@ namespace Plugin
 			if (gCopies.empty()) {
 				return;
 			}
-			byPath = FindTargets();
+			byPath = FindTargets(false);
 			n = gTargets.size();
 		}
 		SKSE::log::info("hand lights: re-found - {} magic effect(s) wear one of their meshes ({} by full path)", n, byPath);
@@ -296,7 +298,7 @@ namespace Plugin
 				gCopies.emplace(key, copy);
 				++made;
 			}
-			byPath = FindTargets();
+			byPath = FindTargets(true);  // data load: no game thread runs a light hook yet
 		}
 		SKSE::log::info(
 			"hand lights: {} light(s) made in memory, {} failed; {} magic effect(s) wear one of their meshes ({} by "
