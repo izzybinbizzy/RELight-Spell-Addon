@@ -158,6 +158,8 @@ namespace Plugin
 	[[nodiscard]] const HandFx*                         HandFxOf(std::string_view a_key);  // nullptr: this hand does not breathe
 	// nullptr unless we light this weapon in the hand: its form first, then (first person) its first-person model, then its model
 	[[nodiscard]] const Stream* HeldOf(const RE::TESObjectWEAP* a_weapon, bool a_firstPerson);
+	// nullptr unless a `body` line lights this art model on an actor (BodyLights.cpp): its full path key, then its bare name
+	[[nodiscard]] const Stream* BodyOf(const RE::BGSArtObject* a_art);
 
 	// ------------------------------------------------------------------ Keep.cpp: the one place a game light is held
 	using GoneLights = std::unordered_set<const RE::NiLight*>;
@@ -263,6 +265,24 @@ namespace Plugin
 	// ------------------------------------------------------------------ Held.cpp: a weapon's own light while it is drawn
 	void                      UpdateHeldLights();  // every frame, after UpdateOptionLights
 	[[nodiscard]] std::size_t LiveHeldLights();
+	// one light of our own made and registered the ReLight way (main thread; nullptr when it could not be) - held and body lights
+	[[nodiscard]] RE::BSLight* MakeOwnLight(const Stream& a_s, float a_fade, float a_reach, RE::NiNode* a_parent,
+		RE::ShadowSceneNode* a_scene, const char* a_name, RE::NiPointLight*& a_made);
+	// the sliders and the daylight onto such a light (fade and reach as the caller worked them out)
+	void RetuneOwnLight(RE::NiPointLight* a_light, const Stream& a_s, float a_fade, float a_reach, bool a_reachMoved);
+	// what a held or body light's file fade and radius are multiplied by: Brightness x daylight, Reach, and off Community
+	// Shaders the plain drawing (fade x 1.14, reach x 178 / 133)
+	struct OwnScale
+	{
+		float fade, reach;
+	};
+	[[nodiscard]] OwnScale OwnLightScale();
+
+	// ------------------------------------------------------------------ BodyLights.cpp: the body glow while casting
+	void                      UpdateBodyLights();  // every frame, after UpdateHeldLights
+	void                      DropBodyLights();    // a game loads, or a new one starts: the art they hang on is the old game's
+	[[nodiscard]] std::size_t LiveBodyLights();
+	[[nodiscard]] std::size_t BodyLightsMade();
 
 	// ------------------------------------------------------------------ Wards.cpp: one ward, one dome, and its color
 	void               ApplyWards(const char* a_why);  // one dome per ward and the color pick; nothing while Dynamic Wards is loaded

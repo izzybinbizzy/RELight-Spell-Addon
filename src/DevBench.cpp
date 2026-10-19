@@ -53,6 +53,7 @@ namespace Plugin
 			out["handLights"] = { { "made", HandLightsMade() }, { "effects", HandEffects() }, { "automatic", AutoHandEffects() } };
 			out["groundLights"] = { { "now", GroundLightCount() }, { "made", GroundLightsMade() } };  // GroundLights.cpp
 			out["heldLights"] = LiveHeldLights();
+			out["bodyLights"] = { { "now", LiveBodyLights() }, { "made", BodyLightsMade() } };  // BodyLights.cpp
 			out["keptLights"] = KeptLights();
 			out["sprayRecords"] = SprayLightRecords().size();
 			out["beamRecords"] = BeamLightRecords().size();
