@@ -18,8 +18,16 @@
 // out, so it never shows a frame it should not) and hand the bookkeeping to the main thread as an SKSE task that holds the
 // light until then - so no lock is held across a frame, and none is needed.
 
+#ifndef WIN32_LEAN_AND_MEAN
+#	define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#	define NOMINMAX  // the build defines it too (xmake.lua)
+#endif
 #include "Fade.h"
 #include "Plugin.h"
+
+#include <Windows.h>  // VirtualQuery, GetModuleHandleExW: whose code a VR call site's call leads into
 
 namespace
 {
@@ -431,18 +439,36 @@ namespace
 		constexpr std::array thunks{ &MagicLight<0>::thunk, &MagicLight<1>::thunk, &MagicLight<2>::thunk, &MagicLight<3>::thunk };
 		const std::array     nexts{ &MagicLight<0>::func, &MagicLight<1>::func, &MagicLight<2>::func, &MagicLight<3>::func };
 		const auto           game = REL::Relocation<std::uintptr_t>{ RELOCATION_ID(17208, 17610) }.address();
-		const auto           code = REL::Module::get().segment(REL::Segment::textx);
-		// a site is written only when it is a call that leads to the game's own function or out of the game's code (another
-		// plugin's hook - RE::Light's): a call to anything else means the address is not the one we know (the VR ones were
-		// read off another mod, never off the game here)
+		// SE / AE: a site's place is the Address Library's, so the call there is the spell-light call (the game's, or another
+		// plugin's hook of it). VR: the places were read off another mod, never off the game here - a site is written only when
+		// its call leads to the game's own function or to RE::Light's hook of it (through the jump an SKSE trampoline slot
+		// holds), so a wrong address is left alone instead of patched
 		const auto known = [&](std::uintptr_t a_site) {
 			if (!LightKit::IsCallAt(a_site)) {
 				return false;
 			}
+			if (!REL::Module::IsVR()) {
+				return true;
+			}
 			std::int32_t rel = 0;
 			std::memcpy(&rel, reinterpret_cast<const void*>(a_site + 1), sizeof(rel));
-			const auto to = a_site + 5 + static_cast<std::uintptr_t>(static_cast<std::intptr_t>(rel));
-			return to == game || to < code.address() || to >= code.address() + code.size();
+			auto to = a_site + 5 + static_cast<std::uintptr_t>(static_cast<std::intptr_t>(rel));
+			if (to == game) {
+				return true;
+			}
+			constexpr std::array<std::uint8_t, 6> kJump{ 0xFF, 0x25, 0, 0, 0, 0 };  // jmp [rip+0], then the hook's address
+			MEMORY_BASIC_INFORMATION              mem{};
+			if (VirtualQuery(reinterpret_cast<LPCVOID>(to), &mem, sizeof(mem)) == 0 || mem.State != MEM_COMMIT ||
+				(mem.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) == 0 ||
+				to + kJump.size() + sizeof(to) > reinterpret_cast<std::uintptr_t>(mem.BaseAddress) + mem.RegionSize ||
+				std::memcmp(reinterpret_cast<const void*>(to), kJump.data(), kJump.size()) != 0) {
+				return false;
+			}
+			std::memcpy(&to, reinterpret_cast<const void*>(to + kJump.size()), sizeof(to));
+			HMODULE owner = nullptr;
+			return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+					   reinterpret_cast<LPCWSTR>(to), &owner) != 0 &&
+			       owner == GetModuleHandleW(L"ReLight.dll");
 		};
 		std::size_t hooked = 0, toGame = 0;
 		for (std::size_t i = 0; i < sites.size() && i < thunks.size(); ++i) {
