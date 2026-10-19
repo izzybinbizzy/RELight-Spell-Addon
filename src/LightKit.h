@@ -12,6 +12,7 @@
 //   CloneLight   a new light for the scene, and AddToScene to register it (ReLight's method, Truman's permission)
 //   Daylight     how much dimmer the lights are by day and in bright rooms: the "Dim in daylight" setting
 //   FleshFx      which flesh spells wear FleshFX's look, and the color their lights then take
+//   ArtColor     an art model's color off its effect shaders (an automatic hand light's third source)
 //   Guarded      runs a hook's or a frame's own work and lets no exception out into the game
 // The plain-number helpers (Lower, CutoffFor, PlainOf, ToScreen, KeyAt ...) are in LightMath.h, tested off the game.
 
@@ -297,5 +298,42 @@ namespace LightKit
 			const auto c = AtStrengthOf({ a_hue.red, a_hue.green, a_hue.blue }, { a_now.red, a_now.green, a_now.blue });
 			return { c[0], c[1], c[2] };
 		}
+	}
+
+	// An art model's color off the emissive colors of its effect shaders (LightMath.h ChromaMean), for an automatic hand light
+	// whose spell has no light of its own and fires no lit projectile (his order of 2026-10-18). The model is read through the
+	// game's own model loader, once per model for the session, and only while a_load is true (the data load): later callers may
+	// hold a lock a game thread waits on, so they get only what was read before. Main thread only. Not on VR: the loader's
+	// address is read off the SE / AE Address Library only.
+	[[nodiscard]] inline std::optional<RE::Color> ArtColor(const char* a_model, bool a_load = true)
+	{
+		static std::unordered_map<std::string, std::optional<RE::Color>> read;  // model -> its color, or none
+		if (REL::Module::IsVR() || !a_model || !*a_model) {
+			return std::nullopt;
+		}
+		if (!a_load) {
+			const auto known = read.find(Lower(a_model));
+			return known != read.end() ? known->second : std::nullopt;
+		}
+		const auto [it, added] = read.try_emplace(Lower(a_model));
+		if (!added) {
+			return it->second;
+		}
+		RE::NiPointer<RE::NiNode> root;
+		if (RE::BSModelDB::Demand(a_model, root, RE::BSModelDB::DBTraits::ArgsType{}) != RE::BSResource::ErrorCode::kNone || !root) {
+			return std::nullopt;
+		}
+		std::vector<std::array<float, 3>> layers;
+		RE::BSVisit::TraverseScenegraphGeometries(root.get(), [&](RE::BSGeometry* a_geometry) {
+			auto* shader = netimmerse_cast<RE::BSEffectShaderProperty*>(a_geometry ? a_geometry->GetGeometryRuntimeData().shaderProperty.get() : nullptr);
+			if (auto* material = shader ? static_cast<RE::BSEffectShaderMaterial*>(shader->GetBaseMaterial()) : nullptr) {
+				layers.push_back({ material->baseColor.red, material->baseColor.green, material->baseColor.blue });
+			}
+			return RE::BSVisit::BSVisitControl::kContinue;
+		});
+		if (const auto rgb = ChromaMean(layers)) {
+			it->second = RE::Color((*rgb)[0], (*rgb)[1], (*rgb)[2], 0);
+		}
+		return it->second;
 	}
 }

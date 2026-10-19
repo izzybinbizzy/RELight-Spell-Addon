@@ -30,6 +30,11 @@ namespace Fade::Tuning
 			static std::vector<Knob> knobs;
 			return knobs;
 		}
+
+		// values an older version wrote ("section|key", lower case): passed over quietly and left out of the rewritten file - the
+		// reticle's, his order 2026-10-19 ("completely remove our reticle options ... no settings in our mod")
+		constexpr std::string_view kRetired[]{ "hud|reticlegap", "hud|reticlelength", "hud|crosshairbarwidth", "hud|crossfirebarwidth",
+			"hud|crosshairbardrop", "hud|crossfirebardrop", "hud|emptypulsespeed", "hud|fullpulseseconds", "hud|reticleholdseconds" };
 	}
 
 	void Register(std::string_view a_section, std::string_view a_key, float a_default, float a_lo, float a_hi, std::string_view a_note,
@@ -114,7 +119,7 @@ namespace Fade::Tuning
 			++taken;
 		}
 		for (const auto& [key, f] : found) {
-			if (!f.used) {
+			if (!f.used && std::ranges::find(kRetired, key) == std::ranges::end(kRetired)) {
 				SKSE::log::warn("advanced settings: {} is not a setting; it is left out of the rewritten file", f.shown);
 			}
 		}

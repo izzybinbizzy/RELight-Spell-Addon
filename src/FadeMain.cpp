@@ -11,8 +11,8 @@
 // of; FadeGlow.h (the behaviour as plain numbers), FadeFormText.h / FadeSettingsText.h / FadeRulesText.h (text),
 // FadeCharge.cpp (what a hand holds), FadeSpells.cpp (spells in hand), FadeLights.cpp (the lights found and scaled every
 // frame; the HUD state), FadeItems.cpp (Lights by Item), FadeTuning.cpp (the all-in-one advanced settings file),
-// FadeRules.cpp, FadeSettings.cpp, FadeEditorIDs.cpp, FadeMenu.cpp, Fade.h (what they share), FadeMain.cpp (this file:
-// its own hooks and the order).
+// FadeRules.cpp, FadeSettings.cpp, FadeEditorIDs.cpp, FadeMenu.cpp, FadeArcs.cpp (the bars offered to Reticle Arcs),
+// Fade.h (what they share), FadeMain.cpp (this file: its own hooks and the order).
 
 #include "Fade.h"
 #include "LightKit.h"
@@ -105,8 +105,8 @@ namespace Fade
 {
 	namespace
 	{
-		// HIS ORDER: "take off the guard against reticle arcs, and stand down our reticle if theirs is
-		// detected." Written once on the main thread at SKSE's post-load; the HUD's render thread reads it
+		// Reticle Arcs is loaded: the module's bars are offered to it (FadeArcs.cpp) - since his order of 2026-10-19 the only
+		// reticle there is. Written once on the main thread at SKSE's post-load
 		std::atomic<bool> gOtherReticle{ false };
 	}
 
@@ -119,11 +119,15 @@ namespace Fade
 		// every SKSE plugin is loaded by now, so another mod's DLL is either here or not coming
 		gOtherReticle.store(REX::W32::GetModuleHandleA("ReticleArcs.dll") != nullptr, std::memory_order_relaxed);
 		if (OtherReticleLoaded()) {
-			SKSE::log::info("Reticle Arcs is loaded: this mod's reticle stays off; everything else works as usual");
+			SKSE::log::info("Reticle Arcs is loaded: the fading module's bars are offered to it");
 		}
 	}
 
-	void OnPostLoad() { OfferToDevBench(); }
+	void OnPostLoad()
+	{
+		OfferToDevBench();
+		RegisterArcBars();  // after OnPluginLoad read whether Reticle Arcs is here
+	}
 
 	void OnDataLoaded()
 	{
@@ -138,17 +142,6 @@ namespace Fade
 		Register("Fading", "RiseSeconds", 0.35f, 0.0f, 3.0f, "how quickly the light follows a rising charge, in seconds", gRiseSeconds);
 		Register("HUD", "GemDistance", 215.0f, 40.0f, 900.0f, "how far each charge gem sits from the middle of the screen, in pixels at 1080p", gGemDistance);
 		Register("HUD", "GemHeight", 62.0f, 0.0f, 1000.0f, "how far above the bottom of the screen the charge gems sit, in pixels at 1080p", gGemHeight);
-		// the reticle grows with the screen like the gems (his answer 2026-10-13): its sizes are pixels at 1080p
-		Register("HUD", "ReticleGap", 30.0f, 5.0f, 300.0f, "how far each reticle bar sits from the crosshair, in pixels at 1080p", gReticleGap);
-		Register("HUD", "ReticleLength", 56.0f, 10.0f, 400.0f, "how long each reticle bar is, in pixels at 1080p", gReticleLength);
-		// "Crossfire bar" renamed "Bar under the crosshair" (his answer 2026-10-13): the old key names are still read
-		Register("HUD", "CrosshairBarWidth", 300.0f, 80.0f, 1200.0f, "how wide the bar under the crosshair is, in pixels at 1080p", gBarWidth,
-			"CrossfireBarWidth");
-		Register("HUD", "CrosshairBarDrop", 70.0f, -400.0f, 600.0f, "how far below the crosshair the bar under the crosshair sits, in pixels at 1080p",
-			gBarDrop, "CrossfireBarDrop");
-		Register("HUD", "EmptyPulseSpeed", 2.6f, 0.5f, 10.0f, "how fast the reticle breathes while you are out of magicka", gEmptyPulseSpeed);
-		Register("HUD", "FullPulseSeconds", 0.9f, 0.2f, 3.0f, "how long the reticle's swell lasts when your magicka is full again, in seconds", gFullPulseSeconds);
-		Register("HUD", "ReticleHoldSeconds", 1.0f, 0.2f, 5.0f, "how long the reticle stays at empty or full before it fades out, in seconds", gReticleHold);
 		Tuning::Load();
 		{
 			auto s = Config();

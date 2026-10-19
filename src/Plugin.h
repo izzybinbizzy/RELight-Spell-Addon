@@ -215,11 +215,6 @@ namespace Plugin
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
 	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
 
-	// ------------------------------------------------------------------ Brightness.cpp: an effect's element
-	// 0 none, 1 fire, 2 frost, 3 shock - what the effect is resisted by. Only the automatic hand lights read it now (the
-	// color an unpatched spell's hand light takes, HandLights.cpp): the Fire / Frost / Shock color picks are gone
-	[[nodiscard]] int ElementOf(const RE::EffectSetting* a_effect);
-
 	// main.cpp: "Hand lights for" (the light budget for big fights) leaves this actor out - no hand light, no held light
 	[[nodiscard]] bool LeftOutByBudget(const RE::Actor* a_actor);
 

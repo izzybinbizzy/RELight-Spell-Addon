@@ -576,7 +576,7 @@ namespace Plugin
 			if (const auto* cs = CSLightLoaded()) {
 				GlowHeading("Other Light Mods", Icon::kBulb);
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
-				MenuStyle::Tip(T("RELight - Spell Addon does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Regular soulgems, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
+				MenuStyle::Tip(T("RELight - Spell Addon does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
 			}
 
 			// his word: "big fights can be called performance and be at the bottom of lights menu"

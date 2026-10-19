@@ -13,13 +13,16 @@ plugin adds what RE::Light cannot do from a config.
 - **Sprays and bolts lit along their length** - each wears a raised copy of its own light record.
 - **The lighting is detected automatically** (Community Shaders, ENB or Vanilla) - off Community Shaders the hand lights
   are drawn for the game's own lighting and light the ground too.
-- A switch for every installed option and patch, Brightness and Reach, presets, Lights by Item, Fading, the HUD (reticle
-  and charge gems), lights off while sneaking, dim in daylight, a budget for big fights, wards (stepping aside for
-  Dynamic Wards), FleshFX colors and VAER Reborn's swirls kept.
+- A switch for every installed option and patch, Brightness and Reach, presets, Lights by Item, Fading, the charge gems,
+  lights off while sneaking, dim in daylight, a budget for big fights, wards (stepping aside for Dynamic Wards), FleshFX
+  colors and VAER Reborn's swirls kept.
+- **Reticle bars through Reticle Arcs** - with Reticle Arcs installed, each hand's spell light, a bound weapon's time and
+  an enchanted weapon's charge are offered to it as add-on bars (its published interface only); no reticle of its own.
 
 ## Requires
 SKSE, Address Library for SKSE Plugins, RE::Light and SKSE Menu Framework (the settings page and the HUD). In Skyrim VR:
-SKSE VR, the VR Address Library and ReLight VR, with the VR build of this plugin (built with `GLOW_VR=1`).
+SKSE VR, the VR Address Library and ReLight VR, with the VR build of this plugin (built with `GLOW_VR=1`). Reticle Arcs
+is optional.
 
 ## Settings
 SKSE Menu Framework > RELight - Spell Addon, saved to `Data\SKSE\Plugins\RelightSpellAddon.ini`; menu changes apply at
@@ -31,3 +34,6 @@ Settings.ini`, read when the game starts. The charge gems' pre-rendered art is `
 `src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from
 [SKSE-Menu-Framework-3-Example](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-Example), MIT licensed
 (see `src/SKSEMenuFramework.LICENSE.txt`).
+
+`src/ReticleArcsAPI.h` is Reticle Arcs' add-on interface by Chiktabba, MIT licensed (the notice at its top), copied
+unchanged. Reticle Arcs is not required.
