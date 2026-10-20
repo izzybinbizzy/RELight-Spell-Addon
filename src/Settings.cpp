@@ -24,6 +24,7 @@
 // loader threads, so each one is an atomic (relaxed: no setting depends on another being written first). The file is written
 // beside itself and moved over it, so a crash or a full disk mid-write leaves the old settings, never half a file.
 
+#include "FadeSettingsText.h"
 #include "Plugin.h"
 
 namespace Plugin
@@ -31,6 +32,9 @@ namespace Plugin
 	namespace
 	{
 		constexpr const char* kPath = "Data/SKSE/Plugins/RELightSpellLightingNG.ini";
+		// up to 2.5 the same file was RelightSpellAddon.ini: read while the new one is not there yet, never written (HIS ORDER
+		// 2026-10-20: "i want relight update to not affect old settings files")
+		constexpr const char* kOldPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
@@ -149,7 +153,7 @@ namespace Plugin
 	void LoadSettings()
 	{
 		gOtherSwitches.clear();
-		std::ifstream            in(kPath);
+		std::ifstream            in(Fade::SettingsText::ReadFrom(kPath, kOldPath));
 		std::string              line;
 		std::string              section;
 		std::size_t              read = 0;

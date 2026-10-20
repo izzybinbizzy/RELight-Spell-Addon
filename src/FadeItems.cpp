@@ -347,7 +347,8 @@ namespace Fade::Items
 	{
 		std::lock_guard lock(gLock);
 		gChoices.clear();
-		std::ifstream in(Mod::kItemsPath);
+		const auto    from = SettingsText::ReadFrom(Mod::kItemsPath, Mod::kOldItemsPath);
+		std::ifstream in(from);
 		std::string   line;
 		std::size_t   read = 0, missing = 0;
 		while (std::getline(in, line)) {
@@ -372,7 +373,7 @@ namespace Fade::Items
 			++read;
 		}
 		gGeneration.fetch_add(1, std::memory_order_relaxed);
-		SKSE::log::info("lights by item: {} choice(s) read from {} ({} name an item not in this load order's list)", read, Mod::kItemsPath, missing);
+		SKSE::log::info("lights by item: {} choice(s) read from {} ({} name an item not in this load order's list)", read, from, missing);
 	}
 
 	void BuildCatalog()

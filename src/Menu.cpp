@@ -11,6 +11,7 @@
 // mod's glowing headings.
 
 #define WIN32_LEAN_AND_MEAN  // NOMINMAX is set for every file in xmake.lua (the fading module needs it too)
+#include "FadeSettingsText.h"
 #include "Plugin.h"
 
 // SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua) - under
@@ -281,6 +282,8 @@ namespace Plugin
 		// presets per version if they switch to say, enb to community shaders mid save." Presets.ini beside the data files,
 		// a section per preset "[<lighting>|<name>]"; the menu shows the presets of the lighting found now (HandLights.cpp).
 		constexpr const char* kPresetsPath = "Data/SKSE/Plugins/RELightSpellLightingNG/Presets.ini";
+		// up to 2.5 in the RelightSpellAddon folder: read while the new one is not there yet, never written (HIS ORDER 2026-10-20)
+		constexpr const char* kOldPresetsPath = "Data/SKSE/Plugins/RelightSpellAddon/Presets.ini";
 		struct UserPreset
 		{
 			std::string                              lighting, name;
@@ -292,7 +295,7 @@ namespace Plugin
 		void ReadPresetsLocked()
 		{
 			gPresets.clear();
-			std::ifstream in(kPresetsPath);
+			std::ifstream in(Fade::SettingsText::ReadFrom(kPresetsPath, kOldPresetsPath));
 			std::string   line;
 			while (std::getline(in, line)) {
 				std::string_view t = line;
