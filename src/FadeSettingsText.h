@@ -325,10 +325,10 @@ namespace Fade
 		{
 			namespace fs = std::filesystem;
 			std::error_code ec;
-			if (a_old.empty() || fs::exists(fs::path(a_path), ec) || !fs::is_regular_file(fs::path(a_old), ec)) {
-				return std::string(a_path);
+			if (a_old.empty() || fs::exists(fs::path(a_path), ec) || ec) {
+				return std::string(a_path);  // an error asking about the new file never falls back to the old one
 			}
-			return std::string(a_old);
+			return fs::is_regular_file(fs::path(a_old), ec) && !ec ? std::string(a_old) : std::string(a_path);
 		}
 
 		inline void Write(std::ostream& a_out, const Settings& a_s)
