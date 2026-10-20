@@ -21,10 +21,27 @@
 // Reticle Arcs add-on interface. UNSUPPORTED FOR NOW: it may change without notice while it settles.
 //
 // an add-on is an SKSE plugin showing its own bar beside Reticle Arcs' own. Reticle Arcs draws it in the player's look and
-// asks the add-on for its state every frame; the add-on only reads the game. no CommonLib types cross it, so add-ons don't
-// need the same CommonLib build. a crash inside an add-on's callback stops that add-on, not the game
+// asks the add-on for its state every frame; the add-on only reads the game. an add-on can also colour the built-in bars and
+// read what they show. no CommonLib types cross it, so add-ons don't need the same CommonLib build. a crash inside an
+// add-on's callback stops that add-on, not the game
 namespace ReticleArcsAPI {
-    inline constexpr std::uint32_t kVersion = 1;
+    // 2: colours for the built-in bars (SetColorProvider), reading them (GetBarState)
+    inline constexpr std::uint32_t kVersion = 2;
+
+    // the built-in bars
+    enum class Bar : std::uint32_t {
+        kLeftSpell,
+        kRightSpell,
+        kShout,
+        // bow and crossbow
+        kBow,
+    };
+
+    // as Reticle Arcs detects it, from the spell's effects, keywords and casting light
+    enum class Element : std::uint32_t { kNone, kFire, kFrost, kShock, kSun, kPoison, kDrain };
+
+    // the spell's costliest effect's school. kOther: a skill a mod made a school
+    enum class School : std::uint32_t { kNone, kAlteration, kConjuration, kDestruction, kIllusion, kRestoration, kOther };
 
     // with drain, what moves along the fill
     enum class Motion : std::uint8_t {
@@ -89,12 +106,69 @@ namespace ReticleArcsAPI {
         void (*preview)(float a_time, BarState& a_state) = nullptr;
     };
 
+    // what a built-in bar is showing. later versions only add fields at the end
+    struct ColorQuery {
+        std::uint32_t size = sizeof(ColorQuery);
+        Bar bar = Bar::kLeftSpell;
+        // the spell, scroll or staff enchantment being cast; the shout; the arrow or bolt nocked. never 0
+        std::uint32_t formID = 0;
+        // spells: both hands casting one spell, a dual cast or master ritual. asked once, for the hand casting it
+        bool dual = false;
+        // spells: a concentration spell being channelled, not charging
+        bool channel = false;
+        // spells, and elemental arrows and bolts. kNone for the rest
+        Element element = Element::kNone;
+        // spells only
+        School school = School::kNone;
+        // the colour Reticle Arcs shows when you return false, 0xRRGGBB
+        std::uint32_t fallback = 0;
+    };
+
+    // main thread, every frame a built-in bar shows while the player picked one of the "Add-on" colours for it. true and
+    // a_rgb (0xRRGGBB) colour it, false leaves it to the player's fallback. keep it cheap, the frame waits for it
+    using ColorFn = bool (*)(const ColorQuery& a_query, std::uint32_t& a_rgb);
+
+    // a built-in bar as of Reticle Arcs' last update, once a frame. later versions only add fields at the end
+    struct BarInfo {
+        // leave as is: tells Reticle Arcs which version of this struct it was given
+        std::uint32_t size = sizeof(BarInfo);
+        // charging, drawing, held or channelled. tracked whether or not the player shows the bar
+        bool active = false;
+        // the player shows this bar
+        bool enabled = false;
+        // 0 to 1. a channel's share of the magicka left
+        float percent = 0.0f;
+        // what's in it, as in ColorQuery. 0 while not active
+        std::uint32_t formID = 0;
+        bool dual = false;
+        bool channel = false;
+        // the bow bar showing a crossbow's reload
+        bool crossbow = false;
+        // in the warning colour, like a channel running out of magicka
+        bool low = false;
+        // the shout's words
+        std::uint32_t segments = 0;
+        // the fill colour shown, 0xRRGGBB
+        std::uint32_t color = 0;
+        // for one update each: stopped showing (cast, shot, shouted, or let go), the charge was lost (a stagger) rather than
+        // used, a cast or shot pressed with too little magicka or no arrows
+        bool ended = false;
+        bool broken = false;
+        bool refused = false;
+    };
+
     class IReticleArcs {
     public:
         // the newest version this Reticle Arcs offers
         virtual std::uint32_t GetVersion() const = 0;
         // during SKSE's kPostLoad message. false when refused, the reason goes to ReticleArcs.log
         virtual bool RegisterBar(const BarDefinition& a_bar) = 0;
+
+        // version 2. any time from SKSE's kPostLoad message on; one provider at a time, the last one set wins. nullptr
+        // removes it
+        virtual void SetColorProvider(ColorFn a_provider) = 0;
+        // version 2. main thread. false for a bar that isn't one, or while the settings page shows its preview
+        virtual bool GetBarState(Bar a_bar, BarInfo& a_info) const = 0;
 
     protected:
         ~IReticleArcs() = default;
@@ -103,10 +177,11 @@ namespace ReticleArcsAPI {
     // exported by ReticleArcs.dll
     using RequestFunction = IReticleArcs* (*)(std::uint32_t a_version);
 
-    // nullptr when Reticle Arcs isn't installed or is older than this header
-    inline IReticleArcs* Request() {
+    // nullptr when Reticle Arcs isn't installed or is older than the version asked for. an add-on needing only bars can
+    // ask for 1 and keep working with older Reticle Arcs
+    inline IReticleArcs* Request(std::uint32_t a_version = kVersion) {
         auto* module = ::GetModuleHandleW(L"ReticleArcs.dll");
         auto* request = module ? reinterpret_cast<RequestFunction>(::GetProcAddress(module, "RequestReticleArcsAPI")) : nullptr;
-        return request ? request(kVersion) : nullptr;
+        return request ? request(a_version) : nullptr;
     }
 }

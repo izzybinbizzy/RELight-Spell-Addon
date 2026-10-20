@@ -554,6 +554,31 @@ namespace Fade
 			}
 		}
 
+		// a hand's color as its lights are made (before any cooling): the brightest light the pass scaled for that hand this
+		// frame, brought to a top channel of 1 - what Reticle Arcs' bars wear (FadeArcs.cpp). None: no lit light of the hand
+		// found this frame. Main thread, under gLock
+		std::optional<Glow::Rgb> HandColor(std::uint64_t a_key)
+		{
+			const RE::NiColor* best = nullptr;
+			float              most = 0.0f;
+			for (const auto& [light, seen] : gLights) {
+				if (!light || seen.hand != a_key || seen.frame != gFrame) {
+					continue;
+				}
+				const auto& c = seen.color.touched ? seen.color.base : light->GetLightRuntimeData().diffuse;
+				const float s = std::fabs(seen.shownFade) * (std::max)({ c.red, c.green, c.blue });
+				if (std::isfinite(s) && s > most) {
+					most = s;
+					best = &c;
+				}
+			}
+			const float top = best ? (std::max)({ best->red, best->green, best->blue }) : 0.0f;
+			if (!(top > 0.02f) || !std::isfinite(top)) {
+				return std::nullopt;
+			}
+			return Glow::Rgb{ best->red / top, best->green / top, best->blue / top };
+		}
+
 		// what the HUD shows this frame: the player's hands that fade (not one left alone), the switches, and whether her
 		// weapons or spells are out (the gems and Reticle Arcs' bars show only then). Main thread, under gLock.
 		void PublishHud(const Settings& a_s)
@@ -580,6 +605,9 @@ namespace Fade
 						side.spell = h.spell;
 						side.bound = h.reading.bound;
 						side.fraction = Glow::Clamp01(h.hudFraction);
+						const auto color = HandColor(key);
+						side.lit = color.has_value();
+						side.color = color.value_or(Glow::Rgb{});
 					}
 				}
 			}

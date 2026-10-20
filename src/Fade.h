@@ -170,9 +170,11 @@ namespace Fade
 	// left hand, [1] the right.
 	struct HudHand
 	{
-		bool  shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
-		bool  spell{ false }, bound{ false };
-		float fraction{ 1.0f };
+		bool      shown{ false };  // a tracked spell or weapon in that hand that fades (not left alone)
+		bool      spell{ false }, bound{ false };
+		float     fraction{ 1.0f };
+		bool      lit{ false };  // a light of that hand was found this frame: `color` is its color (top channel 1)
+		Glow::Rgb color{};
 	};
 	struct HudState
 	{
