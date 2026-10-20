@@ -650,7 +650,9 @@ namespace Plugin
 	void RegisterMenu()
 	{
 		FindCSLight();
-		SKSE::log::info("{}", Translation::Load("Data/SKSE/Plugins/RELightSpellLightingNG/Translation.json"));
+		// the old folder's file read only while the new one is not there (CodeRabbit on #29; never written)
+		SKSE::log::info("{}", Translation::Load(Fade::SettingsText::ReadFrom("Data/SKSE/Plugins/RELightSpellLightingNG/Translation.json",
+								  "Data/SKSE/Plugins/RelightSpellAddon/Translation.json")));
 		if (!SKSEMenuFramework::IsInstalled()) {
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
