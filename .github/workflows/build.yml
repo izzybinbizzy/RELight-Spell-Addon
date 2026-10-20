@@ -37,12 +37,12 @@ jobs:
       - name: Check the DLL from outside
         shell: pwsh
         run: |
-          $dll = Get-ChildItem build -Recurse -Filter RelightSpellAddon.dll | Select-Object -First 1
-          if (-not $dll) { throw "RelightSpellAddon.dll was not built" }
+          $dll = Get-ChildItem build -Recurse -Filter RELightSpellLightingNG.dll | Select-Object -First 1
+          if (-not $dll) { throw "RELightSpellLightingNG.dll was not built" }
           $exports = dumpbin /nologo /exports $dll.FullName | Out-String
           foreach ($name in 'SKSEPlugin_Load', 'SKSEPlugin_Version') {
-            if ($exports -notmatch $name) { throw "RelightSpellAddon.dll does not export $name" }
+            if ($exports -notmatch $name) { throw "RELightSpellLightingNG.dll does not export $name" }
           }
           $deps = dumpbin /nologo /dependents $dll.FullName | Out-String
-          if ($deps -match '(?i)(msvcp140|vcruntime140)\.dll') { throw "RelightSpellAddon.dll needs the Visual C++ runtime DLLs (expected the static runtime)" }
-          "### RelightSpellAddon.dll: $([math]::Round($dll.Length / 1KB)) KB, exports SKSEPlugin_Load and SKSEPlugin_Version, static runtime" >> $env:GITHUB_STEP_SUMMARY
+          if ($deps -match '(?i)(msvcp140|vcruntime140)\.dll') { throw "RELightSpellLightingNG.dll needs the Visual C++ runtime DLLs (expected the static runtime)" }
+          "### RELightSpellLightingNG.dll: $([math]::Round($dll.Length / 1KB)) KB, exports SKSEPlugin_Load and SKSEPlugin_Version, static runtime" >> $env:GITHUB_STEP_SUMMARY
