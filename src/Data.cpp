@@ -419,9 +419,11 @@ namespace Plugin
 			}
 		}
 		std::ranges::sort(files);
-		if (const fs::path old{ kOldDynamicWards };
-			fs::is_regular_file(old, ec) && std::ranges::none_of(files, [&](const fs::path& f) { return f.filename() == old.filename(); })) {
-			files.push_back(old);
+		const fs::path  oldDynamicWards{ kOldDynamicWards };
+		std::error_code oldEc;  // its own: the folder scan's ec above stays that scan's
+		if (fs::is_regular_file(oldDynamicWards, oldEc) &&
+			std::ranges::none_of(files, [&](const fs::path& f) { return f.filename() == oldDynamicWards.filename(); })) {
+			files.push_back(oldDynamicWards);
 		}
 		std::size_t bad = 0;
 		for (const auto& f : files) {
