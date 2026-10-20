@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -28,13 +28,13 @@ namespace Plugin
 		constexpr const char* kKey = "relight";
 
 		constexpr const char* kInspect =
-			R"json({"description":"RELight - Spell Addon - every setting and switch with its value, the lighting found, and what it made and holds now: hand lights, ground lights, held lights, kept lights, and the spray and beam light records it claims. Read only.","inputSchema":{"type":"object","properties":{}},"readOnly":true})json";
+			R"json({"description":"RELight - Spell Lighting NG - every setting and switch with its value, the lighting found, and what it made and holds now: hand lights, ground lights, held lights, kept lights, and the spray and beam light records it claims. Read only.","inputSchema":{"type":"object","properties":{}},"readOnly":true})json";
 
 		constexpr const char* kTool =
-			R"json({"description":"RELight - Spell Addon (hand, held and ground lights beside RE::Light, with an SKSE menu): change its settings. action=setting sets one [Settings] key (or switch:<option id>) to a whole number exactly as the menu does (saved, applied on the main thread) and replies with the value it now holds; action=settings lists every key and switch with its value; action=item sets one spell's or weapon's Lights by Item choice (form, choice = auto, off or r,g,b) as the page does. Read the state with inspect kind=relight.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["setting","settings","item"]},"key":{"type":"string","description":"setting: a [Settings] key such as Brightness, Reach, HandLights, WardColor, or switch:<option id> (action=settings lists them)"},"value":{"type":"number","description":"setting: a whole number (a switch 0/1, a choice's index, a slider's percent)"},"form":{"type":"string","description":"item: the spell's or weapon's form id, e.g. 0x00012FCD"},"choice":{"type":"string","description":"item: auto, off, or a color r,g,b (0-255 each)"}},"required":["action"]}})json";
+			R"json({"description":"RELight - Spell Lighting NG (hand, held and ground lights beside RE::Light, with an SKSE menu): change its settings. action=setting sets one [Settings] key (or switch:<option id>) to a whole number exactly as the menu does (saved, applied on the main thread) and replies with the value it now holds; action=settings lists every key and switch with its value; action=item sets one spell's or weapon's Lights by Item choice (form, choice = auto, off or r,g,b) as the page does. Read the state with inspect kind=relight.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["setting","settings","item"]},"key":{"type":"string","description":"setting: a [Settings] key such as Brightness, Reach, HandLights, WardColor, or switch:<option id> (action=settings lists them)"},"value":{"type":"number","description":"setting: a whole number (a switch 0/1, a choice's index, a slider's percent)"},"form":{"type":"string","description":"item: the spell's or weapon's form id, e.g. 0x00012FCD"},"choice":{"type":"string","description":"item: auto, off, or a color r,g,b (0-255 each)"}},"required":["action"]}})json";
 
 		constexpr const char* kMenu =
-			R"json({"description":"RELight - Spell Addon - set=setting key=<[Settings] key or switch:<option id>> value=<whole number> changes a setting exactly as the menu does: saved, and applied on the main thread. The same as the relight.control tool.","inputSchema":{"type":"object","properties":{"set":{"type":"string"},"key":{"type":"string"},"value":{"type":"number"}}}})json";
+			R"json({"description":"RELight - Spell Lighting NG - set=setting key=<[Settings] key or switch:<option id>> value=<whole number> changes a setting exactly as the menu does: saved, and applied on the main thread. The same as the relight.control tool.","inputSchema":{"type":"object","properties":{"set":{"type":"string"},"key":{"type":"string"},"value":{"type":"number"}}}})json";
 
 		[[nodiscard]] json SettingsNow()
 		{
@@ -140,7 +140,7 @@ namespace Plugin
 				const auto now = DevBenchGlue::OnMainThread([]() { return InspectNow(); });
 				DevBenchGlue::Reply(a_sink, a_write, now ? *now : DevBenchGlue::NotRunYet());
 			} catch (...) {
-				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Addon could not build its report"));
+				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Lighting NG could not build its report"));
 			}
 		}
 
@@ -151,7 +151,7 @@ namespace Plugin
 				const auto now = DevBenchGlue::OnMainThread([args = DevBenchGlue::Args(a_args)]() { return Act(args); });
 				DevBenchGlue::Reply(a_sink, a_write, now ? *now : DevBenchGlue::NotRunYet());
 			} catch (...) {
-				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Addon could not handle that"));
+				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Lighting NG could not handle that"));
 			}
 		}
 	}

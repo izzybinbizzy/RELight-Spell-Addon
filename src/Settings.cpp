@@ -1,8 +1,8 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// The settings file, Data\SKSE\Plugins\RelightSpellAddon.ini. Read once at start, written whenever the menu changes one.
+// The settings file, Data\SKSE\Plugins\RELightSpellLightingNG.ini. Read once at start, written whenever the menu changes one.
 //
 //   [Settings]
 //   Brightness=100              percent, 10 to 200 - this mod's lights only; the reach is held
@@ -30,7 +30,7 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr const char* kPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
+		constexpr const char* kPath = "Data/SKSE/Plugins/RELightSpellLightingNG.ini";
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
@@ -114,7 +114,7 @@ namespace Plugin
 		void WriteSettingsFile()
 		{
 			std::ostringstream text;
-			text << "; RELight - Spell Addon - written by its menu (SKSE Menu Framework)\n[Settings]\n";
+			text << "; RELight - Spell Lighting NG - written by its menu (SKSE Menu Framework)\n[Settings]\n";
 			for (const auto& k : kKeys) {
 				text << k.name << "=" << k.get() << "\n";
 			}

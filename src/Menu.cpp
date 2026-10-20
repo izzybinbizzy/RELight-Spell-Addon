@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -77,7 +77,7 @@ namespace Plugin
 		// check marks and slider grips, frames a touch warmer when hovered. Scoped to our pages, so no other mod's changes.
 		constexpr ImGuiMCP::ImVec4 kGold{ 1.0f, 0.86f, 0.55f, 1.0f };
 		constexpr ImGuiMCP::ImVec4 kEmber{ 0.93f, 0.72f, 0.45f, 0.85f };
-		// every shown line goes through T(): Data\SKSE\Plugins\RelightSpellAddon\Translation.json (relightgen.py writes the English one)
+		// every shown line goes through T(): Data\SKSE\Plugins\RELightSpellLightingNG\Translation.json (relightgen.py writes the English one)
 		using Translation::T;
 
 #ifdef FADE_DEBUG_PAGE
@@ -280,7 +280,7 @@ namespace Plugin
 		// HIS WORD (Illuminated's list, synced): "any presets users make need to be version dependant so they can have
 		// presets per version if they switch to say, enb to community shaders mid save." Presets.ini beside the data files,
 		// a section per preset "[<lighting>|<name>]"; the menu shows the presets of the lighting found now (HandLights.cpp).
-		constexpr const char* kPresetsPath = "Data/SKSE/Plugins/RelightSpellAddon/Presets.ini";
+		constexpr const char* kPresetsPath = "Data/SKSE/Plugins/RELightSpellLightingNG/Presets.ini";
 		struct UserPreset
 		{
 			std::string                              lighting, name;
@@ -329,7 +329,7 @@ namespace Plugin
 		void WritePresetsSoon()
 		{
 			std::ostringstream text;
-			text << "; RELight - Spell Addon - the presets you saved in the menu, one set per lighting. Written by the menu.\n";
+			text << "; RELight - Spell Lighting NG - the presets you saved in the menu, one set per lighting. Written by the menu.\n";
 			for (const auto& p : gPresets) {
 				text << "\n[" << p.lighting << "|" << p.name << "]\n";
 				for (const auto& [k, v] : p.values) {
@@ -576,7 +576,7 @@ namespace Plugin
 			if (const auto* cs = CSLightLoaded()) {
 				GlowHeading("Other Light Mods", Icon::kBulb);
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
-				MenuStyle::Tip(T("RELight - Spell Addon does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
+				MenuStyle::Tip(T("RELight - Spell Lighting NG does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
 			}
 
 			// his word: "big fights can be called performance and be at the bottom of lights menu"
@@ -592,7 +592,7 @@ namespace Plugin
 				"out casters farther than about forty paces from you. Reaches the next spell they ready."));
 			// his list: "under performance add a toggle to turn off lights completely for the entire mod"
 			bool allOff = AllLightsOff();
-			if (ImGuiMCP::Checkbox(T("All RELight - Spell Addon lights off"), &allOff)) {
+			if (ImGuiMCP::Checkbox(T("All RELight - Spell Lighting NG lights off"), &allOff)) {
 				SetAllLightsOff(allOff);
 				SaveSettings();
 				RehandSoon();
@@ -647,7 +647,7 @@ namespace Plugin
 	void RegisterMenu()
 	{
 		FindCSLight();
-		SKSE::log::info("{}", Translation::Load("Data/SKSE/Plugins/RelightSpellAddon/Translation.json"));
+		SKSE::log::info("{}", Translation::Load("Data/SKSE/Plugins/RELightSpellLightingNG/Translation.json"));
 		if (!SKSEMenuFramework::IsInstalled()) {
 			SKSE::log::warn("SKSE Menu Framework is not installed, so there is no settings page; the settings file still applies");
 			return;
@@ -657,7 +657,7 @@ namespace Plugin
 			ReadPresetsLocked();  // here on the main thread, so the menu never reads a file on its own thread
 		}
 		MenuStyle::gTheme = MenuStyle::MakeTheme(0xFFD58A);  // warm spell-light gold
-		SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
+		SKSEMenuFramework::SetSection(T("RELight - Spell Lighting NG"));
 		// Illuminated's order (his word 2026-10-11); the fading module adds Lights by Item, HUD and Fading after these
 		SKSEMenuFramework::AddSectionItem(T("Lights"), RenderLights);
 		SKSEMenuFramework::AddSectionItem(T("Spell & Enchantment Art"), RenderArt);
@@ -669,7 +669,7 @@ namespace Plugin
 	{
 #ifdef FADE_DEBUG_PAGE
 		if (SKSEMenuFramework::IsInstalled()) {
-			SKSEMenuFramework::SetSection(T("RELight - Spell Addon"));
+			SKSEMenuFramework::SetSection(T("RELight - Spell Lighting NG"));
 			SKSEMenuFramework::AddSectionItem(T("Diagnostics"), RenderDiagnostics);
 		}
 #endif

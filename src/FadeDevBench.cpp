@@ -1,4 +1,4 @@
-// RELight - Spell Addon - the fading module's DevBench glue (Illuminated's FadeDevBench.cpp, the same for this mod - his order
+// RELight - Spell Lighting NG - the fading module's DevBench glue (Illuminated's FadeDevBench.cpp, the same for this mod - his order
 // 2026-10-14: "relight brought up to illuminated standards in every way that matters"; each mod keeps its own copy of this
 // file, FadeConfig.h's twin)
 // Copyright (C) 2026 izzydoingit
@@ -8,7 +8,7 @@
 //   inspect kind=relightfade    the fading state as JSON (what the testing DLL's debug page shows) - each tracked hand, and the
 //                               fade each of its lights holds now next to the base it was scaled from.
 //   relightfade.control         action = preview (value = charge 0-1, -1 stops) | pulse | flare | setting (key = a
-//                               RelightSpellAddon/Fading.ini key, value = a whole number) | settings (every key and its value) |
+//                               RELightSpellLightingNG/Fading.ini key, value = a whole number) | settings (every key and its value) |
 //                               reloadrules. Each reply is what the plugin holds after the change. DevBench never saves; a
 //                               later change made in the menu saves the settings as they are then.
 //   menu invoke name=relightfade the same actions with `set` for `action`.
@@ -27,13 +27,13 @@ namespace Fade
 		constexpr const char* kKey = "relightfade";
 
 		constexpr const char* kInspect =
-			R"json({"description":"RELight - Spell Addon - each tracked hand (weapon, enchantment, charge, brightness, reach, cooling, lights found), and every light being scaled with the fade it holds now and the base it was scaled from. Read only.","inputSchema":{"type":"object","properties":{}},"readOnly":true})json";
+			R"json({"description":"RELight - Spell Lighting NG - each tracked hand (weapon, enchantment, charge, brightness, reach, cooling, lights found), and every light being scaled with the fade it holds now and the base it was scaled from. Read only.","inputSchema":{"type":"object","properties":{}},"readOnly":true})json";
 
 		constexpr const char* kTool =
-			R"json({"description":"RELight - Spell Addon (enchanted weapon and spell-hand lights that fade with charge or magicka): drive its fading (a preview charge, a pulse or a flare) and settings. action=preview with value = the charge to show on every tracked hand (0..1, -1 stops the preview); pulse / flare start a hit pulse or recharge flare on every tracked hand; setting sets one RelightSpellAddon/Fading.ini key (key, value = whole number) the way the Settings page does, not saved; settings lists every key and its value; reloadrules reads the rule files again. Read state with inspect kind=relightfade.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["preview","pulse","flare","setting","settings","reloadrules"]},"value":{"type":"number","description":"preview: charge 0..1, or -1 to stop; setting: the whole-number value"},"key":{"type":"string","description":"setting: a RelightSpellAddon/Fading.ini key, e.g. EmptyBrightness, Curve, Sputter (action=settings lists them)"}},"required":["action"]}})json";
+			R"json({"description":"RELight - Spell Lighting NG (enchanted weapon and spell-hand lights that fade with charge or magicka): drive its fading (a preview charge, a pulse or a flare) and settings. action=preview with value = the charge to show on every tracked hand (0..1, -1 stops the preview); pulse / flare start a hit pulse or recharge flare on every tracked hand; setting sets one RELightSpellLightingNG/Fading.ini key (key, value = whole number) the way the Settings page does, not saved; settings lists every key and its value; reloadrules reads the rule files again. Read state with inspect kind=relightfade.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["preview","pulse","flare","setting","settings","reloadrules"]},"value":{"type":"number","description":"preview: charge 0..1, or -1 to stop; setting: the whole-number value"},"key":{"type":"string","description":"setting: a RELightSpellLightingNG/Fading.ini key, e.g. EmptyBrightness, Curve, Sputter (action=settings lists them)"}},"required":["action"]}})json";
 
 		constexpr const char* kMenu =
-			R"json({"description":"RELight - Spell Addon - the same as the relightfade.control tool, with set for action: set=preview value=charge 0..1 (-1 stops), set=pulse, set=flare, set=setting key=<RelightSpellAddon/Fading.ini key> value=<whole number>, set=settings, set=reloadrules. Not saved from here.","inputSchema":{"type":"object","properties":{"set":{"type":"string"},"key":{"type":"string"},"value":{"type":"number"}}}})json";
+			R"json({"description":"RELight - Spell Lighting NG - the same as the relightfade.control tool, with set for action: set=preview value=charge 0..1 (-1 stops), set=pulse, set=flare, set=setting key=<RELightSpellLightingNG/Fading.ini key> value=<whole number>, set=settings, set=reloadrules. Not saved from here.","inputSchema":{"type":"object","properties":{"set":{"type":"string"},"key":{"type":"string"},"value":{"type":"number"}}}})json";
 
 		void InspectNow(void* a_sink, DevBenchAPI::WriteFn a_write)
 		{
@@ -165,7 +165,7 @@ namespace Fade
 			try {
 				InspectNow(a_sink, a_write);
 			} catch (...) {
-				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Addon could not build its report"));
+				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Lighting NG could not build its report"));
 			}
 		}
 
@@ -174,7 +174,7 @@ namespace Fade
 			try {
 				DevBenchGlue::Reply(a_sink, a_write, Act(DevBenchGlue::Args(a_args)));
 			} catch (...) {
-				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Addon could not handle that"));
+				DevBenchGlue::Reply(a_sink, a_write, DevBenchGlue::Refusal("RELight - Spell Lighting NG could not handle that"));
 			}
 		}
 	}

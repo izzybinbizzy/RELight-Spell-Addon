@@ -1,8 +1,8 @@
-# RELight - Spell Addon - SKSE plugin
+# RELight - Spell Lighting NG - SKSE plugin
 
 Copyright (C) 2026 izzydoingit. GPL-3.0-or-later, see `LICENSE`.
 
-The plugin of RELight - Spell Addon; it ships with the mod and is required by it. RE::Light does the lighting; this
+The plugin of RELight - Spell Lighting NG; it ships with the mod and is required by it. RE::Light does the lighting; this
 plugin adds what RE::Light cannot do from a config.
 
 ## What it does
@@ -25,10 +25,10 @@ SKSE VR, the VR Address Library and ReLight VR, with the VR build of this plugin
 is optional.
 
 ## Settings
-SKSE Menu Framework > RELight - Spell Addon, saved to `Data\SKSE\Plugins\RelightSpellAddon.ini`; menu changes apply at
-once. Values the menu does not show are in `Data\SKSE\Plugins\RelightSpellAddon\RELight - Spell Addon - Advanced
+SKSE Menu Framework > RELight - Spell Lighting NG, saved to `Data\SKSE\Plugins\RELightSpellLightingNG.ini`; menu changes apply at
+once. Values the menu does not show are in `Data\SKSE\Plugins\RELightSpellLightingNG\RELight - Spell Lighting NG - Advanced
 Settings.ini`, read when the game starts. The charge gems' pre-rendered art is `HUD/*.dds`, installed to
-`Data\SKSE\Plugins\RelightSpellAddon\HUD\` (without it the plugin draws a plain gem).
+`Data\SKSE\Plugins\RELightSpellLightingNG\HUD\` (without it the plugin draws a plain gem).
 
 ## Third-party files
 `src/SKSEMenuFramework.h` is SKSE Menu Framework's own header by Thiago Kaique, copied unchanged from

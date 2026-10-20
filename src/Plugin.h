@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -13,7 +13,7 @@ namespace Plugin
 	// ------------------------------------------------------------------ Data.cpp: what the installed options light
 	//
 	// Every layer the installer put down (Core, and each ticked option) brings one small text file into
-	// Data\SKSE\Plugins\RelightSpellAddon\. The build writes them; this reads them once, when the game has loaded its
+	// Data\SKSE\Plugins\RELightSpellLightingNG\. The build writes them; this reads them once, when the game has loaded its
 	// data. They say which objects this mod lights (the sliders scale those and nothing else), which layers are
 	// tick-box options (the menu draws a switch for each), the sprays and beams RE::Light lights (ours for the menu),
 	// the hand lights, the held lights, and the color an art pick gives the objects it recolors.
