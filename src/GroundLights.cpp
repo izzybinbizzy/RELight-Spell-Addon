@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -24,7 +24,7 @@ namespace Plugin
 {
 	namespace
 	{
-		constexpr const char* kName = "RelightSpellAddonGroundLight";
+		constexpr const char* kName = "RELightSpellLightingNGGroundLight";
 
 		struct Twin
 		{

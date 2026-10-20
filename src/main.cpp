@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 //
 // This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -156,6 +156,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 160 });
 	// the spell-light hooks are installed at SKSE's post-load (OnMessage), after every plugin has loaded
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
-	SKSE::log::info("RELight - Spell Addon plugin loaded; waiting for the game's data");
+	SKSE::log::info("RELight - Spell Lighting NG plugin loaded; waiting for the game's data");
 	return true;
 }

@@ -1,4 +1,4 @@
-// LightKit - small helpers Illuminated and RELight - Spell Addon both use
+// LightKit - small helpers Illuminated and RELight - Spell Lighting NG both use
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //

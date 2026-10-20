@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -36,7 +36,10 @@ namespace Plugin
 	namespace
 	{
 		namespace fs = std::filesystem;
-		constexpr std::string_view kFolder = "Data/SKSE/Plugins/RelightSpellAddon";
+		constexpr std::string_view kFolder = "Data/SKSE/Plugins/RELightSpellLightingNG";
+		// Dynamic Wards writes its ward-hand data file into this mod's folder under the old name (RelightSpellAddon) until its
+		// own next version moves it: read that one file there too, never anything else of the old folder
+		constexpr std::string_view kOldDynamicWards = "Data/SKSE/Plugins/RelightSpellAddon/Dynamic Wards.txt";
 
 		struct Tint
 		{
@@ -416,6 +419,12 @@ namespace Plugin
 			}
 		}
 		std::ranges::sort(files);
+		const fs::path  oldDynamicWards{ kOldDynamicWards };
+		std::error_code oldEc;  // its own: the folder scan's ec above stays that scan's
+		if (fs::is_regular_file(oldDynamicWards, oldEc) &&
+			std::ranges::none_of(files, [&](const fs::path& f) { return f.filename() == oldDynamicWards.filename(); })) {
+			files.push_back(oldDynamicWards);
+		}
 		std::size_t bad = 0;
 		for (const auto& f : files) {
 			if (ReadFile(f)) {

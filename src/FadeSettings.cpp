@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
+// The fading module (Illuminated and RELight - Spell Lighting NG carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -64,7 +64,8 @@ namespace Fade
 	{
 		Settings                 s;
 		SettingsText::ReadResult read;
-		if (std::ifstream in(Mod::kSettingsPath); in) {
+		const auto               from = SettingsText::ReadFrom(Mod::kSettingsPath, Mod::kOldSettingsPath);
+		if (std::ifstream in(from); in) {
 			read = SettingsText::Read(in, s);
 		}
 		for (const auto& p : read.problems) {
@@ -75,7 +76,7 @@ namespace Fade
 		SKSE::log::info(
 			"settings: {} line(s) read from {}; enabled {}, empty brightness {}%, curve {}, reach follows {}%, "
 			"sputter {} below {}%, pulse {}, flare {}, cooling {}, staves {}, bound {} ({} s), who {}, dim glow {}, hide charge bar {}",
-			read.taken, Mod::kSettingsPath, s.enabled, SettingsText::ToPct(t.floor), static_cast<int>(t.curve), SettingsText::ToPct(t.reachFollows),
+			read.taken, from, s.enabled, SettingsText::ToPct(t.floor), static_cast<int>(t.curve), SettingsText::ToPct(t.reachFollows),
 			t.sputter, SettingsText::ToPct(t.sputterBelow), t.pulse, t.flare, t.cool, s.staves, s.bound, s.boundFadeSeconds,
 			static_cast<int>(s.who), s.dimShader, s.hideChargeBar);
 	}

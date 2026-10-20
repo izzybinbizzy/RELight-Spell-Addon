@@ -1,4 +1,4 @@
-// The fading module (Illuminated and RELight - Spell Addon carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
+// The fading module (Illuminated and RELight - Spell Lighting NG carry identical copies; FadeConfig.h and FadeDevBench.cpp are each mod's own)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
@@ -54,8 +54,9 @@ namespace Fade::Tuning
 			bool        used{ false };
 		};
 		std::map<std::string, Found> found;  // "section|key" lower case
+		const auto                   from = SettingsText::ReadFrom(Mod::kAdvancedPath, Mod::kOldAdvancedPath);
 		{
-			std::ifstream in(Mod::kAdvancedPath);
+			std::ifstream in(from);
 			std::string   line, section, sectionShown;
 			bool          first = true;
 			while (std::getline(in, line)) {
@@ -153,6 +154,6 @@ namespace Fade::Tuning
 			SKSE::log::warn("advanced settings: {} could not be replaced ({})", Mod::kAdvancedPath, ec.message());
 			std::filesystem::remove(tmp, ec);
 		}
-		SKSE::log::info("advanced settings: {} value(s) of {} read from {}; the file is written back whole", taken, knobs.size(), Mod::kAdvancedPath);
+		SKSE::log::info("advanced settings: {} value(s) of {} read from {}; written back whole to {}", taken, knobs.size(), from, Mod::kAdvancedPath);
 	}
 }

@@ -1,4 +1,4 @@
-// RELight - Spell Addon - SKSE plugin
+// RELight - Spell Lighting NG - SKSE plugin
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
@@ -9,7 +9,7 @@
 // configs lit nothing. Here, once a frame on the main thread, every art model on an actor that a `body` line names gets that
 // line's light, hung where RE::Light hangs its enchantment light (the third-person node of the art's attach root), and it
 // comes off the frame the art is gone or finished, its option is switched off, the player sneaks with "Lights off while
-// sneaking" on (her own art, as her held lights), "All RELight - Spell Addon lights off" is on, or "Hand lights for" leaves
+// sneaking" on (her own art, as her held lights), "All RELight - Spell Lighting NG lights off" is on, or "Hand lights for" leaves
 // its actor out. Any art a spell plays as its casting art (the hand lights; a master spell's casting body art too) and a
 // weapon's enchantment art (held lights, Truman's enchantments) never get one. Body art that outlived its spell once kept a
 // light on for a day (Illuminated's CLAUDE.md, the lighting data's rules): this light lives exactly as long as the art does.
@@ -119,7 +119,7 @@ namespace Plugin
 		for (auto& f : gFailed) {
 			f.seen = false;
 		}
-		// "All RELight - Spell Addon lights off" puts every light of the mod out (2.5), and "Lights off while sneaking" her own
+		// "All RELight - Spell Lighting NG lights off" puts every light of the mod out (2.5), and "Lights off while sneaking" her own
 		// spell lights while she sneaks (her held lights the same way - Held.cpp): the body glow goes with them
 		const bool hidden = AllLightsOff();
 		const bool sneaking = SneakOn() && player->IsSneaking();

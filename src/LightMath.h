@@ -1,4 +1,4 @@
-// LightMath - the plain-number part of LightKit (Illuminated and RELight - Spell Addon both use it)
+// LightMath - the plain-number part of LightKit (Illuminated and RELight - Spell Lighting NG both use it)
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see the LICENSE file and the notice at the top of main.cpp.
 //
