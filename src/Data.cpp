@@ -129,7 +129,7 @@ namespace Plugin
 			if (const int g = DataText::PickGroup(file.option.pickGroup); g >= 0 && ArtPick(g) != DataText::PickChoice(g, file.option.pickName)) {
 				return true;
 			}
-			if (file.option.dynamic && !DynamicLighting()) {
+			if (file.option.dynamic && !DynamicLightingThisSession()) {
 				return true;
 			}
 			Option opt;

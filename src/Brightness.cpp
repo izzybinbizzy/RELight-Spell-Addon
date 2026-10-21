@@ -151,8 +151,12 @@ namespace Plugin
 			auto& data = a_light->GetLightRuntimeData();
 			if (data.fade != a_s.written) {
 				a_s.base = data.fade;  // written since we last touched it: that is the new base
-				a_s.peak = (std::max)(a_s.peak, a_s.base);
 			}
+			// the peak follows a rise at once and sinks slowly (kPeakSink a second) toward a lower base, so a lasting change in what
+			// RE::Light gives (its own brightness slider, the reference's scale) is followed within seconds while a flicker's dips
+			// (a fraction of a second) barely move it
+			constexpr float kPeakSink = 0.02f;
+			a_s.peak = a_s.base >= a_s.peak ? a_s.base : (std::max)(a_s.base, a_s.peak * (1.0f - kPeakSink * a_dt));
 			if (data.radius.x != a_s.wroteRadius) {
 				a_s.baseRadius = data.radius.x;  // x and y are the reach, z is the size
 			}
@@ -166,7 +170,7 @@ namespace Plugin
 				}
 				a_s.rlPhase = point->constAttenuation;
 			}
-			const bool  dynamic = DynamicLighting();
+			const bool  dynamic = DynamicLightingThisSession();
 			const float held = dynamic || !a_s.flickers ? a_s.base : a_s.peak;
 			const float fade = held * a_scale * (a_s.fx && dynamic ? Oscillate(a_s, a_dt) : 1.0f);
 			data.fade = fade;

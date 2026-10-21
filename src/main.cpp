@@ -62,7 +62,8 @@ namespace
 			Plugin::gNearby);
 		Fade::Tuning::Register("Vanilla and ENB", "GroundLights", 1.0f, 0.0f, 1.0f,
 			"1: off Community Shaders a hand light lights the ground too (its twin, made with land lighting on); 0: off", Plugin::gGroundLightsOn);
-		Plugin::LoadSettings();  // the art picks and Dynamic Lighting decide which data files count
+		Plugin::LoadSettings(false);  // the art picks and Dynamic Lighting decide which data files count
+		Plugin::FixDynamicLighting();
 		Plugin::LoadData();
 		Plugin::LoadSettings();             // again: the option switches need the options the data made
 		Plugin::ReadLighting();             // before the hand lights: off Community Shaders they are drawn plain

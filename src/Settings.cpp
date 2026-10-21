@@ -37,6 +37,7 @@ namespace Plugin
 		// up to 2.5 the same file was RelightSpellAddon.ini: read while the new one is not there yet, never written (HIS ORDER
 		// 2026-10-20: "i want relight update to not affect old settings files")
 		constexpr const char* kOldPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
+		constexpr const char* kOldFolder = "Data/SKSE/Plugins/RelightSpellAddon";  // a 2.5 install's data files
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
@@ -52,7 +53,11 @@ namespace Plugin
 		std::atomic<bool>               gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
 		std::array<std::atomic<int>, 4> gArt{};            // fire, frost, shock, healing art: 0 = the game's own (DataText::kPickNames)
 		std::atomic<bool>               gDynamic{ true };
-		std::atomic<bool>               gPerformance{ false };
+		std::atomic<bool>               gDynamicSession{ true };  // what this session's data was read with (FixDynamicLighting)
+
+		// an art pick within its group's choices (DataText::kPickNames - one list, so a new pick needs no second edit)
+		[[nodiscard]] int ClampPick(int a_group, int a_v) { return std::clamp(a_v, 0, (std::max)(DataText::PickCount(a_group) - 1, 0)); }
+		std::atomic<bool> gPerformance{ false };
 
 		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{
@@ -97,10 +102,10 @@ namespace Plugin
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 			{ "AllLightsOff", [] { return gAllOff ? 1 : 0; }, [](int v) { gAllOff = v != 0; } },
-			{ "FireArt", [] { return gArt[0].load(); }, [](int v) { gArt[0] = std::clamp(v, 0, 3); } },
-			{ "FrostArt", [] { return gArt[1].load(); }, [](int v) { gArt[1] = std::clamp(v, 0, 1); } },
-			{ "ShockArt", [] { return gArt[2].load(); }, [](int v) { gArt[2] = std::clamp(v, 0, 2); } },
-			{ "HealingArt", [] { return gArt[3].load(); }, [](int v) { gArt[3] = std::clamp(v, 0, 1); } },
+			{ "FireArt", [] { return gArt[0].load(); }, [](int v) { gArt[0] = ClampPick(0, v); } },
+			{ "FrostArt", [] { return gArt[1].load(); }, [](int v) { gArt[1] = ClampPick(1, v); } },
+			{ "ShockArt", [] { return gArt[2].load(); }, [](int v) { gArt[2] = ClampPick(2, v); } },
+			{ "HealingArt", [] { return gArt[3].load(); }, [](int v) { gArt[3] = ClampPick(3, v); } },
 			{ "DynamicLighting", [] { return gDynamic ? 1 : 0; }, [](int v) { gDynamic = v != 0; } },
 			{ "Quality", [] { return gPerformance ? 1 : 0; }, [](int v) { gPerformance = v != 0; } },
 		};
@@ -137,11 +142,11 @@ namespace Plugin
 
 		// until 2.5 the art picks and Dynamic Lighting were installer choices: a file with none of their keys takes them from
 		// the data files a 2.5 install left in its own folder (a manual update over it keeps that folder)
-		void CarryOldPicks()
+		void CarryOldPicks(bool a_log)
 		{
 			std::vector<std::string> names;
 			std::error_code          ec;
-			for (std::filesystem::directory_iterator it{ "Data/SKSE/Plugins/RelightSpellAddon", ec }, end; !ec && it != end; it.increment(ec)) {
+			for (std::filesystem::directory_iterator it{ kOldFolder, ec }, end; !ec && it != end; it.increment(ec)) {
 				names.push_back(it->path().filename().string());
 			}
 			const auto old = DataText::PicksFromOldFiles(names);
@@ -152,6 +157,9 @@ namespace Plugin
 				gArt[g] = old.art[g];
 			}
 			gDynamic = old.dynamic;
+			if (!a_log) {
+				return;
+			}
 			SKSE::log::info(
 				"settings: the art picks and Dynamic Lighting taken from the 2.5 install (fire {}, frost {}, shock {}, healing {}, "
 				"Dynamic Lighting {})",
@@ -194,7 +202,7 @@ namespace Plugin
 		}
 	}
 
-	void LoadSettings()
+	void LoadSettings(bool a_log)
 	{
 		gOtherSwitches.clear();
 		std::ifstream            in(Fade::SettingsText::ReadFrom(kPath, kOldPath));
@@ -251,11 +259,14 @@ namespace Plugin
 				}
 			}
 		}
+		if (!picksRead) {
+			CarryOldPicks(a_log);
+		}
+		if (!a_log) {
+			return;  // the early read before the data (main.cpp): the read after it says what it found
+		}
 		for (const auto& p : problems) {
 			SKSE::log::warn("settings: {}", p);
-		}
-		if (!picksRead) {
-			CarryOldPicks();
 		}
 		std::size_t off = 0;
 		for (const auto& o : Options()) {
@@ -391,10 +402,12 @@ namespace Plugin
 	void SetArtPick(int a_group, int a_v)
 	{
 		if (a_group >= 0 && a_group < 4) {
-			gArt[static_cast<std::size_t>(a_group)] = (std::max)(a_v, 0);
+			gArt[static_cast<std::size_t>(a_group)] = ClampPick(a_group, a_v);
 		}
 	}
 	bool DynamicLighting() { return gDynamic; }
+	bool DynamicLightingThisSession() { return gDynamicSession; }
+	void FixDynamicLighting() { gDynamicSession = gDynamic.load(); }
 	void SetDynamicLighting(bool a_on) { gDynamic = a_on; }
 	bool PerformanceMode() { return gPerformance; }
 	void SetPerformanceMode(bool a_on) { gPerformance = a_on; }

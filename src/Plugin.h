@@ -184,7 +184,7 @@ namespace Plugin
 	[[nodiscard]] std::size_t AutoHandEffects();  // spells lit by an automatic hand light now
 
 	// ------------------------------------------------------------------ Settings.cpp: the settings file
-	void                LoadSettings();
+	void                LoadSettings(bool a_log = true);  // a_log false: the quiet early read before the data (main.cpp)
 	void                SaveSettings();
 	[[nodiscard]] int   BrightnessPercent();
 	void                SetBrightnessPercent(int a_percent);
@@ -214,8 +214,10 @@ namespace Plugin
 	[[nodiscard]] int  ArtPick(int a_group);  // the chosen art of a DataText::kPickGroups group; 0 = the game's own
 	void               SetArtPick(int a_group, int a_v);
 	void               SetDynamicLighting(bool a_on);
-	[[nodiscard]] bool DynamicLighting();  // the RE::Light lights flicker as their configs say; off = held steady
-	[[nodiscard]] bool PerformanceMode();  // the Performance page's Quality pick on Performance (his 2026-10-20 order)
+	[[nodiscard]] bool DynamicLighting();             // the saved choice (the menu): the RE::Light lights flicker as their configs say
+	[[nodiscard]] bool DynamicLightingThisSession();  // the choice this session's data was read with - it applies at the next start
+	void               FixDynamicLighting();          // main.cpp, before the data: the session takes the saved choice
+	[[nodiscard]] bool PerformanceMode();             // the Performance page's Quality pick on Performance (his 2026-10-20 order)
 	void               SetPerformanceMode(bool a_on);
 	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();

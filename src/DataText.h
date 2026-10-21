@@ -83,6 +83,19 @@ namespace DataText
 		{ "Vanilla", "Kittytail healing", "", "" },
 	} };
 
+	// how many choices group a_group has, the game's own art included (0 for no such group)
+	[[nodiscard]] constexpr int PickCount(int a_group)
+	{
+		if (a_group < 0 || a_group >= static_cast<int>(kPickNames.size())) {
+			return 0;
+		}
+		int n = 0;
+		for (const auto name : kPickNames[static_cast<std::size_t>(a_group)]) {
+			n += name.empty() ? 0 : 1;
+		}
+		return n;
+	}
+
 	// the group's index, or -1
 	[[nodiscard]] inline int PickGroup(std::string_view a_group)
 	{
