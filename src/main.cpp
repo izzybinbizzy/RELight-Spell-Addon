@@ -121,6 +121,7 @@ namespace
 		case SKSE::MessagingInterface::kPreLoadGame:
 			Plugin::DropGroundLights();  // the hands and casting lights they follow are the old game's
 			Plugin::DropBodyLights();    // and the art the body lights hang on
+			Plugin::DropRows();          // and the projectiles the rows hang on
 			Fade::OnGameLoading();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -129,6 +130,7 @@ namespace
 				// no kPreLoadGame comes before a new game: the last game's twins and fading go here
 				Plugin::DropGroundLights();
 				Plugin::DropBodyLights();
+				Plugin::DropRows();
 				Fade::OnGameLoading();
 			}
 			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back

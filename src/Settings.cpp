@@ -14,6 +14,8 @@
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
+//   LightColors=0               0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (Brightness.cpp) - his 2026-10-20 order brought it back
+//   Quality=0                   0 quality, 1 performance: hand, weapon and body lights for the player and followers only (Hooks.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on. A line for an option that is not
 //                               installed now is kept as it is, so reinstalling the option brings its switch back
@@ -48,6 +50,8 @@ namespace Plugin
 		std::atomic<int>  gHandsFor{ 0 };
 		std::atomic<bool> gAuto{ true };
 		std::atomic<bool> gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
+		std::atomic<int>  gLightColors{ 0 };
+		std::atomic<bool> gPerformance{ false };
 
 		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{
@@ -92,6 +96,8 @@ namespace Plugin
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 			{ "AllLightsOff", [] { return gAllOff ? 1 : 0; }, [](int v) { gAllOff = v != 0; } },
+			{ "LightColors", [] { return gLightColors.load(); }, [](int v) { gLightColors = std::clamp(v, 0, 2); } },
+			{ "Quality", [] { return gPerformance ? 1 : 0; }, [](int v) { gPerformance = v != 0; } },
 		};
 
 		// [Switches] lines for options that are not installed now, as read: written back unchanged, so an option taken out
@@ -338,6 +344,10 @@ namespace Plugin
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 	bool AllLightsOff() { return gAllOff; }
 	void SetAllLightsOff(bool a_off) { gAllOff = a_off; }
+	int  LightColors() { return gLightColors; }
+	void SetLightColors(int a_v) { gLightColors = std::clamp(a_v, 0, 2); }
+	bool PerformanceMode() { return gPerformance; }
+	void SetPerformanceMode(bool a_on) { gPerformance = a_on; }
 
 	// his call: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together

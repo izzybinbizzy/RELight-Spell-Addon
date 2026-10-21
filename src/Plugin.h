@@ -211,6 +211,10 @@ namespace Plugin
 	void               SetAutoLightsOn(bool a_on);
 	[[nodiscard]] bool AllLightsOff();  // Performance: every light of this mod off - the options' lights, hand, held and ground lights
 	void               SetAllLightsOff(bool a_off);
+	[[nodiscard]] int  LightColors();  // 0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (his 2026-10-20 order)
+	void               SetLightColors(int a_v);
+	[[nodiscard]] bool PerformanceMode();  // the Performance page's Quality pick on Performance (his 2026-10-20 order)
+	void               SetPerformanceMode(bool a_on);
 	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
 	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
@@ -256,6 +260,21 @@ namespace Plugin
 	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	// the light RE::Light (or the game) makes for a projectile a `stream` line names: ours for the sliders
 	[[nodiscard]] bool IsStreamObject(const RE::TESObjectREFR* a_ref);
+
+	// ------------------------------------------------------------------ Rows.cpp: a row of small lights along a bolt / spray / cone
+	struct RowRecipe
+	{
+		RE::NiColor color{ 1.0f, 1.0f, 1.0f };
+		float       fade{ 1.0f }, reach{ 300.0f };  // the projectile's own light: the row's middle glows as it would right under it
+		bool        beam{ true };                   // a bolt (along its model) - else a flame spray or cone (along its aim)
+		std::size_t option{ kNone };                // its switch
+	};
+	void                      SetRowRecipes(std::unordered_map<RE::FormID, RowRecipe>&& a_recipes);  // once, data load (Streams.cpp)
+	void                      QueueRow(RE::TESObjectREFR* a_ref);                                    // any thread: a projectile's 3D loaded - its row is hung next frame
+	void                      UpdateRows();                                                          // every frame, main thread (the player update)
+	void                      DropRows();                                                            // a game loads: the projectiles they hang on are the old game's
+	[[nodiscard]] std::size_t LiveRowLights();
+	[[nodiscard]] std::size_t RowsMade();
 
 	// ------------------------------------------------------------------ Held.cpp: a weapon's own light while it is drawn
 	void                      UpdateHeldLights();  // every frame, after UpdateOptionLights

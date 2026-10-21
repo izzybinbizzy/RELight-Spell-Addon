@@ -52,9 +52,22 @@ namespace Plugin
 			return a.red == b.red && a.green == b.green && a.blue == b.blue;
 		}
 
-		// ✂ HIS ORDER: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
-		// (Paler / Deeper) and the Fire / Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art
-		// pick's tint) gives it. One place, so the lights that are scaled elsewhere (Held.cpp) draw the same.
+		// ✂ HIS ORDER 2026-10-09: *"remove the color variations from illuminated and relight in the lights menu"* - the Fire /
+		// Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art pick's tint) gives it. 🔁 HIS ORDER
+		// 2026-10-20 brings Light colors back: *"i want the paler/deeper settings back added into lights right below presets above
+		// light strength"*, then *"no automatic, just paler or deeper or vanilla"* - Vanilla draws the color as given, Paler turns it from linear light to the screen's (the Community
+		// Shaders look), Deeper the other way
+		[[nodiscard]] RE::NiColor LookOf(const RE::NiColor& a_c)
+		{
+			switch (LightColors()) {
+			case 1:
+				return { LightKit::ToScreen(a_c.red), LightKit::ToScreen(a_c.green), LightKit::ToScreen(a_c.blue) };
+			case 2:
+				return { LightKit::ToLinear(a_c.red), LightKit::ToLinear(a_c.green), LightKit::ToLinear(a_c.blue) };
+			default:
+				return a_c;
+			}
+		}
 
 		float gDaylight = 1.0f, gDaylightClock = 2.0f;  // main thread only (UpdateBrightness)
 
@@ -165,7 +178,7 @@ namespace Plugin
 			if (!SameColor(data.diffuse, a_s.wroteDiffuse)) {
 				a_s.baseDiffuse = data.diffuse;  // RE::Light (or the hand light) gave it this color: the new base
 			}
-			const RE::NiColor own = a_s.tint ? *a_s.tint : a_s.baseDiffuse;
+			const RE::NiColor own = LookOf(a_s.tint ? *a_s.tint : a_s.baseDiffuse);
 			const RE::NiColor color = a_hue ? LightKit::FleshFx::Shown(*a_hue, own) : own;  // every light keeps its own color
 			data.diffuse = color;
 			a_s.wroteDiffuse = color;

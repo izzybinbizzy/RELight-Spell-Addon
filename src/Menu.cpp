@@ -4,13 +4,15 @@
 //
 // Three pages in SKSE Menu Framework's Mod Control Panel, under their own section so nothing of RE::Light's own menu is
 // touched, laid out as Illuminated's (his word 2026-10-11): Lights (the lighting found, presets, Brightness, Reach, daylight,
-// sneaking, hand and weapon lights, the ward color, automatic lights, Performance), Spell & Enchantment Art (a switch per
-// weapon / enchantment option) and Configs (a switch per spell option, then each mod patch by category) - no per-option
-// brightness sliders (his call). The fading module adds Lights by Item, HUD and Fading after them. Every change is saved at
+// sneaking, hand and weapon lights, the ward color), Spell & Enchantment Art (a switch per weapon / enchantment option) and
+// Configs (a switch per spell option, then each mod patch by category) - no per-option brightness sliders (his call). The
+// fading module adds HUD and Fading after them, then this file Lights by Item / Spell (automatic lights above the item list)
+// and Performance, the last page (his order 2026-10-20). Every change is saved at
 // once (Settings.cpp) and reaches lights already lit. The look is the shared MenuStyle.h in warm spell-light gold, with this
 // mod's glowing headings.
 
 #define WIN32_LEAN_AND_MEAN  // NOMINMAX is set for every file in xmake.lua (the fading module needs it too)
+#include "Fade.h"
 #include "FadeSettingsText.h"
 #include "Plugin.h"
 
@@ -424,7 +426,7 @@ namespace Plugin
 
 		// 🗂 HIS WORD 2026-10-11: "I also want relights skse menu updated to be similar to illuminated in the layout. I think relight
 		// is still using the older layout" - the pages are Illuminated's now: Lights (Version, Presets, Light Strength, While
-		// Sneaking, Hands and Weapons, Sprays Bolts and Wards, Spells Without a Patch, Other Light Mods, Performance last), Spell &
+		// Sneaking, Hands and Weapons, Sprays Bolts and Wards, Other Light Mods; Light Colors below Presets since 2026-10-20), Spell &
 		// Enchantment Art (the weapon and enchantment switches - weapon enchantments first, his Illuminated word), Configs (Spells
 		// and Effects, then the mod patches by category), and the fading module's Lights by Item, HUD and Fading after them.
 		// RELight has no lighting pick and no art pick in the menu (the installer asks those), so those rows are not here.
@@ -473,6 +475,19 @@ namespace Plugin
 				MenuStyle::Tip(p.tip);
 			}
 			DrawUserPresets();
+
+			// 🔁 HIS ORDER 2026-10-20: "i want the paler/deeper settings back added into lights right below presets above light
+			// strength", then "no automatic, just paler or deeper or vanilla" (Brightness.cpp LookOf)
+			GlowHeading("Light Colors", Icon::kBulb);
+			const char* const kLooks[] = { T("Vanilla"), T("Paler"), T("Deeper") };
+			int               look = LightColors();
+			if (ImGuiMCP::Combo(T("Light colors"), &look, kLooks, 3)) {
+				SetLightColors(look);
+				SaveSettings();
+			}
+			MenuStyle::Tip(T(
+				"How deep this mod's light colors look. Vanilla: each light in the color RE::Light gives it. Paler: washed "
+				"toward white, the Community Shaders look. Deeper: richer."));
 
 			GlowHeading("Light Strength", Icon::kBulb);
 			int b = BrightnessPercent();
@@ -562,28 +577,52 @@ namespace Plugin
 					"Vanilla blue keeps the vanilla dome and gives 360 Ward's sphere the vanilla blue. Shows on the next cast."));
 			}
 
-			GlowHeading("Spells Without a Patch", Icon::kBulb);
-			bool autoOn = AutoLightsOn();
-			if (ImGuiMCP::Checkbox(T("Light spells this mod has no patch for"), &autoOn)) {
-				SetAutoLightsOn(autoOn);
-				SaveSettings();
-				RehandSoon();
-			}
-			MenuStyle::Tip(T(
-				"RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
-				"gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
-			ImGuiMCP::SameLine();
-			ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
-
 			// Illuminated's "Other Light Mods" heading: CS Light loaded is one warning line, its how-to in the hover text
 			if (const auto* cs = CSLightLoaded()) {
 				GlowHeading("Other Light Mods", Icon::kBulb);
 				ImGuiMCP::TextColored(kGold, T("%s is loaded."), cs);
 				MenuStyle::Tip(T("RELight - Spell Lighting NG does not need CS Light. Keeping it for its world lights? Untick its Magic FX, Mysticsm, Bound Weapons, Praedy Staves, Spiders, Misc Effects and Dwarven Spiders options, or those lights glow twice."));
 			}
+		}
 
-			// his word: "big fights can be called performance and be at the bottom of lights menu"
+		// 🔁 HIS ORDER 2026-10-20: "spells without a patch moved to lights by item/spell" - above the fading module's item list
+		void __stdcall RenderItems()
+		{
+			{
+				const GlowStyle style;
+				GlowHeading("Spells Without a Patch", Icon::kBulb);
+				bool autoOn = AutoLightsOn();
+				if (ImGuiMCP::Checkbox(T("Light spells this mod has no patch for"), &autoOn)) {
+					SetAutoLightsOn(autoOn);
+					SaveSettings();
+					RehandSoon();
+				}
+				MenuStyle::Tip(T(
+					"RE::Light switches off a casting light it has no config for, so another mod's spell would be dark in the hand. On: it "
+					"gets a hand light in the color of its own light, or of its element, at the strength of this mod's hand lights."));
+				ImGuiMCP::SameLine();
+				ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
+			}
+			Fade::Items::Render();
+		}
+
+		// 🔁 HIS ORDER 2026-10-20: "I want a quality/performance setting for relight and illuminated. quality has all features turned
+		// on. performance has features that you decide have a lot of lights turned off. i want this added to performance, and
+		// performance added to its own main menu as the last menu" (was: "big fights can be called performance and be at the
+		// bottom of lights menu")
+		void __stdcall RenderPerformance()
+		{
+			const GlowStyle style;
 			GlowHeading("Performance", Icon::kBulb);
+			const char* const kQuality[] = { T("Quality"), T("Performance") };
+			int               quality = PerformanceMode() ? 1 : 0;
+			if (ImGuiMCP::Combo(T("Quality"), &quality, kQuality, 2)) {
+				SetPerformanceMode(quality == 1);
+				SaveSettings();
+			}
+			MenuStyle::Tip(T(
+				"Quality: every light this mod has. Performance: only you and your followers carry hand, weapon and body "
+				"lights. For big fights and slower PCs. Reaches the next spell they ready."));
 			const char* const kWho[] = { T("Everyone"), T("Everyone nearby"), T("Player and followers"), T("Player only") };
 			int               who = HandLightsFor();
 			if (ImGuiMCP::Combo(T("Hand lights for"), &who, kWho, 4)) {
@@ -672,11 +711,16 @@ namespace Plugin
 
 	void RegisterMenuTail()
 	{
-#ifdef FADE_DEBUG_PAGE
-		if (SKSEMenuFramework::IsInstalled()) {
-			SKSEMenuFramework::SetSection(T("RELight - Spell Lighting NG"));
-			SKSEMenuFramework::AddSectionItem(T("Diagnostics"), RenderDiagnostics);
+		if (!SKSEMenuFramework::IsInstalled()) {
+			return;
 		}
+		SKSEMenuFramework::SetSection(T("RELight - Spell Lighting NG"));
+		// after the fading module's HUD and Fading: Lights by Item / Spell (FadeItems.cpp) - the mod adds it since the fading
+		// module stopped (Illuminated draws its own settings above the list, his 2026-10-20 order)
+		SKSEMenuFramework::AddSectionItem(T("Lights by Item / Spell"), RenderItems);
+		SKSEMenuFramework::AddSectionItem(T("Performance"), RenderPerformance);  // the last page (his order 2026-10-20)
+#ifdef FADE_DEBUG_PAGE
+		SKSEMenuFramework::AddSectionItem(T("Diagnostics"), RenderDiagnostics);
 #endif
 	}
 }
