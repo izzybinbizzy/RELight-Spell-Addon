@@ -220,7 +220,8 @@ namespace Fade
 		[[nodiscard]] bool Holding() noexcept;                                       // a choice is on a light now (any thread)
 		bool               SetFromText(RE::FormID a_id, std::string_view a_choice);  // "auto", "off" or "r,g,b", as the menu would
 		void               Release();                                                // every light back as its owner left it (a load)
-		void __stdcall     Render();                                                 // the page
+		void               RenderSpells();                                           // the Spell page's list
+		void __stdcall     RenderWeapons();                                          // the Weapons and Staves page
 	}
 
 	// ------------------------------------------------------------------ FadeMenu.cpp

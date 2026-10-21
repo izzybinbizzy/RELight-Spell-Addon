@@ -119,7 +119,7 @@ namespace LightKit
 		const float x = std::clamp(a_x, 0.0f, 1.0f);
 		return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.0f / 2.4f) - 0.055f;
 	}
-	// the screen's color -> linear light, per channel (0..1): ToScreen's way back (the Deeper look)
+	// the screen's color -> linear light, per channel (0..1): ToScreen's way back
 	[[nodiscard]] inline float ToLinear(float a_x) noexcept
 	{
 		const float x = std::clamp(a_x, 0.0f, 1.0f);
@@ -131,7 +131,7 @@ namespace LightKit
 		const float v = ToScreen(static_cast<float>(a_linear) / 255.0f);
 		return static_cast<std::uint8_t>(std::clamp(std::lround(v * 255.0f), 0L, 255L));
 	}
-	// ToLinear for one 0..255 channel (the Deeper look)
+	// ToLinear for one 0..255 channel
 	[[nodiscard]] inline std::uint8_t LinearChannel(std::uint8_t a_screen) noexcept
 	{
 		const float v = ToLinear(static_cast<float>(a_screen) / 255.0f);

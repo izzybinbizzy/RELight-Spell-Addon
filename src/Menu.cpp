@@ -6,7 +6,7 @@
 // touched, laid out as Illuminated's (his word 2026-10-11): Lights (the lighting found, presets, Brightness, Reach, daylight,
 // sneaking, hand and weapon lights, the ward color), Spell & Enchantment Art (a switch per weapon / enchantment option) and
 // Configs (a switch per spell option, then each mod patch by category) - no per-option brightness sliders (his call). The
-// fading module adds HUD and Fading after them, then this file Lights by Item / Spell (automatic lights above the item list)
+// fading module adds HUD and Fading after them, then this file the Lights by Item folder (Spell: automatic lights above the spell list; Weapons and Staves)
 // and Performance, the last page (his order 2026-10-20). Every change is saved at
 // once (Settings.cpp) and reaches lights already lit. The look is the shared MenuStyle.h in warm spell-light gold, with this
 // mod's glowing headings.
@@ -427,7 +427,7 @@ namespace Plugin
 
 		// 🗂 HIS WORD 2026-10-11: "I also want relights skse menu updated to be similar to illuminated in the layout. I think relight
 		// is still using the older layout" - the pages are Illuminated's now: Lights (Version, Presets, Light Strength, While
-		// Sneaking, Hands and Weapons, Sprays Bolts and Wards, Other Light Mods; Light Colors below Presets since 2026-10-20), Spell &
+		// Sneaking, Hands and Weapons, Sprays Bolts and Wards, Other Light Mods), Spell &
 		// Enchantment Art (the weapon and enchantment switches - weapon enchantments first, his Illuminated word), Configs (Spells
 		// and Effects, then the mod patches by category), and the fading module's Lights by Item, HUD and Fading after them.
 		// RELight has no lighting pick and no art pick in the menu (the installer asks those), so those rows are not here.
@@ -477,18 +477,8 @@ namespace Plugin
 			}
 			DrawUserPresets();
 
-			// 🔁 HIS ORDER 2026-10-20: "i want the paler/deeper settings back added into lights right below presets above light
-			// strength", then "no automatic, just paler or deeper or vanilla" (Brightness.cpp LookOf)
-			GlowHeading("Light Colors", Icon::kBulb);
-			const char* const kLooks[] = { T("Vanilla"), T("Paler"), T("Deeper") };
-			int               look = LightColors();
-			if (ImGuiMCP::Combo(T("Light colors"), &look, kLooks, 3)) {
-				SetLightColors(look);
-				SaveSettings();
-			}
-			MenuStyle::Tip(T(
-				"How deep this mod's light colors look. Vanilla: each light in the color RE::Light gives it. Paler: washed "
-				"toward white, the Community Shaders look. Deeper: richer."));
+			// 🚫🚫 no Light colors pick (Vanilla / Paler / Deeper): HIS WORDS 2026-10-21 "pale and deep also need to be removed" - the
+			// second time he took it out (CLAUDE.md)
 
 			// what the installer used to ask: which spell art the light colors follow, and whether the lights flicker
 			GlowHeading("Spell Art and Flicker", Icon::kBulb);
@@ -632,7 +622,7 @@ namespace Plugin
 				ImGuiMCP::SameLine();
 				ImGuiMCP::TextDisabled(T("%zu lit"), AutoHandEffects());
 			}
-			Fade::Items::Render();
+			Fade::Items::RenderSpells();
 		}
 
 		// 🔁 HIS ORDER 2026-10-20: "I want a quality/performance setting for relight and illuminated. quality has all features turned
@@ -744,9 +734,12 @@ namespace Plugin
 			return;
 		}
 		SKSEMenuFramework::SetSection(T("RELight - Spell Lighting NG"));
-		// after the fading module's HUD and Fading: Lights by Item / Spell (FadeItems.cpp) - the mod adds it since the fading
-		// module stopped (Illuminated draws its own settings above the list, his 2026-10-20 order)
-		SKSEMenuFramework::AddSectionItem(T("Lights by Item / Spell"), RenderItems);
+		// after the fading module's HUD and Fading: Lights by Item (FadeItems.cpp). A '/' in a name makes a submenu: it holds
+		// Spell (Spells Without a Patch above the spell list) and the weapons' page
+		static const std::string kSpellPage = std::string(T("Lights by Item")) + "/" + T("Spell");
+		static const std::string kWeaponPage = std::string(T("Lights by Item")) + "/" + T("Weapons and Staves");
+		SKSEMenuFramework::AddSectionItem(kSpellPage.c_str(), RenderItems);
+		SKSEMenuFramework::AddSectionItem(kWeaponPage.c_str(), Fade::Items::RenderWeapons);
 		SKSEMenuFramework::AddSectionItem(T("Performance"), RenderPerformance);  // the last page (his order 2026-10-20)
 #ifdef FADE_DEBUG_PAGE
 		SKSEMenuFramework::AddSectionItem(T("Diagnostics"), RenderDiagnostics);

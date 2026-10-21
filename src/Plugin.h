@@ -215,8 +215,6 @@ namespace Plugin
 	void               SetArtPick(int a_group, int a_v);
 	void               SetDynamicLighting(bool a_on);
 	[[nodiscard]] bool DynamicLighting();  // the RE::Light lights flicker as their configs say; off = held steady
-	[[nodiscard]] int  LightColors();      // 0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (his 2026-10-20 order)
-	void               SetLightColors(int a_v);
 	[[nodiscard]] bool PerformanceMode();  // the Performance page's Quality pick on Performance (his 2026-10-20 order)
 	void               SetPerformanceMode(bool a_on);
 	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)

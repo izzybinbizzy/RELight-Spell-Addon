@@ -14,7 +14,6 @@
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
-//   LightColors=0               0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (Brightness.cpp) - his 2026-10-20 order brought it back
 //   Quality=0                   0 quality, 1 performance: hand, weapon and body lights for the player and followers only (Hooks.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on. A line for an option that is not
@@ -51,8 +50,7 @@ namespace Plugin
 		std::atomic<int>                gHandsFor{ 0 };
 		std::atomic<bool>               gAuto{ true };
 		std::atomic<bool>               gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
-		std::atomic<int>                gLightColors{ 0 };
-		std::array<std::atomic<int>, 4> gArt{};  // fire, frost, shock, healing art: 0 = the game's own (DataText::kPickNames)
+		std::array<std::atomic<int>, 4> gArt{};            // fire, frost, shock, healing art: 0 = the game's own (DataText::kPickNames)
 		std::atomic<bool>               gDynamic{ true };
 		std::atomic<bool>               gPerformance{ false };
 
@@ -99,7 +97,6 @@ namespace Plugin
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 			{ "AllLightsOff", [] { return gAllOff ? 1 : 0; }, [](int v) { gAllOff = v != 0; } },
-			{ "LightColors", [] { return gLightColors.load(); }, [](int v) { gLightColors = std::clamp(v, 0, 2); } },
 			{ "FireArt", [] { return gArt[0].load(); }, [](int v) { gArt[0] = std::clamp(v, 0, 3); } },
 			{ "FrostArt", [] { return gArt[1].load(); }, [](int v) { gArt[1] = std::clamp(v, 0, 1); } },
 			{ "ShockArt", [] { return gArt[2].load(); }, [](int v) { gArt[2] = std::clamp(v, 0, 2); } },
@@ -390,7 +387,6 @@ namespace Plugin
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 	bool AllLightsOff() { return gAllOff; }
 	void SetAllLightsOff(bool a_off) { gAllOff = a_off; }
-	int  LightColors() { return gLightColors; }
 	int  ArtPick(int a_group) { return a_group >= 0 && a_group < 4 ? gArt[static_cast<std::size_t>(a_group)].load() : 0; }
 	void SetArtPick(int a_group, int a_v)
 	{
@@ -400,7 +396,6 @@ namespace Plugin
 	}
 	bool DynamicLighting() { return gDynamic; }
 	void SetDynamicLighting(bool a_on) { gDynamic = a_on; }
-	void SetLightColors(int a_v) { gLightColors = std::clamp(a_v, 0, 2); }
 	bool PerformanceMode() { return gPerformance; }
 	void SetPerformanceMode(bool a_on) { gPerformance = a_on; }
 

@@ -17,7 +17,8 @@
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
 // (Light colors and the Fire / Frost / Shock color picks were here until his order took the color variations out of the
-// menu: every light keeps its own color; an art pick's tint still recolors.)
+// menu, 2026-10-09; Light colors came back 2026-10-20 and left again 2026-10-21 - "pale and deep also need to be removed":
+// every light keeps its own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
 // A flesh spell's light where FleshFX's look wins (LightKit.h FleshFx) is drawn in FleshFX's hue at the strength of that base.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
@@ -37,7 +38,9 @@ namespace Plugin
 			const HandFx*        fx{ nullptr };
 			const RE::NiColor*   tint{ nullptr };
 			float                base{ 0.0f };        // the fade RE::Light last gave it
-			float                peak{ 0.0f };        // the most it gave: held while Dynamic Lighting is off
+			float                peak{ 0.0f };        // the most it gave: held while Dynamic Lighting is off, if it flickers
+			float                rlPhase{ -1.0f };    // RE::Light's flicker phase (the point light's constAttenuation) last frame
+			bool                 flickers{ false };   // RE::Light moved that phase: a flickering config, not a one-shot fade
 			float                written{ -1.0f };    // the fade we last wrote
 			float                baseRadius{ 0.0f };  // the reach RE::Light last gave it
 			float                wroteRadius{ -1.0f };
@@ -51,23 +54,6 @@ namespace Plugin
 		[[nodiscard]] bool SameColor(const RE::NiColor& a, const RE::NiColor& b) noexcept
 		{
 			return a.red == b.red && a.green == b.green && a.blue == b.blue;
-		}
-
-		// ✂ HIS ORDER 2026-10-09: *"remove the color variations from illuminated and relight in the lights menu"* - the Fire /
-		// Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art pick's tint) gives it. 🔁 HIS ORDER
-		// 2026-10-20 brings Light colors back: *"i want the paler/deeper settings back added into lights right below presets above
-		// light strength"*, then *"no automatic, just paler or deeper or vanilla"* - Vanilla draws the color as given, Paler turns it from linear light to the screen's (the Community
-		// Shaders look), Deeper the other way
-		[[nodiscard]] RE::NiColor LookOf(const RE::NiColor& a_c)
-		{
-			switch (LightColors()) {
-			case 1:
-				return { LightKit::ToScreen(a_c.red), LightKit::ToScreen(a_c.green), LightKit::ToScreen(a_c.blue) };
-			case 2:
-				return { LightKit::ToLinear(a_c.red), LightKit::ToLinear(a_c.green), LightKit::ToLinear(a_c.blue) };
-			default:
-				return a_c;
-			}
 		}
 
 		float gDaylight = 1.0f, gDaylightClock = 2.0f;  // main thread only (UpdateBrightness)
@@ -170,9 +156,19 @@ namespace Plugin
 			if (data.radius.x != a_s.wroteRadius) {
 				a_s.baseRadius = data.radius.x;  // x and y are the reach, z is the size
 			}
-			// Dynamic Lighting off: an RE::Light light that flickers by its config is held at the most it reached
+			// Dynamic Lighting off: an RE::Light light that flickers by its config is held at the most it reached. Only one that
+			// flickers: RE::Light (7.6, everyFrame.h) writes a point light's attenuation phases only in its flicker / pulse branch,
+			// so a phase that moved marks it; a one-shot fade (an explosion's or a rune's burst - 2.5's plain configs carry 349)
+			// keeps fading as RE::Light draws it, never held at its brightest
+			if (const auto* point = netimmerse_cast<RE::NiPointLight*>(a_light)) {
+				if (a_s.rlPhase >= 0.0f && point->constAttenuation != a_s.rlPhase) {
+					a_s.flickers = true;
+				}
+				a_s.rlPhase = point->constAttenuation;
+			}
 			const bool  dynamic = DynamicLighting();
-			const float fade = (dynamic ? a_s.base : a_s.peak) * a_scale * (a_s.fx && dynamic ? Oscillate(a_s, a_dt) : 1.0f);
+			const float held = dynamic || !a_s.flickers ? a_s.base : a_s.peak;
+			const float fade = held * a_scale * (a_s.fx && dynamic ? Oscillate(a_s, a_dt) : 1.0f);
 			data.fade = fade;
 			a_s.written = fade;
 			const float radius = a_s.baseRadius * a_reach;
@@ -182,7 +178,7 @@ namespace Plugin
 			if (!SameColor(data.diffuse, a_s.wroteDiffuse)) {
 				a_s.baseDiffuse = data.diffuse;  // RE::Light (or the hand light) gave it this color: the new base
 			}
-			const RE::NiColor own = LookOf(a_s.tint ? *a_s.tint : a_s.baseDiffuse);
+			const RE::NiColor own = a_s.tint ? *a_s.tint : a_s.baseDiffuse;
 			const RE::NiColor color = a_hue ? LightKit::FleshFx::Shown(*a_hue, own) : own;  // every light keeps its own color
 			data.diffuse = color;
 			a_s.wroteDiffuse = color;
