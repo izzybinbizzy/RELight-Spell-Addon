@@ -211,7 +211,11 @@ namespace Plugin
 	void               SetAutoLightsOn(bool a_on);
 	[[nodiscard]] bool AllLightsOff();  // Performance: every light of this mod off - the options' lights, hand, held and ground lights
 	void               SetAllLightsOff(bool a_off);
-	[[nodiscard]] int  LightColors();  // 0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (his 2026-10-20 order)
+	[[nodiscard]] int  ArtPick(int a_group);  // the chosen art of a DataText::kPickGroups group; 0 = the game's own
+	void               SetArtPick(int a_group, int a_v);
+	void               SetDynamicLighting(bool a_on);
+	[[nodiscard]] bool DynamicLighting();  // the RE::Light lights flicker as their configs say; off = held steady
+	[[nodiscard]] int  LightColors();      // 0 vanilla (as RE::Light gives it), 1 paler, 2 deeper (his 2026-10-20 order)
 	void               SetLightColors(int a_v);
 	[[nodiscard]] bool PerformanceMode();  // the Performance page's Quality pick on Performance (his 2026-10-20 order)
 	void               SetPerformanceMode(bool a_on);

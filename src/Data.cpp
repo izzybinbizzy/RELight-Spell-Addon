@@ -124,7 +124,15 @@ namespace Plugin
 				return false;
 			}
 			const auto& file = read.file;
-			Option      opt;
+			// an art pick's file counts only while that pick is chosen, a Dynamic Lighting file only while it is on (the installer's
+			// questions until 2.6 - his order to move them into the menu)
+			if (const int g = DataText::PickGroup(file.option.pickGroup); g >= 0 && ArtPick(g) != DataText::PickChoice(g, file.option.pickName)) {
+				return true;
+			}
+			if (file.option.dynamic && !DynamicLighting()) {
+				return true;
+			}
+			Option opt;
 			opt.download = file.option.download;
 			opt.name = file.option.name;
 			opt.id = file.option.id;

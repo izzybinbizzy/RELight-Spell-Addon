@@ -37,6 +37,7 @@ namespace Plugin
 			const HandFx*        fx{ nullptr };
 			const RE::NiColor*   tint{ nullptr };
 			float                base{ 0.0f };        // the fade RE::Light last gave it
+			float                peak{ 0.0f };        // the most it gave: held while Dynamic Lighting is off
 			float                written{ -1.0f };    // the fade we last wrote
 			float                baseRadius{ 0.0f };  // the reach RE::Light last gave it
 			float                wroteRadius{ -1.0f };
@@ -164,11 +165,14 @@ namespace Plugin
 			auto& data = a_light->GetLightRuntimeData();
 			if (data.fade != a_s.written) {
 				a_s.base = data.fade;  // written since we last touched it: that is the new base
+				a_s.peak = (std::max)(a_s.peak, a_s.base);
 			}
 			if (data.radius.x != a_s.wroteRadius) {
 				a_s.baseRadius = data.radius.x;  // x and y are the reach, z is the size
 			}
-			const float fade = a_s.base * a_scale * (a_s.fx ? Oscillate(a_s, a_dt) : 1.0f);
+			// Dynamic Lighting off: an RE::Light light that flickers by its config is held at the most it reached
+			const bool  dynamic = DynamicLighting();
+			const float fade = (dynamic ? a_s.base : a_s.peak) * a_scale * (a_s.fx && dynamic ? Oscillate(a_s, a_dt) : 1.0f);
 			data.fade = fade;
 			a_s.written = fade;
 			const float radius = a_s.baseRadius * a_reach;

@@ -5,8 +5,8 @@
 // HIS ANSWER 2026-10-20 (checklist 140): one light that stretches along the beam first - and "if you plain out cannot make
 // part 1 of 140 to happen then revert to this as a backup plan", the row of lights. One stretched light cannot be drawn by any
 // lighting our mods run under (the game, ENB and Community Shaders draw single points only - his research page, part 8), so
-// this is the row: lights no farther apart than ~80 units (3 at least), each reaching 2.5x the spacing but never under 160 or
-// over 200 units, the two end ones halved for soft ends once there are 5 or more, every strength scaled so the ground under
+// this is the row: lights no farther apart than ~70 units (3 at least), each reaching 2.2x the spacing but never under 140 or
+// over 160 units, the two end ones halved for soft ends once there are 5 or more, every strength scaled so the ground under
 // the middle of the beam glows as one light of the target strength would. The game tests of 2026-10-20 set those numbers: at
 // ~125 apart reaching 260-440 the light lit the steps and walls beside her as well as the beam (17:11, 18:03); the scratch
 // model for these: spots under 3 % along a long beam (under 7 % on a short one), nothing 200 units to the side.
@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 namespace BeamRow
@@ -30,13 +31,36 @@ namespace BeamRow
 		float reach{ 0.0f };     // in game units
 	};
 
-	inline constexpr float kSpacing = 80.0f;  // the farthest two lights may stand apart
+	inline constexpr float kSpacing = 70.0f;  // the farthest two lights may stand apart
 	inline constexpr int   kFewest = 3;       // a beam cut short still gets this many (spaced closer)
-	inline constexpr float kReachTimes = 2.5f;
-	inline constexpr float kLeastReach = 160.0f;  // over a beam's usual height above the ground with room to spare: under that a light barely lands
-	inline constexpr float kMostReach = 200.0f;   // the light stays this close to the beam
+	inline constexpr float kReachTimes = 2.2f;
+	inline constexpr float kLeastReach = 140.0f;  // over a beam's usual height above the ground with room to spare: under that a light barely lands
+	inline constexpr float kMostReach = 160.0f;   // the light stays this close to the beam
 	inline constexpr float kEndScale = 0.5f;
 	inline constexpr int   kHalveFrom = 5;  // fewer lights keep full ends: halving one of 3 or 4 dims a third of the beam
+
+	inline constexpr float  kFlicker = 0.40f;   // how far a flickering light swings either side of its steady strength
+	inline constexpr double kTogether = 0.7;    // the share of that swing every light of the row has in common (phases of neighbours cancel)
+	inline constexpr float  kHeadroom = 0.60f;  // a capped light's steady strength, as a share of its cap
+	static_assert(kHeadroom * (1.0f + kFlicker) <= 1.0f, "the flicker's peak must stay under the cap");
+
+	// a row light's steady strength where its lighting caps it at a_top (Community Shaders: a light's strength for its reach):
+	// a light held at its cap cannot swing up and burns white in the middle. No cap (a_top 0): what was asked
+	[[nodiscard]] inline float Steady(float a_want, float a_top)
+	{
+		return a_top > 0.0f ? (std::min)(a_want, a_top * kHeadroom) : a_want;
+	}
+
+	// the strength factor light a_index of the row has a_seconds into the session while the Flicker switch is on: two waves shared
+	// by the whole row plus two on the light's own phase, so the row flickers as one and still shimmers; always within 1 +- kFlicker.
+	// Doubles throughout: a float clock loses its steps after hours of play
+	[[nodiscard]] inline float Flicker(double a_seconds, std::size_t a_index)
+	{
+		const double phase = static_cast<double>(a_index) * 1.7;
+		const double shared = 0.6 * std::sin(a_seconds * 43.0) + 0.4 * std::sin(a_seconds * 71.0 + 1.3);
+		const double own = 0.6 * std::sin(a_seconds * 47.0 + phase) + 0.4 * std::sin(a_seconds * 83.0 + phase * 1.7);
+		return 1.0f + kFlicker * static_cast<float>(kTogether * shared + (1.0 - kTogether) * own);
+	}
 
 	// the light a ground point at (a_x along the beam, a_side across it) gets from the row, the beam a_height above the
 	// ground: the game's smooth falloff and the ground's cosine (the research's model)

@@ -62,8 +62,9 @@ namespace
 			Plugin::gNearby);
 		Fade::Tuning::Register("Vanilla and ENB", "GroundLights", 1.0f, 0.0f, 1.0f,
 			"1: off Community Shaders a hand light lights the ground too (its twin, made with land lighting on); 0: off", Plugin::gGroundLightsOn);
+		Plugin::LoadSettings();  // the art picks and Dynamic Lighting decide which data files count
 		Plugin::LoadData();
-		Plugin::LoadSettings();
+		Plugin::LoadSettings();             // again: the option switches need the options the data made
 		Plugin::ReadLighting();             // before the hand lights: off Community Shaders they are drawn plain
 		Plugin::RaiseStreamLights();        // 2.3: the sprays' and bolts' raised copies - before the hand lights remember each effect's own light
 		Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one

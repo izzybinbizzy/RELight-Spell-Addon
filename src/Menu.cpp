@@ -15,6 +15,7 @@
 #include "Fade.h"
 #include "FadeSettingsText.h"
 #include "Plugin.h"
+#include "DataText.h"
 
 // SKSE Menu Framework's own header (theirs, MIT): its warnings are not ours, and ours are errors (xmake.lua) - under
 // MSVC and under clang-cl, which checks every file too
@@ -488,6 +489,34 @@ namespace Plugin
 			MenuStyle::Tip(T(
 				"How deep this mod's light colors look. Vanilla: each light in the color RE::Light gives it. Paler: washed "
 				"toward white, the Community Shaders look. Deeper: richer."));
+
+			// what the installer used to ask: which spell art the light colors follow, and whether the lights flicker
+			GlowHeading("Spell Art and Flicker", Icon::kBulb);
+			const char* const kArtLabels[] = { T("Fire art"), T("Frost art"), T("Shock art"), T("Healing art") };
+			for (int g = 0; g < static_cast<int>(DataText::kPickGroups.size()); ++g) {
+				std::vector<std::string> names;
+				for (const auto name : DataText::kPickNames[static_cast<std::size_t>(g)]) {
+					if (!name.empty()) {
+						names.emplace_back(T(std::string(name).c_str()));
+					}
+				}
+				std::vector<const char*> items;
+				for (const auto& name : names) {
+					items.push_back(name.c_str());
+				}
+				int pick = ArtPick(g);
+				if (ImGuiMCP::Combo(kArtLabels[g], &pick, items.data(), static_cast<int>(items.size()))) {
+					SetArtPick(g, pick);
+					SaveSettings();
+				}
+				MenuStyle::Tip(T("The spell art mod you use, so the lights match its colors. Applies the next time the game starts."));
+			}
+			bool flicker = DynamicLighting();
+			if (ImGuiMCP::Checkbox(T("Dynamic lighting"), &flicker)) {
+				SetDynamicLighting(flicker);
+				SaveSettings();
+			}
+			MenuStyle::Tip(T("Lights flicker and breathe like fire and lightning. Off: they hold steady. Applies the next time the game starts."));
 
 			GlowHeading("Light Strength", Icon::kBulb);
 			int b = BrightnessPercent();
