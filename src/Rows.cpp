@@ -315,6 +315,11 @@ namespace Plugin
 		gQueue.clear();
 	}
 
+	bool IsRowLight(const RE::NiLight* a_light)
+	{
+		return a_light && std::string_view(a_light->name.c_str()) == kRowName;
+	}
+
 	std::size_t LiveRowLights() { return gLights; }
 	std::size_t RowsMade() { return gMade; }
 }

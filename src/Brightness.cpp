@@ -283,7 +283,9 @@ namespace Plugin
 			}
 			auto* niLight = bsLight->light.get();
 			// gNotOurs is the main thread's alone (this pass and the Keep sweep), so it is read with no lock
-			if (KnownNotOurs(niLight)) {
+			// a row light hangs under a spray / bolt (so it would read as ours) but Rows.cpp draws it whole every frame, the
+			// sliders included: scaled here too it would take them twice and lose its cutoff
+			if (KnownNotOurs(niLight) || IsRowLight(niLight)) {
 				continue;
 			}
 			// gSeenLock is taken per light, not across the walk: the fading module's NoteFadeWrite (the effect updates)

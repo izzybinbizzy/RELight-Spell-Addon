@@ -622,7 +622,7 @@ namespace Plugin
 			}
 			MenuStyle::Tip(T(
 				"Quality: every light this mod has. Performance: only you and your followers carry hand, weapon and body "
-				"lights. For big fights and slower PCs. Reaches the next spell they ready."));
+				"lights, and sprays and bolts keep only their own light (no row along them). For big fights and slower PCs."));
 			const char* const kWho[] = { T("Everyone"), T("Everyone nearby"), T("Player and followers"), T("Player only") };
 			int               who = HandLightsFor();
 			if (ImGuiMCP::Combo(T("Hand lights for"), &who, kWho, 4)) {
