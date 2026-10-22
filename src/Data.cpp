@@ -511,16 +511,80 @@ namespace Plugin
 		});
 	}
 
+	namespace
+	{
+		// the model keys of the game's own projectiles and explosions: the art the picks recolor, whoever's form wears it
+		[[nodiscard]] bool GameArtKey(const std::string& a_key)
+		{
+			static const auto keys = [] {
+				std::unordered_set<std::string>           out;
+				constexpr std::array<std::string_view, 5> kGame{ "skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm", "dragonborn.esm" };
+				const auto                                add = [&](const RE::TESForm* a_form) {
+					const auto* file = a_form ? a_form->GetFile(0) : nullptr;
+					if (file && std::ranges::find(kGame, Lower(file->GetFilename())) != kGame.end()) {
+						if (auto key = KeyOf(a_form); !key.empty()) {
+							out.insert(std::move(key));
+						}
+					}
+				};
+				for (const auto* proj : LightKit::FormsOf<RE::BGSProjectile>()) {
+					add(proj);
+				}
+				for (const auto* expl : LightKit::FormsOf<RE::BGSExplosion>()) {
+					add(expl);
+				}
+				return out;
+			}();
+			return keys.contains(a_key);
+		}
+
+		// a projectile or explosion of the game's own art wears its element's hand color for the pick, ahead of the pick's tint
+		// lines, so every light of the spell is one color; atronach and wraith art is left to the elementals' own mods
+		[[nodiscard]] const RE::NiColor* ElementHandColor(const RE::TESForm* a_base, const std::string& a_key)
+		{
+			if (!a_base || !(a_base->Is(RE::FormType::Projectile) || a_base->Is(RE::FormType::Explosion)) || a_key.empty() || !GameArtKey(a_key)) {
+				return nullptr;
+			}
+			const auto has = [&](std::string_view a_word) { return a_key.find(a_word) != std::string::npos; };
+			if (has("atronach") || has("wraith")) {
+				return nullptr;
+			}
+			const std::string_view hand = has("shock") || has("lightning") || has("spark") ? "shockhandeffects" :
+			                              has("fire") || has("flame")                      ? "fireball01handeffects" :
+			                              has("frost") || has("ice")                       ? "frostbolthandfx01" :
+			                                                                                 "";
+			if (hand.empty()) {
+				return nullptr;
+			}
+			if (const auto t = gMeshTints.find(hand); t != gMeshTints.end()) {
+				return &t->second.color;
+			}
+			const auto h = gHands.find(hand);
+			if (h == gHands.end() || h->second.empty()) {
+				return nullptr;
+			}
+			return &std::ranges::max_element(h->second, {}, &Hand::order)->color;
+		}
+	}
+
+	const RE::NiColor* HandColorOf(const RE::TESForm* a_base)
+	{
+		return a_base ? ElementHandColor(a_base, KeyOf(a_base)) : nullptr;
+	}
+
 	const RE::NiColor* TintOf(const RE::TESForm* a_base)
 	{
-		if (!a_base || (gMeshTints.empty() && gBaseTints.empty())) {
+		if (!a_base || (gMeshTints.empty() && gBaseTints.empty() && gHands.empty())) {
 			return nullptr;
 		}
 		return Cached(gTintCache, a_base, [&]() -> const RE::NiColor* {
+			const auto key = KeyOf(a_base);
+			if (const auto* hand = ElementHandColor(a_base, key)) {
+				return hand;
+			}
 			if (auto it = gBaseTints.find(a_base->GetFormID()); it != gBaseTints.end()) {
 				return &it->second.color;
 			}
-			const auto key = KeyOf(a_base);
 			const auto it = key.empty() ? gMeshTints.cend() : Find(gMeshTints, gTintKeysLongestFirst, key);
 			return it != gMeshTints.cend() ? &it->second.color : nullptr;
 		});

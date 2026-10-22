@@ -68,6 +68,15 @@ namespace Plugin
 			return copy;
 		}
 
+		// Dynamic Lighting off: the record's own flicker and pulse bits come off the copy, so a spray's or bolt's own light holds steady
+		void HoldSteady(RE::TESObjectLIGH* a_light)
+		{
+			using enum RE::TES_LIGHT_FLAGS;
+			constexpr auto kMoving = static_cast<std::uint32_t>(kFlicker) | static_cast<std::uint32_t>(kFlickerSlow) |
+			                         static_cast<std::uint32_t>(kPulse) | static_cast<std::uint32_t>(kPulseSlow);
+			a_light->data.flags = static_cast<RE::TES_LIGHT_FLAGS>(a_light->data.flags.underlying() & ~kMoving);
+		}
+
 	}
 
 	// once a session: the hooks read these sets from any thread once gReady is set, and a second walk would find every field
@@ -96,6 +105,7 @@ namespace Plugin
 		}
 		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> plainOf, rowPlainOf;  // a record's plain copy: its other users', its rows' projectiles'
 		std::unordered_map<RE::FormID, RowRecipe>                        rows;
+		std::unordered_set<const RE::TESObjectLIGH*>                     handTinted;  // plain copies already in the hand's color
 		std::size_t                                                      sprays = 0, bolts = 0, failed = 0, dark = 0;
 		const auto                                                       n = ForEachLightField(*dh, [&](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
 			const bool sprayRecord = a_light && gSpraySet.contains(a_light);
@@ -109,13 +119,29 @@ namespace Plugin
 				// a plain copy of its own light (his color where the data names one) and a row of small lights along it
 				// (Rows.cpp) - one light raised to the whole length lit the whole scene
 				auto [it, fresh] = rowPlainOf.try_emplace(a_light, nullptr);
+				// the game's own art: the hand's color for the art pick, as every other light of the spell - whichever of the
+				// record's projectiles comes first, the copy is shared by all of them
+				const auto handColor = [&](RE::TESObjectLIGH* a_copy) {
+					const auto* pick = handTinted.contains(a_copy) ? nullptr : HandColorOf(a_proj);
+					if (!pick) {
+						return false;
+					}
+					a_copy->data.color.red = static_cast<std::uint8_t>(std::clamp(std::lround(pick->red * 255.0f), 0L, 255L));
+					a_copy->data.color.green = static_cast<std::uint8_t>(std::clamp(std::lround(pick->green * 255.0f), 0L, 255L));
+					a_copy->data.color.blue = static_cast<std::uint8_t>(std::clamp(std::lround(pick->blue * 255.0f), 0L, 255L));
+					handTinted.insert(a_copy);
+					return true;
+				};
 				if (fresh) {
 					it->second = CopyOf(a_light);
+					if (const auto his = it->second ? RecordColor(a_light->GetFormID()) : std::nullopt) {
+						it->second->data.color.red = his->red;
+						it->second->data.color.green = his->green;
+						it->second->data.color.blue = his->blue;
+					}
 					if (it->second) {
-						if (const auto his = RecordColor(a_light->GetFormID())) {
-							it->second->data.color.red = his->red;
-							it->second->data.color.green = his->green;
-							it->second->data.color.blue = his->blue;
+						if (!DynamicLightingThisSession()) {
+							HoldSteady(it->second);
 						}
 						gPlain.insert(it->second);
 						gRowCopies.insert(it->second);
@@ -125,6 +151,7 @@ namespace Plugin
 					++failed;  // no copy: it keeps its record (and RE::Light's config) - said in the log
 					return false;
 				}
+				handColor(it->second);
 				const auto& c = it->second->data.color;
 				rows[a_proj->GetFormID()] = { { c.red / 255.0f, c.green / 255.0f, c.blue / 255.0f }, a_light->fade,
 					static_cast<float>(a_light->data.radius), bolt, OptionOf(a_proj) };

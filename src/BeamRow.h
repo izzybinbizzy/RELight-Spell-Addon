@@ -39,9 +39,9 @@ namespace BeamRow
 	inline constexpr float kEndScale = 0.5f;
 	inline constexpr int   kHalveFrom = 5;  // fewer lights keep full ends: halving one of 3 or 4 dims a third of the beam
 
-	inline constexpr float  kFlicker = 0.40f;   // how far a flickering light swings either side of its steady strength
-	inline constexpr double kTogether = 0.7;    // the share of that swing every light of the row has in common (phases of neighbours cancel)
-	inline constexpr float  kHeadroom = 0.60f;  // a capped light's steady strength, as a share of its cap
+	inline constexpr float  kFlicker = 0.70f;   // how far a flickering light swings either side of its steady strength
+	inline constexpr double kTogether = 0.85;   // the share of that swing every light of the row has in common (phases of neighbours cancel)
+	inline constexpr float  kHeadroom = 0.55f;  // a capped light's steady strength, as a share of its cap
 	static_assert(kHeadroom * (1.0f + kFlicker) <= 1.0f, "the flicker's peak must stay under the cap");
 
 	// a row light's steady strength where its lighting caps it at a_top (Community Shaders: a light's strength for its reach):

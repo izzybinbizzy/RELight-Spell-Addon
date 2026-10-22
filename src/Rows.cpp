@@ -9,7 +9,8 @@
 // up using". The projectile wears its own light at its own size (Streams.cpp); the row lights its length - lights no farther
 // apart than 80 units, laid again every frame to where its art ends, where it hit something, or its range (BeamRow.h, the
 // same file as Illuminated's). Off on Performance (his Quality / Performance order of 2026-10-20), with All lights off, with
-// its option switched off, and while the player sneaks with "Lights off while sneaking" on.
+// its option switched off, and while the player sneaks with "Lights off while sneaking" on. With Dynamic Lighting on the row
+// flickers (BeamRow::Flicker), held under its cap so the peak can swing (BeamRow::Steady); with it off it holds still.
 // Truman's call after the Lightning Bolt freeze still stands for the loader threads: the Load3D hook only QUEUES the
 // projectile (QueueRow, any thread); every light is made, moved and taken off here on the main thread (UpdateRows, in the
 // player update).
@@ -38,6 +39,7 @@ namespace Plugin
 			RE::NiPointer<RE::TESObjectREFR>        ref;
 			const RowRecipe*                        recipe{ nullptr };
 			std::vector<RE::NiPointer<RE::BSLight>> lights;
+			const RE::NiColor*                      tint{ nullptr };  // the art pick's color for this projectile, as its own light wears it (Brightness.cpp)
 		};
 		std::unordered_map<const RE::NiAVObject*, Live> gLive;  // main thread
 		std::size_t                                     gLights = 0;
@@ -45,15 +47,15 @@ namespace Plugin
 		std::mutex                                      gQueueLock;
 		std::vector<RE::NiPointer<RE::TESObjectREFR>>   gQueue;  // what a loader thread loaded, for the next frame (under gQueueLock)
 
-		// his look 2026-10-20 ~19:00 (Illuminated's row, the same numbers): "make vanilla brighter enb softer as suggested to
-		// align with cs"
+		// Illuminated's row, the same numbers (its 1.4: the row came off its cap, so Vanilla and ENB were trimmed to Community
+		// Shaders' lift)
 		[[nodiscard]] float RowStrengthFor(Lighting a_lighting)
 		{
 			switch (a_lighting) {
 			case Lighting::kVanilla:
-				return 1.8f;
+				return 1.1f;
 			case Lighting::kEnb:
-				return 0.3f;
+				return 0.18f;
 			default:
 				return 1.0f;
 			}
@@ -64,9 +66,22 @@ namespace Plugin
 			return !PerformanceMode() && !AllLightsOff() && !(SneakOn() && a_player && a_player->IsSneaking());
 		}
 
-		// a light's strength, reach and color written whole. Community Shaders draws an inverse-square point light at four
-		// times its fade and writes back the reach that gives (Illuminated's run cs 2026-10-20 18:15: every row light read
-		// twice the reach laid) - so the cutoff is set for that, and the fade lowered where the cutoff would pass its top
+		// Community Shaders draws an inverse-square point light at four times its fade and writes back the reach that gives, so the
+		// cutoff is set for that (laid reach 197 read 389 otherwise)
+		constexpr float kDrawnTimes = 4.0f;
+
+		[[nodiscard]] float IslRoom(float a_radius)
+		{
+			return a_radius * a_radius + LightKit::kK * LightKit::kLightSize * LightKit::kLightSize * 0.5f;
+		}
+
+		// the strongest fade a row light of this reach can take on Community Shaders before its cutoff passes its top
+		[[nodiscard]] float IslTop(float a_radius)
+		{
+			return Isl::kHighestCutoff * IslRoom(a_radius) / (kDrawnTimes * LightKit::kK);
+		}
+
+		// a light's strength, reach and color written whole; past its top the reach would grow instead of the light brightening
 		void Dress(RE::NiPointLight* a_light, const RE::NiColor& a_color, float a_fade, float a_radius, bool a_isl)
 		{
 			auto& data = a_light->GetLightRuntimeData();
@@ -75,11 +90,9 @@ namespace Plugin
 			data.radius = { a_radius, a_radius, LightKit::kLightSize };
 			a_light->SetLightAttenuation(a_radius);
 			if (a_isl) {
-				constexpr float kDrawnTimes = 4.0f;
-				const float     room = a_radius * a_radius + LightKit::kK * LightKit::kLightSize * LightKit::kLightSize * 0.5f;
-				data.fade = (std::min)(a_fade, Isl::kHighestCutoff * room / (kDrawnTimes * LightKit::kK));
+				data.fade = (std::min)(a_fade, IslTop(a_radius));
 				Isl::SetOwn(a_light);
-				Isl::SetCutoff(a_light, kDrawnTimes * LightKit::kK * data.fade / room);
+				Isl::SetCutoff(a_light, kDrawnTimes * LightKit::kK * data.fade / IslRoom(a_radius));
 			} else {
 				data.ambient = { a_color.red * 0.1f, a_color.green * 0.1f, a_color.blue * 0.1f };  // RE::Light's rule (Truman)
 			}
@@ -116,28 +129,44 @@ namespace Plugin
 			return std::isfinite(reach) ? reach : 0.0f;
 		}
 
-		// how long a row is now: where the drawn art ends, never past the newest impact, never past the range
-		[[nodiscard]] float RowLength(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root, const Axis& a_axis)
+		// where a row runs right now and how long it is: a bolt that hit something runs straight from its root to that impact (the
+		// lightning is drawn to what it hit), one in the open along its model as far as its art is drawn; a flame spray or cone along
+		// its aim, never past its newest impact. Never past the range
+		struct Path
 		{
+			Axis  axis;
+			float length{ 0.0f };
+		};
+
+		[[nodiscard]] Path PathOf(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root, bool a_beam)
+		{
+			Path  path{ AxisOf(a_ref, a_root, a_beam) };
 			auto* proj = a_ref ? a_ref->As<RE::Projectile>() : nullptr;
-			if (!proj || !a_root) {
-				return 0.0f;
+			if (!proj) {
+				return path;
 			}
 			auto& rt = proj->GetProjectileRuntimeData();
-			float length = rt.range;
-			if (const float drawn = DrawnLength(a_root, a_axis); drawn > 1.0f && drawn < length) {
-				length = drawn;
+			path.length = rt.range;
+			if (const float drawn = DrawnLength(a_root, path.axis); drawn > 1.0f && drawn < path.length) {
+				path.length = drawn;
 			}
 			for (const auto* impact : rt.impacts) {  // the newest impact comes first
 				if (impact) {
-					const float hit = a_axis.start.GetDistance(impact->desiredTargetLoc);
-					if (hit > 0.0f && hit < length) {
-						length = hit;
+					const auto  hit = impact->desiredTargetLoc - path.axis.start;
+					const float d = hit.Length();
+					if (d > 1.0f && d < rt.range && (a_beam || d < path.length)) {
+						path.length = d;
+						if (a_beam) {
+							path.axis.dir = hit / d;
+						}
 					}
 					break;
 				}
 			}
-			return std::isfinite(length) ? length : 0.0f;
+			if (!std::isfinite(path.length)) {
+				path.length = 0.0f;
+			}
+			return path;
 		}
 
 		void Forget(const RE::NiAVObject* a_root, RE::ShadowSceneNode* a_scene)
@@ -178,6 +207,7 @@ namespace Plugin
 			const auto n = (std::min)(want.size(), kMostRowLights - gLights);
 			const bool isl = InverseSquare();
 			Live       live{ RE::NiPointer<RE::NiAVObject>(node), RE::NiPointer<RE::TESObjectREFR>(a_ref), &recipe->second, {} };
+			live.tint = TintOf(base);
 			for (std::size_t i = 0; i < n; ++i) {
 				auto* light = LightKit::CloneLight();
 				if (!light) {
@@ -215,33 +245,47 @@ namespace Plugin
 			const bool isl = InverseSquare();
 			// the two sliders and Dim in daylight, then the per-lighting strength the rows were tuned with (no plain-drawing step:
 			// RowStrengthFor already holds the Vanilla / ENB difference)
-			const float      bright = Brightness() * DaylightFactor() * RowStrengthFor(LightingFound()), reachPct = Reach();
-			RE::NiUpdateData update{};
+			const float brightNow = Brightness() * DaylightFactor();
+			const float bright = brightNow * RowStrengthFor(LightingFound()), reachPct = Reach();
+			// Dynamic Lighting (this session's, as the data was read with) makes the row flicker: a spray's own light is steady
+			// on its own, so the row shimmers by itself while the switch is on
+			static const auto start = std::chrono::steady_clock::now();
+			const double      seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+			const bool        flickers = DynamicLightingThisSession();
+			RE::NiUpdateData  update{};
 			for (auto& [root, live] : gLive) {
 				const auto& rec = *live.recipe;
-				const Axis  axis = AxisOf(live.ref.get(), live.root.get(), rec.beam);
-				const float length = RowLength(live.ref.get(), live.root.get(), axis);
+				const auto  path = PathOf(live.ref.get(), live.root.get(), rec.beam);
+				const auto& axis = path.axis;
+				const float length = path.length;
 				if (length <= 1.0f) {
 					continue;
 				}
 				const auto  toLocal = live.root->world.Invert();
 				const auto  row = BeamRow::Lay(length, static_cast<int>(live.lights.size()), rec.reach, kRowHeight);
-				const float rootScale = live.root->world.scale > 0.0f ? live.root->world.scale : 1.0f;
+				const auto& color = live.tint ? *live.tint : rec.color;
 				for (std::size_t i = 0; i < live.lights.size(); ++i) {
 					auto* light = live.lights[i] ? netimmerse_cast<RE::NiPointLight*>(live.lights[i]->light.get()) : nullptr;
 					if (!light) {
 						continue;
 					}
 					if (i >= row.size()) {  // a row cut so short it needs fewer: the spare lights rest dark at the hand
-						Dress(light, rec.color, 0.0f, 1.0f, isl);
+						Dress(light, color, 0.0f, 1.0f, isl);
+						light->local.translate = {};
 						continue;
 					}
 					const auto& s = row[i];
-					Dress(light, rec.color, rec.fade * s.strength * bright, s.reach * reachPct, isl);
-					if (rec.beam) {
-						light->local.translate = { 0.0f, s.along * length / rootScale, 0.0f };  // in the root's own units
-					} else {
-						light->local.translate = toLocal * (axis.start + axis.dir * (s.along * length));
+					const float reach = s.reach * reachPct;
+					const float want = rec.fade * s.strength * bright;
+					// a dimmer Brightness or daylight lowers the cap too, so the sliders still reach a capped row
+					const float steady = BeamRow::Steady(want, isl ? IslTop(reach) * (std::min)(brightNow, 1.0f) : 0.0f);
+					Dress(light, color, steady * (flickers ? BeamRow::Flicker(seconds, i) : 1.0f), reach, isl);
+					light->local.translate = toLocal * (axis.start + axis.dir * (s.along * length));  // on the path, in the root's units
+					if (static std::size_t told = 0; told < 6) {
+						++told;
+						SKSE::log::info("[ROW-LAID] {} light(s) over {:.0f} | reach {:.0f} | strength {:.2f} steady {:.2f} (set {:.2f}, top {:.2f}) | brightness {:.2f} | color {:.0f},{:.0f},{:.0f}{} | {}",
+							row.size(), length, reach, want, steady, light->GetLightRuntimeData().fade, isl ? IslTop(reach) : 0.0f, bright, color.red * 255.0f,
+							color.green * 255.0f, color.blue * 255.0f, live.tint ? " (the art pick's)" : "", flickers ? "flickers" : "steady");
 					}
 					light->Update(update);
 				}

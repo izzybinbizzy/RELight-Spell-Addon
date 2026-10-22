@@ -149,6 +149,7 @@ namespace Plugin
 	[[nodiscard]] bool                                  OptionLit(std::size_t a_option);                      // its switch is on, and Weapon lights if it is a weapon's
 	[[nodiscard]] const Stream*                         StreamOf(const RE::TESForm* a_base);                  // nullptr unless it is one of our streams
 	[[nodiscard]] const RE::NiColor*                    TintOf(const RE::TESForm* a_base);                    // an art pick's color, or nullptr
+	[[nodiscard]] const RE::NiColor*                    HandColorOf(const RE::TESForm* a_base);               // game art: its element's hand color
 	[[nodiscard]] std::string                           MeshKey(std::string_view a_path);
 	[[nodiscard]] std::string                           PathKey(std::string_view a_path);
 	[[nodiscard]] const StringMap<std::vector<Hand>>&   Hands();                           // hand key -> the layers that light it, highest order first
