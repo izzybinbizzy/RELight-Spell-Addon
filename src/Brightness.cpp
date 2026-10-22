@@ -17,7 +17,8 @@
 //   Dim in daylight   Brightness x a daylight factor: outdoors by the hour (full by day, none at night, a ramp at dawn and
 //                     dusk), indoors by how bright the room's own light is - looked at every two seconds
 // (Light colors and the Fire / Frost / Shock color picks were here until his order took the color variations out of the
-// menu: every light keeps its own color; an art pick's tint still recolors.)
+// menu, 2026-10-09; Light colors came back 2026-10-20 and left again 2026-10-21 - "pale and deep also need to be removed":
+// every light keeps its own color; an art pick's tint still recolors.)
 // The color is remembered like the fade: what RE::Light writes is the new base, what we wrote is never taken for one.
 // A flesh spell's light where FleshFX's look wins (LightKit.h FleshFx) is drawn in FleshFX's hue at the strength of that base.
 // The fading module (Fade*.cpp, Illuminated's) scales some of the same lights by charge and magicka right after this pass
@@ -37,6 +38,9 @@ namespace Plugin
 			const HandFx*        fx{ nullptr };
 			const RE::NiColor*   tint{ nullptr };
 			float                base{ 0.0f };        // the fade RE::Light last gave it
+			float                peak{ 0.0f };        // the most it gave: held while Dynamic Lighting is off, if it flickers
+			float                rlPhase{ -1.0f };    // RE::Light's flicker phase (the point light's constAttenuation) last frame
+			bool                 flickers{ false };   // RE::Light moved that phase: a flickering config, not a one-shot fade
 			float                written{ -1.0f };    // the fade we last wrote
 			float                baseRadius{ 0.0f };  // the reach RE::Light last gave it
 			float                wroteRadius{ -1.0f };
@@ -51,10 +55,6 @@ namespace Plugin
 		{
 			return a.red == b.red && a.green == b.green && a.blue == b.blue;
 		}
-
-		// ✂ HIS ORDER: *"remove the color variations from illuminated and relight in the lights menu"* - Light colors
-		// (Paler / Deeper) and the Fire / Frost / Shock color picks are gone: every light keeps the color RE::Light (or an art
-		// pick's tint) gives it. One place, so the lights that are scaled elsewhere (Held.cpp) draw the same.
 
 		float gDaylight = 1.0f, gDaylightClock = 2.0f;  // main thread only (UpdateBrightness)
 
@@ -152,10 +152,27 @@ namespace Plugin
 			if (data.fade != a_s.written) {
 				a_s.base = data.fade;  // written since we last touched it: that is the new base
 			}
+			// the peak follows a rise at once and sinks slowly (kPeakSink a second) toward a lower base, so a lasting change in what
+			// RE::Light gives (its own brightness slider, the reference's scale) is followed within seconds while a flicker's dips
+			// (a fraction of a second) barely move it
+			constexpr float kPeakSink = 0.02f;
+			a_s.peak = a_s.base >= a_s.peak ? a_s.base : (std::max)(a_s.base, a_s.peak * (1.0f - kPeakSink * a_dt));
 			if (data.radius.x != a_s.wroteRadius) {
 				a_s.baseRadius = data.radius.x;  // x and y are the reach, z is the size
 			}
-			const float fade = a_s.base * a_scale * (a_s.fx ? Oscillate(a_s, a_dt) : 1.0f);
+			// Dynamic Lighting off: an RE::Light light that flickers by its config is held at the most it reached. Only one that
+			// flickers: RE::Light (7.6, everyFrame.h) writes a point light's attenuation phases only in its flicker / pulse branch,
+			// so a phase that moved marks it; a one-shot fade (an explosion's or a rune's burst - 2.5's plain configs carry 349)
+			// keeps fading as RE::Light draws it, never held at its brightest
+			if (const auto* point = netimmerse_cast<RE::NiPointLight*>(a_light)) {
+				if (a_s.rlPhase >= 0.0f && point->constAttenuation != a_s.rlPhase) {
+					a_s.flickers = true;
+				}
+				a_s.rlPhase = point->constAttenuation;
+			}
+			const bool  dynamic = DynamicLightingThisSession();
+			const float held = dynamic || !a_s.flickers ? a_s.base : a_s.peak;
+			const float fade = held * a_scale * (a_s.fx && dynamic ? Oscillate(a_s, a_dt) : 1.0f);
 			data.fade = fade;
 			a_s.written = fade;
 			const float radius = a_s.baseRadius * a_reach;
@@ -250,6 +267,8 @@ namespace Plugin
 			for (const auto& m : made) {
 				auto& s = gSeen[m.light];
 				s.fx = m.fx;
+				// the walk may have met a hand light before its task handed it here, and cached it as not ours for good
+				gNotOurs.erase(m.light);
 			}
 		}
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -270,7 +289,9 @@ namespace Plugin
 			}
 			auto* niLight = bsLight->light.get();
 			// gNotOurs is the main thread's alone (this pass and the Keep sweep), so it is read with no lock
-			if (KnownNotOurs(niLight)) {
+			// a row light hangs under a spray / bolt (so it would read as ours) but Rows.cpp draws it whole every frame, the
+			// sliders included: scaled here too it would take them twice and lose its cutoff
+			if (KnownNotOurs(niLight) || IsRowLight(niLight)) {
 				continue;
 			}
 			// gSeenLock is taken per light, not across the walk: the fading module's NoteFadeWrite (the effect updates)

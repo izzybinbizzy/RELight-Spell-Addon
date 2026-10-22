@@ -336,6 +336,9 @@ namespace
 						tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
 					}
 				}
+				if constexpr (std::is_base_of_v<RE::Projectile, T>) {
+					Plugin::QueueRow(a_this);  // a bolt / spray / cone our data lights: its row of lights, hung on the main thread (Rows.cpp)
+				}
 			});
 			return root;
 		}
@@ -366,6 +369,7 @@ namespace
 				Plugin::UpdateOptionLights();
 				Plugin::UpdateHeldLights();
 				Plugin::UpdateBodyLights();  // the body glow while casting (BodyLights.cpp)
+				Plugin::UpdateRows();        // the rows of lights along bolts, sprays and cones (Rows.cpp)
 				// RE::Light has already written this frame's fades (its update runs inside `func` above): the sliders next, then
 				// the fading module as the final pass, on what the sliders wrote (each fade it writes is reported back -
 				// Brightness.cpp's NoteFadeWrite)
@@ -534,7 +538,8 @@ bool Plugin::WantedDark(RE::NiLight* a_light)
 
 bool Plugin::LeftOutByBudget(const RE::Actor* a_actor)
 {
-	const int who = HandLightsFor();
+	// Performance (his order 2026-10-20): the player and followers at most
+	const int who = PerformanceMode() ? (std::max)(HandLightsFor(), 2) : HandLightsFor();
 	if (!who || !a_actor || a_actor->IsPlayerRef()) {
 		return false;
 	}

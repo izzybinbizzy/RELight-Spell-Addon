@@ -579,6 +579,45 @@ namespace Fade
 			return Glow::Rgb{ best->red / top, best->green / top, best->blue / top };
 		}
 
+		// the shout the player has ready: the light its first word's spell wears - an effect's own light, else the light of
+		// the projectile it fires (his yes 2026-10-20: Reticle Arcs' shout bar in our color too). None for a power or a shout
+		// with no light; on Illuminated a light the plugin replaced reads as its own copy, so the bar wears the color we draw.
+		std::optional<Glow::Rgb> ShoutColor(RE::PlayerCharacter* a_player)
+		{
+			const auto* power = a_player ? a_player->GetActorRuntimeData().selectedPower : nullptr;
+			const auto* shout = power ? power->As<RE::TESShout>() : nullptr;
+			const auto* spell = shout ? shout->variations[0].spell : nullptr;
+			if (!spell) {
+				return std::nullopt;
+			}
+			const auto colorOf = [](const RE::TESObjectLIGH* a_light) -> std::optional<Glow::Rgb> {
+				if (!a_light) {
+					return std::nullopt;
+				}
+				const auto& c = a_light->data.color;
+				const float top = static_cast<float>((std::max)({ c.red, c.green, c.blue }));
+				if (top <= 5.0f) {
+					return std::nullopt;
+				}
+				return Glow::Rgb{ c.red / top, c.green / top, c.blue / top };
+			};
+			for (const auto* effect : spell->effects) {
+				const auto* base = effect ? effect->baseEffect : nullptr;
+				if (!base) {
+					continue;
+				}
+				if (const auto own = colorOf(base->data.light)) {
+					return own;
+				}
+				if (const auto* proj = base->data.projectileBase) {
+					if (const auto fired = colorOf(proj->data.light)) {
+						return fired;
+					}
+				}
+			}
+			return std::nullopt;
+		}
+
 		// what the HUD shows this frame: the player's hands that fade (not one left alone), the switches, and whether her
 		// weapons or spells are out (the gems and Reticle Arcs' bars show only then). Main thread, under gLock.
 		void PublishHud(const Settings& a_s)
@@ -610,6 +649,11 @@ namespace Fade
 						side.color = color.value_or(Glow::Rgb{});
 					}
 				}
+			}
+			if (a_s.enabled) {
+				const auto shout = ShoutColor(player);
+				hud.shoutLit = shout.has_value();
+				hud.shoutColor = shout.value_or(Glow::Rgb{});
 			}
 			std::lock_guard lock(gHudLock);
 			gHud = hud;

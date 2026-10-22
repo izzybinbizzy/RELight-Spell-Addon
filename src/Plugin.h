@@ -149,6 +149,7 @@ namespace Plugin
 	[[nodiscard]] bool                                  OptionLit(std::size_t a_option);                      // its switch is on, and Weapon lights if it is a weapon's
 	[[nodiscard]] const Stream*                         StreamOf(const RE::TESForm* a_base);                  // nullptr unless it is one of our streams
 	[[nodiscard]] const RE::NiColor*                    TintOf(const RE::TESForm* a_base);                    // an art pick's color, or nullptr
+	[[nodiscard]] const RE::NiColor*                    HandColorOf(const RE::TESForm* a_base);               // game art: its element's hand color
 	[[nodiscard]] std::string                           MeshKey(std::string_view a_path);
 	[[nodiscard]] std::string                           PathKey(std::string_view a_path);
 	[[nodiscard]] const StringMap<std::vector<Hand>>&   Hands();                           // hand key -> the layers that light it, highest order first
@@ -184,7 +185,7 @@ namespace Plugin
 	[[nodiscard]] std::size_t AutoHandEffects();  // spells lit by an automatic hand light now
 
 	// ------------------------------------------------------------------ Settings.cpp: the settings file
-	void                LoadSettings();
+	void                LoadSettings(bool a_log = true);  // a_log false: the quiet early read before the data (main.cpp)
 	void                SaveSettings();
 	[[nodiscard]] int   BrightnessPercent();
 	void                SetBrightnessPercent(int a_percent);
@@ -211,6 +212,14 @@ namespace Plugin
 	void               SetAutoLightsOn(bool a_on);
 	[[nodiscard]] bool AllLightsOff();  // Performance: every light of this mod off - the options' lights, hand, held and ground lights
 	void               SetAllLightsOff(bool a_off);
+	[[nodiscard]] int  ArtPick(int a_group);  // the chosen art of a DataText::kPickGroups group; 0 = the game's own
+	void               SetArtPick(int a_group, int a_v);
+	void               SetDynamicLighting(bool a_on);
+	[[nodiscard]] bool DynamicLighting();             // the saved choice (the menu): the RE::Light lights flicker as their configs say
+	[[nodiscard]] bool DynamicLightingThisSession();  // the choice this session's data was read with - it applies at the next start
+	void               FixDynamicLighting();          // main.cpp, before the data: the session takes the saved choice
+	[[nodiscard]] bool PerformanceMode();             // the Performance page's Quality pick on Performance (his 2026-10-20 order)
+	void               SetPerformanceMode(bool a_on);
 	// every setting and switch as (key, value), and back - the menu's presets (Menu.cpp)
 	[[nodiscard]] std::vector<std::pair<std::string, int>> SettingsSnapshot();
 	void                                                   ApplySettingsSnapshot(const std::vector<std::pair<std::string, int>>& a_values);
@@ -256,6 +265,22 @@ namespace Plugin
 	[[nodiscard]] bool        IsSprayLight(const RE::TESObjectLIGH* a_light);
 	// the light RE::Light (or the game) makes for a projectile a `stream` line names: ours for the sliders
 	[[nodiscard]] bool IsStreamObject(const RE::TESObjectREFR* a_ref);
+
+	// ------------------------------------------------------------------ Rows.cpp: a row of small lights along a bolt / spray / cone
+	struct RowRecipe
+	{
+		RE::NiColor color{ 1.0f, 1.0f, 1.0f };
+		float       fade{ 1.0f }, reach{ 300.0f };  // the projectile's own light: the row's middle glows as it would right under it
+		bool        beam{ true };                   // a bolt (along its model) - else a flame spray or cone (along its aim)
+		std::size_t option{ kNone };                // its switch
+	};
+	void                      SetRowRecipes(std::unordered_map<RE::FormID, RowRecipe>&& a_recipes);  // once, data load (Streams.cpp)
+	void                      QueueRow(RE::TESObjectREFR* a_ref);                                    // any thread: a projectile's 3D loaded - its row is hung next frame
+	void                      UpdateRows();                                                          // every frame, main thread (the player update)
+	void                      DropRows();                                                            // a game loads: the projectiles they hang on are the old game's
+	[[nodiscard]] bool        IsRowLight(const RE::NiLight* a_light);                                // one of Rows.cpp's lights (any pass that walks the scene skips it)
+	[[nodiscard]] std::size_t LiveRowLights();
+	[[nodiscard]] std::size_t RowsMade();
 
 	// ------------------------------------------------------------------ Held.cpp: a weapon's own light while it is drawn
 	void                      UpdateHeldLights();  // every frame, after UpdateOptionLights

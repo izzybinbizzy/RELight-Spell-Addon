@@ -185,6 +185,8 @@ namespace Fade
 		bool                   gemFull{ false };  // a gem at full charge too (the HUD page's Show at full charge)
 		float                  low{ 0.15f };      // the sputter point: under it a Reticle Arcs bar reads low
 		std::array<HudHand, 2> hands{};
+		bool                   shoutLit{ false };  // the shout the player has ready carries a light: `shoutColor` is its color
+		Glow::Rgb              shoutColor{};
 	};
 	[[nodiscard]] HudState Hud();
 	// a game menu is open (inventory, map, dialogue, the console ...): the HUD elements hide, as the game's own HUD does
@@ -218,7 +220,8 @@ namespace Fade
 		[[nodiscard]] bool Holding() noexcept;                                       // a choice is on a light now (any thread)
 		bool               SetFromText(RE::FormID a_id, std::string_view a_choice);  // "auto", "off" or "r,g,b", as the menu would
 		void               Release();                                                // every light back as its owner left it (a load)
-		void __stdcall     Render();                                                 // the page
+		void               RenderSpells();                                           // the Spell page's list
+		void __stdcall     RenderWeapons();                                          // the Weapons and Staves page
 	}
 
 	// ------------------------------------------------------------------ FadeMenu.cpp

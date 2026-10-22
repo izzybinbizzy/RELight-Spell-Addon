@@ -62,8 +62,10 @@ namespace
 			Plugin::gNearby);
 		Fade::Tuning::Register("Vanilla and ENB", "GroundLights", 1.0f, 0.0f, 1.0f,
 			"1: off Community Shaders a hand light lights the ground too (its twin, made with land lighting on); 0: off", Plugin::gGroundLightsOn);
+		Plugin::LoadSettings(false);  // the art picks and Dynamic Lighting decide which data files count
+		Plugin::FixDynamicLighting();
 		Plugin::LoadData();
-		Plugin::LoadSettings();
+		Plugin::LoadSettings();             // again: the option switches need the options the data made
 		Plugin::ReadLighting();             // before the hand lights: off Community Shaders they are drawn plain
 		Plugin::RaiseStreamLights();        // 2.3: the sprays' and bolts' raised copies - before the hand lights remember each effect's own light
 		Plugin::ApplyWards("data loaded");  // before the hand lights: a silenced ward effect must not get one
@@ -121,6 +123,7 @@ namespace
 		case SKSE::MessagingInterface::kPreLoadGame:
 			Plugin::DropGroundLights();  // the hands and casting lights they follow are the old game's
 			Plugin::DropBodyLights();    // and the art the body lights hang on
+			Plugin::DropRows();          // and the projectiles the rows hang on
 			Fade::OnGameLoading();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -129,6 +132,7 @@ namespace
 				// no kPreLoadGame comes before a new game: the last game's twins and fading go here
 				Plugin::DropGroundLights();
 				Plugin::DropBodyLights();
+				Plugin::DropRows();
 				Fade::OnGameLoading();
 			}
 			Plugin::ApplyWards("a save loaded");  // a ward mod that resets art at load may have put it back

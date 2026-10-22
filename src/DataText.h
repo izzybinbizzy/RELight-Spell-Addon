@@ -69,9 +69,92 @@ namespace DataText
 	struct OptionText
 	{
 		std::string download, name, id, category, author, desc;
-		bool        weapons{ false }, switchable{ false };
+		std::string pickGroup, pickName;                                      // `pick <group> <name>`: an art pick's file, read only while that pick is chosen
+		bool        weapons{ false }, switchable{ false }, dynamic{ false };  // `dynamic`: read only while Dynamic Lighting is on
 		int         order{ 0 }, menu{ 0 };
 	};
+
+	// the art picks the menu offers (the installer's four groups until 2.6); choice 0 of each is the game's own art, no file
+	inline constexpr std::array<std::string_view, 4>                kPickGroups{ "fire", "frost", "shock", "healing" };
+	inline constexpr std::array<std::array<std::string_view, 4>, 4> kPickNames{ {
+		{ "Vanilla", "Inferno", "Embers XD", "Kittytail Flame" },
+		{ "Vanilla", "Kittytail", "", "" },
+		{ "Vanilla", "Kittytail Lightning", "Voltage", "" },
+		{ "Vanilla", "Kittytail healing", "", "" },
+	} };
+
+	// how many choices group a_group has, the game's own art included (0 for no such group)
+	[[nodiscard]] constexpr int PickCount(int a_group)
+	{
+		if (a_group < 0 || a_group >= static_cast<int>(kPickNames.size())) {
+			return 0;
+		}
+		int n = 0;
+		for (const auto name : kPickNames[static_cast<std::size_t>(a_group)]) {
+			n += name.empty() ? 0 : 1;
+		}
+		return n;
+	}
+
+	// the group's index, or -1
+	[[nodiscard]] inline int PickGroup(std::string_view a_group)
+	{
+		for (std::size_t g = 0; g < kPickGroups.size(); ++g) {
+			if (kPickGroups[g] == a_group) {
+				return static_cast<int>(g);
+			}
+		}
+		return -1;
+	}
+
+	// the choice's index in its group (1 or more for a pick with a file), or -1
+	[[nodiscard]] inline int PickChoice(int a_group, std::string_view a_name)
+	{
+		if (a_group < 0 || a_group >= static_cast<int>(kPickNames.size()) || a_name.empty()) {
+			return -1;
+		}
+		const auto& names = kPickNames[static_cast<std::size_t>(a_group)];
+		for (std::size_t i = 1; i < names.size(); ++i) {
+			if (names[i] == a_name) {
+				return static_cast<int>(i);
+			}
+		}
+		return -1;
+	}
+
+	// what a 2.5 install chose in its installer, read off the data file names it put down (only the chosen pick's files)
+	struct OldPicks
+	{
+		bool               found = false;  // an old install is there (its Core file)
+		bool               dynamic = false;
+		std::array<int, 4> art{};
+	};
+
+	[[nodiscard]] inline OldPicks PicksFromOldFiles(const std::vector<std::string>& a_fileNames)
+	{
+		const auto has = [&](std::string_view a_name) {
+			for (const auto& f : a_fileNames) {
+				if (f == a_name) {
+					return true;
+				}
+			}
+			return false;
+		};
+		OldPicks out;
+		out.found = has("Spells - Core.txt");
+		if (!out.found) {
+			return out;
+		}
+		out.dynamic = has("Spells - Core - Dynamic Lighting.txt");
+		for (std::size_t g = 0; g < kPickNames.size(); ++g) {
+			for (std::size_t i = 1; i < kPickNames[g].size(); ++i) {
+				if (!kPickNames[g][i].empty() && has(std::string("Spells - ").append(kPickNames[g][i]).append(".txt"))) {
+					out.art[g] = static_cast<int>(i);
+				}
+			}
+		}
+		return out;
+	}
 
 	// a light on a mesh key: a `stream` (node + r g b fade radius size cutoff x y z), a `held` or a `body` (no node)
 	struct LightText
@@ -153,6 +236,15 @@ namespace DataText
 		if (kind == "menugroup" && p.size() == 3) {
 			opt.category = std::string(p[1]);
 			opt.author = p[2] == "-" ? std::string() : std::string(p[2]);
+			return true;
+		}
+		if (kind == "pick" && p.size() == 3 && PickChoice(PickGroup(p[1]), p[2]) > 0) {
+			opt.pickGroup = std::string(p[1]);
+			opt.pickName = std::string(p[2]);
+			return true;
+		}
+		if (kind == "dynamic" && p.size() == 1) {
+			opt.dynamic = true;
 			return true;
 		}
 		if (kind == "desc" && p.size() == 2 && !p[1].empty()) {

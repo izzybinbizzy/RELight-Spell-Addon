@@ -14,6 +14,7 @@
 //   DimInDaylight=1             0 off, 1 a little, 2 more (Brightness.cpp)
 //   HandLightsFor=0             0 everyone, 1 everyone nearby, 2 player and followers, 3 player only (main.cpp)
 //   AutoLights=1                spells from mods with no patch get a hand light too (HandLights.cpp)
+//   Quality=0                   0 quality, 1 performance: hand, weapon and body lights for the player and followers only (Hooks.cpp)
 //   [Switches]
 //   Spells - Runes=1            one line per switch; a switch with no line is on. A line for an option that is not
 //                               installed now is kept as it is, so reinstalling the option brings its switch back
@@ -24,6 +25,7 @@
 // loader threads, so each one is an atomic (relaxed: no setting depends on another being written first). The file is written
 // beside itself and moved over it, so a crash or a full disk mid-write leaves the old settings, never half a file.
 
+#include "DataText.h"
 #include "FadeSettingsText.h"
 #include "Plugin.h"
 
@@ -35,19 +37,27 @@ namespace Plugin
 		// up to 2.5 the same file was RelightSpellAddon.ini: read while the new one is not there yet, never written (HIS ORDER
 		// 2026-10-20: "i want relight update to not affect old settings files")
 		constexpr const char* kOldPath = "Data/SKSE/Plugins/RelightSpellAddon.ini";
+		constexpr const char* kOldFolder = "Data/SKSE/Plugins/RelightSpellAddon";  // a 2.5 install's data files
 		constexpr int         kMin = 10, kMax = 200;
 		constexpr int         kReachMin = 50, kReachMax = 150;
 
-		std::atomic<int>  gBrightness{ 100 };
-		std::atomic<int>  gReach{ 100 };
-		std::atomic<bool> gSneak{ false };
-		std::atomic<bool> gHands{ true };
-		std::atomic<bool> gWeapons{ true };
-		std::atomic<int>  gWard{ 0 };
-		std::atomic<int>  gDaylight{ 1 };
-		std::atomic<int>  gHandsFor{ 0 };
-		std::atomic<bool> gAuto{ true };
-		std::atomic<bool> gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
+		std::atomic<int>                gBrightness{ 100 };
+		std::atomic<int>                gReach{ 100 };
+		std::atomic<bool>               gSneak{ false };
+		std::atomic<bool>               gHands{ true };
+		std::atomic<bool>               gWeapons{ true };
+		std::atomic<int>                gWard{ 0 };
+		std::atomic<int>                gDaylight{ 1 };
+		std::atomic<int>                gHandsFor{ 0 };
+		std::atomic<bool>               gAuto{ true };
+		std::atomic<bool>               gAllOff{ false };  // his Performance switch (Illuminated's CLAUDE.md): every light of this mod off
+		std::array<std::atomic<int>, 4> gArt{};            // fire, frost, shock, healing art: 0 = the game's own (DataText::kPickNames)
+		std::atomic<bool>               gDynamic{ true };
+		std::atomic<bool>               gDynamicSession{ true };  // what this session's data was read with (FixDynamicLighting)
+
+		// an art pick within its group's choices (DataText::kPickNames - one list, so a new pick needs no second edit)
+		[[nodiscard]] int ClampPick(int a_group, int a_v) { return std::clamp(a_v, 0, (std::max)(DataText::PickCount(a_group) - 1, 0)); }
+		std::atomic<bool> gPerformance{ false };
 
 		[[nodiscard]] std::string_view Trim(std::string_view a_s) noexcept
 		{
@@ -92,6 +102,12 @@ namespace Plugin
 			{ "HandLightsFor", [] { return gHandsFor.load(); }, [](int v) { gHandsFor = std::clamp(v, 0, 3); } },
 			{ "AutoLights", [] { return gAuto ? 1 : 0; }, [](int v) { gAuto = v != 0; } },
 			{ "AllLightsOff", [] { return gAllOff ? 1 : 0; }, [](int v) { gAllOff = v != 0; } },
+			{ "FireArt", [] { return gArt[0].load(); }, [](int v) { gArt[0] = ClampPick(0, v); } },
+			{ "FrostArt", [] { return gArt[1].load(); }, [](int v) { gArt[1] = ClampPick(1, v); } },
+			{ "ShockArt", [] { return gArt[2].load(); }, [](int v) { gArt[2] = ClampPick(2, v); } },
+			{ "HealingArt", [] { return gArt[3].load(); }, [](int v) { gArt[3] = ClampPick(3, v); } },
+			{ "DynamicLighting", [] { return gDynamic ? 1 : 0; }, [](int v) { gDynamic = v != 0; } },
+			{ "Quality", [] { return gPerformance ? 1 : 0; }, [](int v) { gPerformance = v != 0; } },
 		};
 
 		// [Switches] lines for options that are not installed now, as read: written back unchanged, so an option taken out
@@ -112,6 +128,42 @@ namespace Plugin
 				}
 			}
 			return false;
+		}
+
+		[[nodiscard]] bool IsPickKey(std::string_view a_key)
+		{
+			for (const auto* k : { "FireArt", "FrostArt", "ShockArt", "HealingArt", "DynamicLighting" }) {
+				if (SameText(a_key, k)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		// until 2.5 the art picks and Dynamic Lighting were installer choices: a file with none of their keys takes them from
+		// the data files a 2.5 install left in its own folder (a manual update over it keeps that folder)
+		void CarryOldPicks(bool a_log)
+		{
+			std::vector<std::string> names;
+			std::error_code          ec;
+			for (std::filesystem::directory_iterator it{ kOldFolder, ec }, end; !ec && it != end; it.increment(ec)) {
+				names.push_back(it->path().filename().string());
+			}
+			const auto old = DataText::PicksFromOldFiles(names);
+			if (!old.found) {
+				return;
+			}
+			for (std::size_t g = 0; g < gArt.size(); ++g) {
+				gArt[g] = old.art[g];
+			}
+			gDynamic = old.dynamic;
+			if (!a_log) {
+				return;
+			}
+			SKSE::log::info(
+				"settings: the art picks and Dynamic Lighting taken from the 2.5 install (fire {}, frost {}, shock {}, healing {}, "
+				"Dynamic Lighting {})",
+				old.art[0], old.art[1], old.art[2], old.art[3], old.dynamic ? "on" : "off");
 		}
 
 		// the file itself: written beside itself and moved over, on the thread that calls it (the main thread - SaveSettings)
@@ -150,7 +202,7 @@ namespace Plugin
 		}
 	}
 
-	void LoadSettings()
+	void LoadSettings(bool a_log)
 	{
 		gOtherSwitches.clear();
 		std::ifstream            in(Fade::SettingsText::ReadFrom(kPath, kOldPath));
@@ -159,6 +211,7 @@ namespace Plugin
 		std::size_t              read = 0;
 		std::vector<std::string> problems;
 		std::vector<std::string> unknown;  // each unknown section named once
+		bool                     picksRead = false;
 		while (in && std::getline(in, line)) {
 			const auto l = Trim(line);
 			if (l.empty() || l.front() == ';' || l.front() == '#') {
@@ -189,6 +242,7 @@ namespace Plugin
 			}
 			++read;
 			if (settings) {
+				picksRead = picksRead || IsPickKey(key);
 				if (!ApplySetting(key, *v)) {
 					problems.push_back(std::format("{}: not a setting", key));
 				}
@@ -204,6 +258,12 @@ namespace Plugin
 					gOtherSwitches.emplace_back(std::string(key), *v);
 				}
 			}
+		}
+		if (!picksRead) {
+			CarryOldPicks(a_log);
+		}
+		if (!a_log) {
+			return;  // the early read before the data (main.cpp): the read after it says what it found
 		}
 		for (const auto& p : problems) {
 			SKSE::log::warn("settings: {}", p);
@@ -338,6 +398,19 @@ namespace Plugin
 	void SetAutoLightsOn(bool a_on) { gAuto = a_on; }
 	bool AllLightsOff() { return gAllOff; }
 	void SetAllLightsOff(bool a_off) { gAllOff = a_off; }
+	int  ArtPick(int a_group) { return a_group >= 0 && a_group < 4 ? gArt[static_cast<std::size_t>(a_group)].load() : 0; }
+	void SetArtPick(int a_group, int a_v)
+	{
+		if (a_group >= 0 && a_group < 4) {
+			gArt[static_cast<std::size_t>(a_group)] = ClampPick(a_group, a_v);
+		}
+	}
+	bool DynamicLighting() { return gDynamic; }
+	bool DynamicLightingThisSession() { return gDynamicSession; }
+	void FixDynamicLighting() { gDynamicSession = gDynamic.load(); }
+	void SetDynamicLighting(bool a_on) { gDynamic = a_on; }
+	bool PerformanceMode() { return gPerformance; }
+	void SetPerformanceMode(bool a_on) { gPerformance = a_on; }
 
 	// his call: a pack the build split across the downloads is ONE switch - its files share a `file` line, so
 	// every option with that id turns together
