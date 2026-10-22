@@ -61,6 +61,12 @@ namespace Plugin
 			}
 		}
 
+		// Community Shaders draws a row light at 4x its fade, so twice the reach laid; drawn plain a row reaches only that
+		[[nodiscard]] float RowReachFor(Lighting a_lighting)
+		{
+			return a_lighting == Lighting::kShaders ? 1.0f : 2.0f;
+		}
+
 		[[nodiscard]] bool RowsOn(const RE::PlayerCharacter* a_player)
 		{
 			return !PerformanceMode() && !AllLightsOff() && !(SneakOn() && a_player && a_player->IsSneaking());
@@ -275,7 +281,7 @@ namespace Plugin
 						continue;
 					}
 					const auto& s = row[i];
-					const float reach = s.reach * reachPct;
+					const float reach = s.reach * reachPct * RowReachFor(LightingFound());
 					const float want = rec.fade * s.strength * bright;
 					// a dimmer Brightness or daylight lowers the cap too, so the sliders still reach a capped row
 					const float steady = BeamRow::Steady(want, isl ? IslTop(reach) * (std::min)(brightNow, 1.0f) : 0.0f);
