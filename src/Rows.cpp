@@ -46,8 +46,8 @@ namespace Plugin
 		std::size_t                                     gMade = 0;
 		std::mutex                                      gQueueLock;
 		std::vector<RE::NiPointer<RE::TESObjectREFR>>   gQueue;  // what a loader thread loaded, for the next frame (under gQueueLock)
-		// a projectile whose row a switch took off while it still flies (Performance, All lights off, sneaking): hung again when the
-		// rows come back, or a held stream stays bare until the next cast (main thread)
+		// a projectile whose row a switch took off while it still flies (Performance, All lights off, sneaking, its option, the light
+		// cap): hung again when the rows come back, or a held stream stays bare until the next cast (main thread)
 		std::vector<RE::NiPointer<RE::TESObjectREFR>> gParked;
 
 		// Illuminated's row, the same numbers (its 1.4: the row came off its cap, so Vanilla and ENB were trimmed to Community
@@ -199,18 +199,22 @@ namespace Plugin
 			gLive.erase(it);
 		}
 
-		void Hang(RE::TESObjectREFR* a_ref, RE::ShadowSceneNode* a_scene)
+		// true once the projectile wears its row
+		bool Hang(RE::TESObjectREFR* a_ref, RE::ShadowSceneNode* a_scene)
 		{
 			auto*      root = a_ref ? a_ref->Get3D() : nullptr;
 			auto*      node = root ? root->AsNode() : nullptr;
 			auto*      base = a_ref ? a_ref->GetBaseObject() : nullptr;
 			auto*      proj = a_ref ? a_ref->As<RE::Projectile>() : nullptr;
 			const auto recipe = base ? gRecipes.find(base->GetFormID()) : gRecipes.end();
-			if (!node || !node->parent || !proj || recipe == gRecipes.end() || gLive.contains(node) || gLights >= kMostRowLights) {
-				return;
+			if (node && gLive.contains(node)) {
+				return true;
+			}
+			if (!node || !node->parent || !proj || recipe == gRecipes.end() || gLights >= kMostRowLights) {
+				return false;
 			}
 			if (recipe->second.option != kNone && !OptionLit(recipe->second.option)) {
-				return;
+				return false;
 			}
 			const auto want = BeamRow::Lay(proj->GetProjectileRuntimeData().range, static_cast<int>(kMostPerRow), recipe->second.reach, kRowHeight);
 			const auto n = (std::min)(want.size(), kMostRowLights - gLights);
@@ -238,7 +242,7 @@ namespace Plugin
 				}
 			}
 			if (live.lights.empty()) {
-				return;
+				return false;
 			}
 			if (gMade < 6) {
 				SKSE::log::info("[ROW] {:08X} | {} light(s) along {:.0f} | reach target {:.0f} | fade {:.2f}", base->GetFormID(), live.lights.size(),
@@ -247,6 +251,7 @@ namespace Plugin
 			++gMade;
 			gLights += live.lights.size();
 			gLive.emplace(node, std::move(live));
+			return true;
 		}
 
 		void Move()
@@ -339,7 +344,7 @@ namespace Plugin
 			const bool gone = !live.root->parent || !live.ref || live.ref->Get3D() != live.root.get();
 			if (!on || gone || (live.recipe->option != kNone && !OptionLit(live.recipe->option))) {
 				drop.push_back(root);
-				if (!on && !gone) {
+				if (!gone) {
 					gParked.push_back(live.ref);
 				}
 			}
@@ -349,20 +354,20 @@ namespace Plugin
 		}
 		if (!on) {
 			gParked.insert(gParked.end(), queued.begin(), queued.end());
-			// only what still flies stays parked: a long stretch on Performance would otherwise keep every spray projectile
-			std::erase_if(gParked, [](const auto& a_ref) {
-				const auto* root = a_ref ? a_ref->Get3D() : nullptr;
-				return !root || !root->parent;
-			});
 		} else if (scene) {
-			for (const auto& ref : gParked) {
-				Hang(ref.get(), scene);  // Hang skips one whose 3D is gone
-			}
-			gParked.clear();
+			// kept while its option or the light cap still holds it back, so it is tried again
+			std::erase_if(gParked, [scene](const auto& a_ref) { return Hang(a_ref.get(), scene); });
 			for (const auto& ref : queued) {
-				Hang(ref.get(), scene);
+				if (!Hang(ref.get(), scene)) {
+					gParked.push_back(ref);
+				}
 			}
 		}
+		// only what still flies stays parked: a long stretch on Performance would otherwise keep every spray projectile
+		std::erase_if(gParked, [](const auto& a_ref) {
+			const auto* root = a_ref ? a_ref->Get3D() : nullptr;
+			return !root || !root->parent;
+		});
 		if (!gLive.empty()) {
 			Move();
 		}
