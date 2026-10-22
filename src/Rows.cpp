@@ -46,6 +46,9 @@ namespace Plugin
 		std::size_t                                     gMade = 0;
 		std::mutex                                      gQueueLock;
 		std::vector<RE::NiPointer<RE::TESObjectREFR>>   gQueue;  // what a loader thread loaded, for the next frame (under gQueueLock)
+		// a projectile whose row a switch took off while it still flies (Performance, All lights off, sneaking): hung again when the
+		// rows come back, or a held stream stays bare until the next cast (main thread)
+		std::vector<RE::NiPointer<RE::TESObjectREFR>> gParked;
 
 		// Illuminated's row, the same numbers (its 1.4: the row came off its cap, so Vanilla and ENB were trimmed to Community
 		// Shaders' lift)
@@ -336,12 +339,26 @@ namespace Plugin
 			const bool gone = !live.root->parent || !live.ref || live.ref->Get3D() != live.root.get();
 			if (!on || gone || (live.recipe->option != kNone && !OptionLit(live.recipe->option))) {
 				drop.push_back(root);
+				if (!on && !gone) {
+					gParked.push_back(live.ref);
+				}
 			}
 		}
 		for (const auto* root : drop) {
 			Forget(root, scene);
 		}
-		if (on && scene) {
+		if (!on) {
+			gParked.insert(gParked.end(), queued.begin(), queued.end());
+			// only what still flies stays parked: a long stretch on Performance would otherwise keep every spray projectile
+			std::erase_if(gParked, [](const auto& a_ref) {
+				const auto* root = a_ref ? a_ref->Get3D() : nullptr;
+				return !root || !root->parent;
+			});
+		} else if (scene) {
+			for (const auto& ref : gParked) {
+				Hang(ref.get(), scene);  // Hang skips one whose 3D is gone
+			}
+			gParked.clear();
 			for (const auto& ref : queued) {
 				Hang(ref.get(), scene);
 			}
@@ -361,6 +378,7 @@ namespace Plugin
 		for (const auto* root : all) {
 			Forget(root, scene);
 		}
+		gParked.clear();
 		std::lock_guard l{ gQueueLock };
 		gQueue.clear();
 	}
