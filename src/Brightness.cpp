@@ -267,6 +267,8 @@ namespace Plugin
 			for (const auto& m : made) {
 				auto& s = gSeen[m.light];
 				s.fx = m.fx;
+				// the walk may have met a hand light before its task handed it here, and cached it as not ours for good
+				gNotOurs.erase(m.light);
 			}
 		}
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
