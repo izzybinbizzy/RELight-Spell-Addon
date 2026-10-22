@@ -106,6 +106,7 @@ namespace Plugin
 		std::unordered_map<const RE::TESObjectLIGH*, RE::TESObjectLIGH*> plainOf, rowPlainOf;  // a record's plain copy: its other users', its rows' projectiles'
 		std::unordered_map<RE::FormID, RowRecipe>                        rows;
 		std::unordered_set<const RE::TESObjectLIGH*>                     handTinted;  // plain copies already in the hand's color
+		std::unordered_map<RE::FormID, const RE::TESObjectLIGH*>         rowCopy;     // each row's projectile -> the copy it wears
 		std::size_t                                                      sprays = 0, bolts = 0, failed = 0, dark = 0;
 		const auto                                                       n = ForEachLightField(*dh, [&](const RE::BGSProjectile* a_proj, RE::TESObjectLIGH*& a_light) {
 			const bool sprayRecord = a_light && gSpraySet.contains(a_light);
@@ -155,6 +156,7 @@ namespace Plugin
 				const auto& c = it->second->data.color;
 				rows[a_proj->GetFormID()] = { { c.red / 255.0f, c.green / 255.0f, c.blue / 255.0f }, a_light->fade,
 					static_cast<float>(a_light->data.radius), bolt, OptionOf(a_proj) };
+				rowCopy[a_proj->GetFormID()] = it->second;
 				a_light = it->second;
 				(spray ? sprays : bolts) += 1;
 				return true;
@@ -181,6 +183,13 @@ namespace Plugin
 			a_light = it->second;
 			return true;
 		});
+		// a later projectile of the record may have put the shared copy in the hand's color: every row wears its copy's final color
+		for (auto& [id, recipe] : rows) {
+			if (const auto copy = rowCopy.find(id); copy != rowCopy.end()) {
+				const auto& c = copy->second->data.color;
+				recipe.color = { c.red / 255.0f, c.green / 255.0f, c.blue / 255.0f };
+			}
+		}
 		gReady.store(true, std::memory_order_release);
 		SetRowRecipes(std::move(rows));
 		SKSE::log::info(

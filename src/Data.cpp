@@ -551,7 +551,7 @@ namespace Plugin
 			}
 			const std::string_view hand = has("shock") || has("lightning") || has("spark") ? "shockhandeffects" :
 			                              has("fire") || has("flame")                      ? "fireball01handeffects" :
-			                              has("frost") || has("ice")                       ? "frostbolthandfx01" :
+			                              has("frost") || (has("ice") && !has("voice"))    ? "frostbolthandfx01" :
 			                                                                                 "";
 			if (hand.empty()) {
 				return nullptr;
