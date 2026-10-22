@@ -590,22 +590,29 @@ namespace Fade
 			if (!spell) {
 				return std::nullopt;
 			}
+			const auto colorOf = [](const RE::TESObjectLIGH* a_light) -> std::optional<Glow::Rgb> {
+				if (!a_light) {
+					return std::nullopt;
+				}
+				const auto& c = a_light->data.color;
+				const float top = static_cast<float>((std::max)({ c.red, c.green, c.blue }));
+				if (top <= 5.0f) {
+					return std::nullopt;
+				}
+				return Glow::Rgb{ c.red / top, c.green / top, c.blue / top };
+			};
 			for (const auto* effect : spell->effects) {
 				const auto* base = effect ? effect->baseEffect : nullptr;
 				if (!base) {
 					continue;
 				}
-				const auto* light = base->data.light;
-				if (!light && base->data.projectileBase) {
-					light = base->data.projectileBase->data.light;
+				if (const auto own = colorOf(base->data.light)) {
+					return own;
 				}
-				if (!light) {
-					continue;
-				}
-				const auto& c = light->data.color;
-				const float top = static_cast<float>((std::max)({ c.red, c.green, c.blue }));
-				if (top > 5.0f) {
-					return Glow::Rgb{ c.red / top, c.green / top, c.blue / top };
+				if (const auto* proj = base->data.projectileBase) {
+					if (const auto fired = colorOf(proj->data.light)) {
+						return fired;
+					}
 				}
 			}
 			return std::nullopt;
