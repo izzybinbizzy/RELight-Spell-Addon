@@ -30,6 +30,7 @@ namespace Plugin
 		// off Community Shaders the game lets one piece of ground take only a few lights, so a row of 15 lit only the ground near
 		// her hands; fewer, wider lights reach the whole stream (BeamRow::Lay makes each stronger to keep the row's light)
 		constexpr std::size_t kMostPerRowPlain = 5;
+		constexpr float       kRowPlain = 0.5f;     // every row off Community Shaders
 		constexpr float       kRowHeight = 100.0f;  // a beam's usual height over the ground it lights
 		constexpr const char* kRowName = "RSARow";
 
@@ -294,7 +295,8 @@ namespace Plugin
 					}
 					const auto& s = row[i];
 					const float reach = s.reach * reachPct * RowReachFor(LightingFound());
-					const float want = rec.fade * s.strength * bright;
+					// his look: five stronger lights washed Flames and Sparks out white off Community Shaders
+					const float want = rec.fade * s.strength * bright * (isl ? 1.0f : kRowPlain);
 					// a dimmer Brightness or daylight lowers the cap too, so the sliders still reach a capped row
 					const float steady = BeamRow::Steady(want, isl ? IslTop(reach) * (std::min)(brightNow, 1.0f) : 0.0f);
 					Dress(light, color, steady * (flickers ? BeamRow::Flicker(seconds, i) : 1.0f), reach, isl);
