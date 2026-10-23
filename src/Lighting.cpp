@@ -86,7 +86,12 @@ namespace Plugin
 			}
 			bool found = false;
 			do {
-				found = ::GetProcAddress(entry.hModule, "ENBGetSDKVersion") != nullptr;
+				// a counted reference: a module unloaded after the snapshot cannot be read through a stale handle
+				HMODULE module = nullptr;
+				if (::GetModuleHandleExW(0, entry.szModule, &module)) {
+					found = ::GetProcAddress(module, "ENBGetSDKVersion") != nullptr;
+					::FreeLibrary(module);
+				}
 			} while (!found && ::Module32NextW(snap, &entry));
 			::CloseHandle(snap);
 			return found;
