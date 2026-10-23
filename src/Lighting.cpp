@@ -2,19 +2,18 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// Which lighting the game draws with - Illuminated's Lighting.cpp, the same tests in the same order (2.2, his order "make sure
-// relight is structurally up to par with illuminated"). RE::Light stays the main driver: only the lights that cannot work
-// without knowing the lighting read it (his 2026-10-10 word) - the hand lights and their ground twins, the held and stream lights.
+// Which lighting the game draws with - Illuminated's Lighting.cpp, the same tests in the same order. RE::Light stays the main
+// driver: only the lights that cannot work without knowing the lighting read it - the hand lights and their ground twins, the
+// held and stream lights.
 //
 //   Community Shaders   inverse square lighting: a light's reach is worked out from its fade and its cutoff
 //   ENB                 } the game's own lighting: the inverse square words are ambient color, a light reaches its radius. The
 //   Vanilla             } hand, held and stream lights are drawn plain (LightKit::PlainOf)
 //
-// 🔁 HIS WORD: "re add the enb and cs and vanilla versions but don't make them manually selectable, just like illuminated it will
-// auto detect". The game is looked at once, at data load: Community Shaders (its inverse square shader, Light Limit Fix's
+// Automatic only, never a pick. The game is looked at once, at data load: Community Shaders (its inverse square shader, Light Limit Fix's
 // built-in one, or CommunityShaders.dll loaded) -> Community Shaders; an ENB that is running -> ENB; else Vanilla. ENB's settings
-// files alone never make it ENB: an ENB preset left in the game folder with no ENB running (his RELight profile with Open Shaders
-// unticked) drew Vanilla lights at ENB's strength, rows ~6x too dim. An ENB under another file name is found by its export.
+// files alone never make it ENB: an ENB preset left in the game folder with no ENB running drew Vanilla lights at ENB's
+// strength, rows ~6x too dim. An ENB under another file name is found by its export.
 //
 // COMMUNITY SHADERS' TWO WORDS (2.1's user report 2026-10-14, Bottled Shaders + KittyVFX: frost and shock hand lights dark):
 // Light Limit Fix reads the first two words of EVERY light's runtime data as its own flags and cutoff
@@ -70,7 +69,11 @@ namespace Plugin
 					return true;
 				}
 			}
-			const auto snap = ::CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+			// a module loading at that moment makes the snapshot fail with ERROR_BAD_LENGTH; Windows asks for a retry
+			auto snap = ::CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+			for (int tries = 0; snap == INVALID_HANDLE_VALUE && ::GetLastError() == ERROR_BAD_LENGTH && tries < 8; ++tries) {
+				snap = ::CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+			}
 			if (snap == INVALID_HANDLE_VALUE) {
 				return false;
 			}

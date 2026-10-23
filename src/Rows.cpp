@@ -62,7 +62,7 @@ namespace Plugin
 			case Lighting::kVanilla:
 				return 1.1f;
 			case Lighting::kEnb:
-				return 0.5f;  // his pick off the level-aim pictures of five-light rows
+				return 0.5f;  // the whole stream lit, not washed out
 			default:
 				return 1.0f;
 			}
@@ -295,7 +295,7 @@ namespace Plugin
 					}
 					const auto& s = row[i];
 					const float reach = s.reach * reachPct * RowReachFor(LightingFound());
-					// his look: five stronger lights washed Flames and Sparks out white off Community Shaders
+					// at full strength five lights wash a stream out white off Community Shaders
 					const float want = rec.fade * s.strength * bright * (isl ? 1.0f : kRowPlain);
 					// a dimmer Brightness or daylight lowers the cap too, so the sliders still reach a capped row
 					const float steady = BeamRow::Steady(want, isl ? IslTop(reach) * (std::min)(brightNow, 1.0f) : 0.0f);
