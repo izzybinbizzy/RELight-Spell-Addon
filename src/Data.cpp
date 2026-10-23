@@ -533,16 +533,54 @@ namespace Plugin
 				for (const auto* expl : LightKit::FormsOf<RE::BGSExplosion>()) {
 					add(expl);
 				}
+				for (const auto* hazard : LightKit::FormsOf<RE::BGSHazard>()) {
+					add(hazard);
+				}
 				return out;
 			}();
 			return keys.contains(a_key);
 		}
 
-		// a projectile or explosion of the game's own art wears its element's hand color for the pick, ahead of the pick's tint
-		// lines, so every light of the spell is one color; atronach and wraith art is left to the elementals' own mods
+		// the hazards a spell leaves: a Spawn Hazard effect's, the wall pieces an effect's impact data places (Wall of Flames ...),
+		// and the burning ground its explosion places - a trap's hazard is not one
+		[[nodiscard]] bool SpellHazard(const RE::TESForm* a_form)
+		{
+			static const auto hazards = [] {
+				std::unordered_set<const RE::TESForm*> out;
+				const auto                             addPlaced = [&out](const RE::BGSExplosion* a_expl) {
+					if (a_expl) {
+						out.insert(a_expl->data.impactPlacedObject);
+					}
+				};
+				for (const auto* mgef : LightKit::FormsOf<RE::EffectSetting>()) {
+					if (!mgef) {
+						continue;
+					}
+					if (mgef->HasArchetype(RE::EffectSetting::Archetype::kSpawnHazard)) {
+						out.insert(mgef->data.associatedForm);
+					}
+					if (const auto* set = mgef->data.impactDataSet) {
+						for (const auto& entry : set->impactMap) {
+							out.insert(entry.second ? entry.second->hazard : nullptr);
+						}
+					}
+					addPlaced(mgef->data.explosion);
+					if (const auto* proj = mgef->data.projectileBase) {
+						addPlaced(proj->data.explosionType);
+					}
+				}
+				out.erase(nullptr);
+				return out;
+			}();
+			return hazards.contains(a_form);
+		}
+
+		// a projectile, explosion or spell hazard of the game's own art wears its element's hand color for the pick, ahead of the
+		// pick's tint lines, so every light of the spell is one color; atronach and wraith art is left to the elementals' own mods
 		[[nodiscard]] const RE::NiColor* ElementHandColor(const RE::TESForm* a_base, const std::string& a_key)
 		{
-			if (!a_base || !(a_base->Is(RE::FormType::Projectile) || a_base->Is(RE::FormType::Explosion)) || a_key.empty() || !GameArtKey(a_key)) {
+			if (!a_base || !(a_base->Is(RE::FormType::Projectile) || a_base->Is(RE::FormType::Explosion) || a_base->Is(RE::FormType::Hazard)) ||
+				a_key.empty() || !GameArtKey(a_key) || (a_base->Is(RE::FormType::Hazard) && !SpellHazard(a_base))) {
 				return nullptr;
 			}
 			const auto has = [&](std::string_view a_word) { return a_key.find(a_word) != std::string::npos; };

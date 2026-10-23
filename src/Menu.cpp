@@ -78,6 +78,28 @@ namespace Plugin
 			                                                                                         Page::kConfigs;
 		}
 
+		// Illuminated's Praedy's Staves page: each staff under the mod it needs, in the sections and words of its settings file
+		struct PraedySection
+		{
+			std::string_view option, group, label, needs;
+		};
+		constexpr PraedySection kPraedySections[]{
+			{ "Praedy's Staves", "Setup", "Praedy's Staves", "" },
+			{ "Praedy's Staves - Legacy of the Dragonborn", "Setup", "Legacy of the Dragonborn", "Needs Legacy of the Dragonborn (LegacyoftheDragonborn.esm)." },
+			{ "Praedy's Staves - Spider control rod", "Forgotten Seasons", "Spider control rod", "Needs the Forgotten Seasons Creation (ccTWBSSE001-PuzzleDungeon.esm)." },
+			{ "Praedy's Staves - Ayleid staff", "The Cause", "Ayleid staff", "Needs The Cause Creation (ccBGSSSE067-DaedInv.esm)." },
+			{ "Praedy's Staves - Olivias staff", "3DNPC", "Olivias staff", "Needs Interesting NPCs (3DNPC.esp)." },
+			{ "Praedy's Staves - Staff of Worms", "Undeath", "Staff of Worms", "Needs Undeath (Undeath.esp)." },
+			{ "Praedy's Staves - Staff of Meteor Storms", "Extras", "Staff of Meteor Storms", "Needs Staff of Meteor Storms (RiverStaff.esp)." },
+		};
+
+		// its section's place on the page (a staff the table does not know goes last, under its own name)
+		[[nodiscard]] std::size_t PraedyIndexOf(const Option& a_option)
+		{
+			const auto it = std::ranges::find(kPraedySections, std::string_view{ a_option.name }, &PraedySection::option);
+			return static_cast<std::size_t>(it - std::ranges::begin(kPraedySections));
+		}
+
 		// The look (his ask: "a cool ui design ... not too crazy, just a subtle glowy vibe"): warm spell-light
 		// amber on the menu's own dark - headings on a soft glow that fades to the right with a thin lit underline, gold
 		// check marks and slider grips, frames a touch warmer when hovered. Scoped to our pages, so no other mod's changes.
@@ -196,12 +218,17 @@ namespace Plugin
 				if (!o.switchable || PageOf(o) != a_page || !seen.insert(o.id).second) {
 					continue;
 				}
-				const Heading heading = a_page == Page::kConfigs ? ConfigsHeading(o) :
-				                        a_page == Page::kArt     ? Heading{ 0, T("Weapon Enchantments") } :
-				                                                   Heading{ 0, T("Praedy's Staves") };
+				Heading heading = a_page == Page::kConfigs ? ConfigsHeading(o) : Heading{ 0, T("Weapon Enchantments") };
+				if (a_page == Page::kPraedys) {
+					const auto at = PraedyIndexOf(o);
+					heading = { static_cast<int>(at), at < std::size(kPraedySections) ? std::string{ kPraedySections[at].group } : o.name };
+				}
 				rows.push_back({ heading, i });
 			}
-			if (a_page != Page::kPraedys) {
+			if (a_page == Page::kPraedys) {
+				// a section's staves together, the sections in Illuminated's order, each staff where the data puts it
+				std::ranges::stable_sort(rows, [](const Row& a_x, const Row& a_y) { return a_x.heading.rank < a_y.heading.rank; });
+			} else {
 				std::ranges::stable_sort(rows, [&opts](const Row& a_x, const Row& a_y) {
 					return std::tie(a_x.heading.rank, a_x.heading.text, opts[a_x.index].name) < std::tie(a_y.heading.rank, a_y.heading.text, opts[a_y.index].name);
 				});
@@ -224,13 +251,19 @@ namespace Plugin
 					GlowHeading(shown.c_str());  // GlowHeading translates
 				}
 				ImGuiMCP::PushID(static_cast<int>(row.index));
-				bool on = o.on;
-				if (ImGuiMCP::Checkbox(T(o.name.c_str()), &on)) {
+				const auto           at = a_page == Page::kPraedys ? PraedyIndexOf(o) : std::size(kPraedySections);
+				const PraedySection* staff = at < std::size(kPraedySections) ? &kPraedySections[at] : nullptr;
+				const std::string    label{ staff ? staff->label : std::string_view{ o.name } };
+				bool                 on = o.on;
+				if (ImGuiMCP::Checkbox(T(label.c_str()), &on)) {
 					SetOptionOn(row.index, on);
 					SaveSettings();
 					RehandSoon();
 				}
-				if (!o.desc.empty()) {  // his call: a broad word on what each switch lights
+				if (staff && !staff->needs.empty()) {
+					const std::string tip = std::string{ T(o.desc.c_str()) } + "\n" + T(std::string{ staff->needs }.c_str());
+					MenuStyle::Tip(tip.c_str());
+				} else if (!o.desc.empty()) {  // his call: a broad word on what each switch lights
 					MenuStyle::Tip(T(o.desc.c_str()));
 				}
 				const auto [lit, heldOut] = counts[o.id];  // every file of a pack

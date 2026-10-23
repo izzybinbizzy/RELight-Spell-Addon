@@ -27,6 +27,10 @@ namespace Plugin
 	{
 		constexpr std::size_t kMostRowLights = 64;  // every row light in the scene together
 		constexpr std::size_t kMostPerRow = 20;
+		// off Community Shaders the game lets one piece of ground take only a few lights, so a row of 15 lit only the ground near
+		// her hands; fewer, wider lights reach the whole stream (BeamRow::Lay makes each stronger to keep the row's light)
+		constexpr std::size_t kMostPerRowPlain = 5;
+		constexpr float       kRowPlain = 0.5f;     // every row off Community Shaders
 		constexpr float       kRowHeight = 100.0f;  // a beam's usual height over the ground it lights
 		constexpr const char* kRowName = "RSARow";
 
@@ -58,7 +62,7 @@ namespace Plugin
 			case Lighting::kVanilla:
 				return 1.1f;
 			case Lighting::kEnb:
-				return 0.18f;
+				return 0.5f;  // the whole stream lit, not washed out
 			default:
 				return 1.0f;
 			}
@@ -216,9 +220,10 @@ namespace Plugin
 			if (recipe->second.option != kNone && !OptionLit(recipe->second.option)) {
 				return false;
 			}
-			const auto want = BeamRow::Lay(proj->GetProjectileRuntimeData().range, static_cast<int>(kMostPerRow), recipe->second.reach, kRowHeight);
-			const auto n = (std::min)(want.size(), kMostRowLights - gLights);
 			const bool isl = InverseSquare();
+			const auto most = isl ? kMostPerRow : kMostPerRowPlain;
+			const auto want = BeamRow::Lay(proj->GetProjectileRuntimeData().range, static_cast<int>(most), recipe->second.reach, kRowHeight);
+			const auto n = (std::min)(want.size(), kMostRowLights - gLights);
 			Live       live{ RE::NiPointer<RE::NiAVObject>(node), RE::NiPointer<RE::TESObjectREFR>(a_ref), &recipe->second, {} };
 			live.tint = TintOf(base);
 			for (std::size_t i = 0; i < n; ++i) {
@@ -290,7 +295,8 @@ namespace Plugin
 					}
 					const auto& s = row[i];
 					const float reach = s.reach * reachPct * RowReachFor(LightingFound());
-					const float want = rec.fade * s.strength * bright;
+					// at full strength five lights wash a stream out white off Community Shaders
+					const float want = rec.fade * s.strength * bright * (isl ? 1.0f : kRowPlain);
 					// a dimmer Brightness or daylight lowers the cap too, so the sliders still reach a capped row
 					const float steady = BeamRow::Steady(want, isl ? IslTop(reach) * (std::min)(brightNow, 1.0f) : 0.0f);
 					Dress(light, color, steady * (flickers ? BeamRow::Flicker(seconds, i) : 1.0f), reach, isl);
