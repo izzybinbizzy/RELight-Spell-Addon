@@ -160,8 +160,8 @@ namespace Fade::Items
 			return c;
 		}
 
-		// a copy of the choices, written outside every lock (main thread, an SKSE task)
-		void Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
+		// a copy of the choices, written outside every lock (main thread, an SKSE task); false when the file was not written
+		[[nodiscard]] bool Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
 		{
 			std::ostringstream text;
 			text << "; " << Mod::kName << " - Lights by Item, written by its menu. One line per item that is not Auto:\n"
@@ -189,13 +189,17 @@ namespace Fade::Items
 				out << text.str();
 				if (!out.flush()) {
 					SKSE::log::warn("lights by item: {} could not be written", Mod::kItemsPath);
-					return;
+					out.close();
+					std::filesystem::remove(tmp, ec);
+					return false;
 				}
 			}
 			if (std::filesystem::rename(tmp, Mod::kItemsPath, ec); ec) {
 				SKSE::log::warn("lights by item: {} could not be replaced ({})", Mod::kItemsPath, ec.message());
 				std::filesystem::remove(tmp, ec);
+				return false;
 			}
+			return true;
 		}
 
 		void MarkChanged()
@@ -235,7 +239,13 @@ namespace Fade::Items
 				std::lock_guard lock(gLock);
 				copy = gChoices;
 			}
-			tasks->AddTask([c = std::move(copy)]() { Save(c); });
+			// a failed write is tried again once the choices have been quiet for kSaveQuietMs, not lost until the next change
+			tasks->AddTask([c = std::move(copy)]() {
+				if (!Save(c)) {
+					gChangedAt.store(NowMs(), std::memory_order_relaxed);
+					gDirty.store(true, std::memory_order_release);
+				}
+			});
 		}
 
 		// ------------------------------------------------------------------ applying, main thread
