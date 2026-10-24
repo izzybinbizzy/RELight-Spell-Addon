@@ -2,7 +2,7 @@
 // Copyright (C) 2026 izzydoingit
 // GPL-3.0-or-later; see LICENSE and the notice at the top of main.cpp.
 //
-// The hooks, and spell lights going out while you sneak - out of main.cpp since 2.2 (his order "make sure relight is
+// The hooks, and spell lights fading while you sneak - out of main.cpp since 2.2 (his order "make sure relight is
 // structurally up to par with illuminated": main.cpp holds the order of work and the SKSE messages, as Illuminated's does;
 // Illuminated keeps its update hooks in LightCopies.cpp):
 //   the spell-light call (up to four call sites, each before RE::Light's hook there): our hand lights made, the light
@@ -31,20 +31,100 @@
 
 namespace
 {
-	// every spell light the game made through the hooked call sites, so sneaking can find it again; and the lights put
-	// out while sneaking. Main thread only. Plain pointers: Keep.cpp holds each light, and ForgetSpellLights drops it here
-	// before it is freed
+	// every spell light the game made through the hooked call sites, so sneaking can find it again. Main thread only. Plain
+	// pointers: Keep.cpp holds each light, and ForgetSpellLights drops it here before it is freed
 	std::unordered_set<RE::NiLight*> gMagicLights;
-	std::vector<RE::NiLight*>        gCulled;
-	bool                             gWasSneaking = false;
 
-	bool PlayerSneaking()
+	// The sneak fade: while she sneaks with "Lights fade while sneaking", every light the sneaking pass finds fades to
+	// "Sneaking brightness" over half a second, and back up when she stands. 1 = not dimmed. Written by the player update,
+	// read on any thread
+	std::atomic<float> gSneakLevel{ 1.0f };
+	constexpr float    kSneakFadeSeconds = 0.5f;
+
+	// Our write is the LAST word on a dimmed light's fade and never a base for anyone else's: each light remembers the fade
+	// the other passes left it (`pre`) and what we wrote over it. Before any of them writes again - the player update, an
+	// effect update, the cell's animations - the light gets its `pre` back if nobody wrote since, and after them it is dimmed
+	// again; so Brightness, the fading module, RE::Light and the game only ever read their own numbers. Under gDimLock (an
+	// effect update may not be on the main thread)
+	struct Dimmed
 	{
+		float pre{ 0.0f };
+		float wrote{ 0.0f };
+		bool  down{ false };  // our write is on the light now
+	};
+	std::unordered_map<RE::NiLight*, Dimmed> gDim;
+	std::mutex                               gDimLock;
+	std::atomic<bool>                        gDimming{ false };  // gDim holds a light
+
+	void DimOne(RE::NiLight* a_light, Dimmed& a_d, float a_level)
+	{
+		auto& fade = a_light->GetLightRuntimeData().fade;
+		if (a_d.down && fade == a_d.wrote) {
+			return;
+		}
+		a_d.pre = fade;
+		a_d.wrote = fade * a_level;
+		fade = a_d.wrote;
+		a_d.down = true;
+	}
+
+	void DimAll(float a_level)
+	{
+		for (auto& [light, d] : gDim) {
+			DimOne(light, d, a_level);
+		}
+	}
+
+	void RestoreAll()
+	{
+		for (auto& [light, d] : gDim) {
+			if (!d.down) {
+				continue;
+			}
+			auto& fade = light->GetLightRuntimeData().fade;
+			if (fade == d.wrote) {
+				fade = d.pre;  // nobody wrote it since: back to what the others left it
+			}
+			d.down = false;
+		}
+	}
+
+	// around a pass of ours that writes fades after the player update (an effect update, the cell pass)
+	template <class F>
+	void UndimmedFor(F&& a_pass)
+	{
+		if (!gDimming.load(std::memory_order_acquire)) {
+			a_pass();
+			return;
+		}
+		std::lock_guard lock(gDimLock);
+		RestoreAll();
+		a_pass();
+		DimAll(gSneakLevel.load(std::memory_order_relaxed));
+	}
+
+	// a light made now is dimmed: she sneaks with the setting on, or her lights are still coming back up (any thread)
+	bool SneakDimsNow()
+	{
+		if (gSneakLevel.load(std::memory_order_relaxed) < 1.0f) {
+			return true;
+		}
 		if (!Plugin::SneakOn()) {
 			return false;
 		}
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		return player && player->IsSneaking();
+	}
+
+	float StepSneakLevel(const RE::PlayerCharacter* a_player, float a_delta)
+	{
+		const bool  sneaking = Plugin::SneakOn() && a_player && a_player->IsSneaking();
+		const float target = sneaking ? static_cast<float>(Plugin::SneakBrightness()) / 100.0f : 1.0f;
+		const float step = std::clamp(a_delta, 0.0f, 0.25f) / kSneakFadeSeconds;
+		float       level = gSneakLevel.load(std::memory_order_relaxed);
+		level = level < target ? (std::min)(level + step, target) : (std::max)(level - step, target);
+		gSneakLevel.store(level, std::memory_order_relaxed);
+		return level;
 	}
 
 	// The projectiles, explosions and hazards that are MAGIC: what a magic effect fires or sets off (its projectile, its
@@ -143,43 +223,47 @@ namespace
 		return k.spell;
 	}
 
-	void CullSpellLights()
+	// the player update, at its start: every light dimmed last frame back to what the other passes left it, so this frame's
+	// passes read their own numbers; DimSpellLights at the end finds this frame's lights again
+	void UndimForFrame()
+	{
+		std::lock_guard lock(gDimLock);
+		RestoreAll();
+		gDim.clear();
+		gDimming.store(false, std::memory_order_release);
+	}
+
+	// the player update, after every pass that writes a fade and before the ground twins copy them. A culled light is dimmed
+	// too: off Community Shaders a hand light is hidden and its ground twin copies its numbers
+	void DimSpellLights(float a_level)
 	{
 		auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
-		if (!ssn) {
+		if (a_level >= 1.0f || !ssn) {
 			return;
 		}
 		++gSneakFrame;
+		static std::vector<RE::NiLight*> found;  // main thread; its storage kept between frames
+		found.clear();
 		for (auto& bsLight : ssn->GetRuntimeData().activeLights) {
-			if (!bsLight || !bsLight->light) {
-				continue;
+			if (bsLight && bsLight->light && SneakSpellLight(bsLight->light.get())) {
+				found.push_back(bsLight->light.get());
 			}
-			auto* niLight = bsLight->light.get();
-			if (niLight->GetAppCulled()) {
-				continue;
+		}
+		for (auto* light : found) {
+			Plugin::KeepLight(light);  // outside gDimLock: Keep.cpp's sweep calls ForgetSpellLights
+		}
+		{
+			std::lock_guard lock(gDimLock);
+			for (auto* light : found) {
+				DimOne(light, gDim[light], a_level);
 			}
-			if (SneakSpellLight(niLight)) {
-				niLight->SetAppCulled(true);
-				Plugin::KeepLight(niLight);
-				gCulled.push_back(niLight);
-			}
+			gDimming.store(!gDim.empty(), std::memory_order_release);
 		}
 		// a light not seen for a few seconds has left the scene: what was worked out about it is let go
 		constexpr std::uint32_t kForget = 300;
 		if (gSneakFrame % kForget == 0) {
 			std::erase_if(gSneakKnown, [](const auto& a_kv) { return gSneakFrame - a_kv.second.frame > kForget; });
 		}
-	}
-
-	void UncullAll()
-	{
-		for (auto* l : gCulled) {
-			// a light held out for a switched-off option (or a hand light a switch put out) stays out when the player stands up
-			if (!Plugin::HeldOutForOption(l) && !Plugin::HandLightHeldOut(l)) {
-				l->SetAppCulled(false);
-			}
-		}
-		gCulled.clear();
 	}
 
 	// on the main thread only (an SKSE task from the hook below): a new spell light goes into our lists. The last
@@ -199,8 +283,8 @@ namespace
 		if (a_ours) {
 			Plugin::RememberLight(a_light.get(), a_handKey.empty() ? nullptr : Plugin::HandFxOf(a_handKey));
 		}
-		// a light made while the player was already sneaking was put out at once and comes here through AdoptSneakCulled;
-		// one made just before she crouched is put out by the next player update's sneaking pass, which reads gMagicLights
+		// a light made while her lights were dimmed was put out at once and comes here through AdoptSneakCulled; one made
+		// just before she crouched is dimmed by the next player update's sneaking pass, which reads gMagicLights
 	}
 
 	// "Hand lights for" (Illuminated's light budget for big fights, ported): a caster the setting leaves out gets
@@ -246,12 +330,12 @@ namespace
 		// threads walked the scene. RE::Light's own hook keeps nothing (it marks the light and returns); ours now hands
 		// the light to the main thread (an SKSE task, Truman's route for main-thread work), where every list of ours is
 		// filled and emptied. The task holds the light until then, and lets go of it on the main thread too.
-		// While she sneaks the light is made and put out at once (as a 3D load's are), so it comes back when she stands up
-		// (the menu's promise) instead of staying dark until the next cast.
+		// While her lights are dimmed the light is made and put out at once (as a 3D load's are), never a frame at full
+		// strength; the main thread lights it again at the sneaking strength.
 		if (made) {
 			LightKit::Guarded("spell light", [&]() {
 				const bool ours = hand || Plugin::IsSprayLight(a_light) || Plugin::IsStreamObject(a_ref);
-				const bool sneaking = PlayerSneaking() && SneakDarkens(a_ref);
+				const bool sneaking = SneakDimsNow() && SneakDarkens(a_ref);
 				if (sneaking) {
 					made->SetAppCulled(true);
 				}
@@ -280,7 +364,7 @@ namespace
 		static inline REL::Relocation<MagicLightFn> func;
 	};
 
-	// every light under a just-loaded 3D put out (any thread); returned, held, for the main thread to take into gCulled
+	// every light under a just-loaded 3D put out (any thread); returned, held, for the main thread to light again dimmed
 	[[nodiscard]] Plugin::LightList CullTree(RE::NiAVObject* a_root)
 	{
 		Plugin::LightList out;
@@ -294,21 +378,22 @@ namespace
 		return out;
 	}
 
-	// main thread: the lights a 3D load put out while she was sneaking join gCulled - or, if she stood up meanwhile, come
-	// back on (unless a switch or the hand-light switch holds them out)
+	// main thread: the lights put out at once while her lights were dimmed come back on at the strength of the moment
+	// (unless a switch or the hand-light switch holds them out)
 	void AdoptSneakCulled(const Plugin::LightList& a_lights)
 	{
-		const bool sneaking = gWasSneaking;
+		const float level = gSneakLevel.load(std::memory_order_relaxed);
 		for (const auto& light : a_lights) {
-			if (light->GetRefCount() <= 1) {
-				continue;  // already gone from the game
+			if (light->GetRefCount() <= 1 || Plugin::HeldOutForOption(light.get()) || Plugin::HandLightHeldOut(light.get())) {
+				continue;  // already gone from the game, or held out
 			}
-			if (sneaking) {
+			if (level < 1.0f) {
 				Plugin::KeepLight(light.get());
-				gCulled.push_back(light.get());
-			} else if (!Plugin::HeldOutForOption(light.get()) && !Plugin::HandLightHeldOut(light.get())) {
-				light->SetAppCulled(false);
+				std::lock_guard lock(gDimLock);
+				DimOne(light.get(), gDim[light.get()], level);
+				gDimming.store(true, std::memory_order_release);
 			}
+			light->SetAppCulled(false);
 		}
 	}
 
@@ -323,17 +408,17 @@ namespace
 				return root;
 			}
 			LightKit::Guarded("3D load", [a_this, root, tasks]() {
-				// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread
-				if (PlayerSneaking()) {
-					// an arrow, a trap's explosion or an oil fire keeps its light: only a magic object's go out (IsSpellObject)
-					if (auto culled = IsSpellObject(a_this) ? CullTree(root) : Plugin::LightList{}; !culled.empty()) {
+				// may be a loader thread: the lights are put out now (never a frame lit) and our lists take them on the main thread.
+				// RE::Light has already hung its light here; a switched-off option's goes out before its first frame
+				std::size_t option = Plugin::kNone;
+				if (auto culled = Plugin::CullOptionLightsUnder(root, option); !culled.empty()) {
+					tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
+				}
+				// while her lights are dimmed, the rest of a magic object's go out until the main thread dims them (an arrow, a
+				// trap's explosion or an oil fire keeps its light - IsSpellObject)
+				if (SneakDimsNow() && IsSpellObject(a_this)) {
+					if (auto culled = CullTree(root); !culled.empty()) {
 						tasks->AddTask([lights = std::move(culled)]() { AdoptSneakCulled(lights); });
-					}
-				} else {
-					// RE::Light has already hung its light here; a switched-off option's goes out before its first frame
-					std::size_t option = Plugin::kNone;
-					if (auto culled = Plugin::CullOptionLightsUnder(root, option); !culled.empty()) {
-						tasks->AddTask([lights = std::move(culled), option]() { Plugin::AdoptOptionLights(option, lights); });
 					}
 				}
 				if constexpr (std::is_base_of_v<RE::Projectile, T>) {
@@ -357,15 +442,8 @@ namespace
 			LightKit::Guarded("player update", [a_this, a_delta]() {
 				// first: every list forgets the lights that left the game since the last frame, and they are freed
 				Plugin::SweepKeptLights();
-				const bool sneaking = Plugin::SneakOn() && a_this && a_this->IsSneaking();
-				if (sneaking) {
-					CullSpellLights();
-				} else if (gWasSneaking) {
-					UncullAll();
-				}
-				gWasSneaking = sneaking;
-				// after the sneaking pass, in the same frame, so a light given back above and then held out
-				// here never reaches the screen in between
+				UndimForFrame();
+				const float sneak = StepSneakLevel(a_this, a_delta);
 				Plugin::UpdateOptionLights();
 				Plugin::UpdateHeldLights();
 				Plugin::UpdateBodyLights();  // the body glow while casting (BodyLights.cpp)
@@ -375,6 +453,7 @@ namespace
 				// Brightness.cpp's NoteFadeWrite)
 				Plugin::UpdateBrightness(a_delta);
 				Fade::UpdateHands(a_delta);
+				DimSpellLights(sneak);       // over every fade written above
 				Plugin::TickGroundLights();  // last: off Community Shaders the hand lights' twins copy this frame's numbers (GroundLights.cpp)
 			});
 		}
@@ -390,7 +469,9 @@ namespace
 		{
 			func(a_this);
 			LightKit::Guarded("effect update", [a_this]() {
-				Fade::AfterReferenceEffect(a_this, std::is_same_v<T, RE::ModelReferenceEffect>);  // an art model, not a shader's actor
+				UndimmedFor([a_this]() {
+					Fade::AfterReferenceEffect(a_this, std::is_same_v<T, RE::ModelReferenceEffect>);  // an art model, not a shader's actor
+				});
 			});
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -406,7 +487,7 @@ namespace
 		{
 			func(a_cell);
 			// this frame's fading numbers again for every hand's lights, without advancing any timer
-			LightKit::Guarded("cell animations", []() { Fade::ReapplyAll(); });
+			LightKit::Guarded("cell animations", []() { UndimmedFor([]() { Fade::ReapplyAll(); }); });
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void                                    Install()
@@ -532,9 +613,12 @@ namespace Plugin
 
 bool Plugin::WantedDark(RE::NiLight* a_light)
 {
-	// the main thread's lists (GroundLights.cpp asks from the player update)
-	return (PlayerSneaking() && gMagicLights.contains(a_light)) || HeldOutForOption(a_light) || HandLightHeldOut(a_light);
+	// the main thread's lists (GroundLights.cpp asks from the player update). Sneaking is not here: a dimmed light's twin
+	// copies its dimmed fade
+	return HeldOutForOption(a_light) || HandLightHeldOut(a_light);
 }
+
+float Plugin::SneakLevel() { return gSneakLevel.load(std::memory_order_relaxed); }
 
 bool Plugin::LeftOutByBudget(const RE::Actor* a_actor)
 {
@@ -555,6 +639,9 @@ void Plugin::ForgetSpellLights(const GoneLights& a_gone)
 {
 	std::erase_if(gMagicLights, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
 	std::erase_if(gSneakKnown, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
-	std::erase_if(gCulled, [&](const RE::NiLight* a_l) { return a_gone.contains(a_l); });
+	{
+		std::lock_guard lock(gDimLock);
+		std::erase_if(gDim, [&](const auto& a_kv) { return a_gone.contains(a_kv.first); });
+	}
 	ForgetOptionLights(a_gone);
 }

@@ -7,7 +7,8 @@
 //   [Settings]
 //   Brightness=100              percent, 10 to 200 - this mod's lights only; the reach is held
 //   Reach=100                   percent, 50 to 150 - the peak is held
-//   LightsOffWhileSneaking=0
+//   LightsOffWhileSneaking=0    1 = her spell lights fade while she sneaks (the key keeps its old name: a player's file reads on)
+//   SneakingBrightness=0        percent, 0 to 100 - how bright they stay while she sneaks; 0 = they fade all the way out (Hooks.cpp)
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColor=0                 0 vanilla blue, 1 white - the ward's art and light (Wards.cpp); an older file's WardColour is read too
@@ -44,6 +45,7 @@ namespace Plugin
 		std::atomic<int>                gBrightness{ 100 };
 		std::atomic<int>                gReach{ 100 };
 		std::atomic<bool>               gSneak{ false };
+		std::atomic<int>                gSneakBrightness{ 0 };
 		std::atomic<bool>               gHands{ true };
 		std::atomic<bool>               gWeapons{ true };
 		std::atomic<int>                gWard{ 0 };
@@ -95,6 +97,7 @@ namespace Plugin
 			{ "Brightness", [] { return gBrightness.load(); }, [](int v) { gBrightness = std::clamp(v, kMin, kMax); } },
 			{ "Reach", [] { return gReach.load(); }, [](int v) { gReach = std::clamp(v, kReachMin, kReachMax); } },
 			{ "LightsOffWhileSneaking", [] { return gSneak ? 1 : 0; }, [](int v) { gSneak = v != 0; } },
+			{ "SneakingBrightness", [] { return gSneakBrightness.load(); }, [](int v) { gSneakBrightness = std::clamp(v, 0, 100); } },
 			{ "HandLights", [] { return gHands ? 1 : 0; }, [](int v) { gHands = v != 0; } },
 			{ "WeaponLights", [] { return gWeapons ? 1 : 0; }, [](int v) { gWeapons = v != 0; } },
 			{ "WardColor", [] { return gWard.load(); }, [](int v) { gWard = std::clamp(v, 0, 1); } },
@@ -273,10 +276,10 @@ namespace Plugin
 			off += (o.switchable && !o.on) ? 1 : 0;
 		}
 		SKSE::log::info(
-			"settings: brightness {}%, reach {}%, lights off while sneaking {}, hand lights {}, weapon lights {}, {} switch(es) off "
+			"settings: brightness {}%, reach {}%, lights fade while sneaking {} (to {}%), hand lights {}, weapon lights {}, {} switch(es) off "
 			"({} line(s) read, {} problem(s))",
-			gBrightness.load(), gReach.load(), gSneak ? "on" : "off", gHands ? "on" : "off", gWeapons ? "on" : "off", off, read,
-			problems.size());
+			gBrightness.load(), gReach.load(), gSneak ? "on" : "off", gSneakBrightness.load(), gHands ? "on" : "off", gWeapons ? "on" : "off",
+			off, read, problems.size());
 	}
 
 	// The menu calls this on the RENDER thread, often many times while a slider is dragged: the file is written once, by an
@@ -326,7 +329,17 @@ namespace Plugin
 	void SetSneakOn(bool a_on)
 	{
 		if (gSneak.exchange(a_on) != a_on) {
-			SKSE::log::info("lights off while sneaking turned {}", a_on ? "on" : "off");
+			SKSE::log::info("lights fade while sneaking turned {}", a_on ? "on" : "off");
+		}
+	}
+
+	int SneakBrightness() { return gSneakBrightness; }
+
+	void SetSneakBrightness(int a_percent)
+	{
+		a_percent = std::clamp(a_percent, 0, 100);
+		if (gSneakBrightness.exchange(a_percent) != a_percent) {
+			SKSE::log::info("sneaking brightness set to {}%", a_percent);
 		}
 	}
 

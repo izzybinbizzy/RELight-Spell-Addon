@@ -137,8 +137,10 @@ namespace Plugin
 	void                      DropGroundLights();  // a game loads, or a new one starts: the twins and the hands they follow are the old game's
 	[[nodiscard]] std::size_t GroundLightCount();
 	[[nodiscard]] std::size_t GroundLightsMade();
-	// main.cpp: a spell light the mod keeps dark now (sneaking, a switched-off option, a hand light held out) - its twin too
+	// Hooks.cpp: a spell light the mod keeps dark now (a switched-off option, a hand light held out) - its twin too
 	[[nodiscard]] bool WantedDark(RE::NiLight* a_light);
+	// Hooks.cpp: how far the sneak fade has her lights now, 1 = full, down to "Sneaking brightness" (any thread)
+	[[nodiscard]] float SneakLevel();
 
 	void                                                LoadData();
 	[[nodiscard]] std::vector<Option>&                  Options();
@@ -195,6 +197,8 @@ namespace Plugin
 	[[nodiscard]] float Reach();
 	[[nodiscard]] bool  SneakOn();
 	void                SetSneakOn(bool a_on);
+	[[nodiscard]] int   SneakBrightness();  // percent, 0 to 100
+	void                SetSneakBrightness(int a_percent);
 	[[nodiscard]] bool  HandLightsOn();
 	void                SetHandLightsOn(bool a_on);
 	[[nodiscard]] bool  WeaponLightsOn();

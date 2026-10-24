@@ -8,8 +8,8 @@
 // enchantment shader. Art the game hangs on an actor - a cloak, a heal, CS Light's Magic FX rows - is neither, so those
 // configs lit nothing. Here, once a frame on the main thread, every art model on an actor that a `body` line names gets that
 // line's light, hung where RE::Light hangs its enchantment light (the third-person node of the art's attach root), and it
-// comes off the frame the art is gone or finished, its option is switched off, the player sneaks with "Lights off while
-// sneaking" on (her own art, as her held lights), "All RELight - Spell Lighting NG lights off" is on, or "Hand lights for" leaves
+// comes off the frame the art is gone or finished, its option is switched off, her own glow has faded out while she sneaks
+// (Hooks.cpp, as her held lights), "All RELight - Spell Lighting NG lights off" is on, or "Hand lights for" leaves
 // its actor out. Any art a spell plays as its casting art (the hand lights; a master spell's casting body art too) and a
 // weapon's enchantment art (held lights, Truman's enchantments) never get one. Body art that outlived its spell once kept a
 // light on for a day (Illuminated's CLAUDE.md, the lighting data's rules): this light lives exactly as long as the art does.
@@ -37,6 +37,7 @@ namespace Plugin
 			RE::NiPointer<RE::NiPointLight>         light;
 			float                                   written{ -1.0f }, wroteReach{ -1.0f };
 			bool                                    seen{ false };
+			bool                                    hers{ false };  // on the player: it fades with her spell lights while she sneaks
 		};
 
 		std::vector<Live> gLive;  // main thread only
@@ -119,10 +120,10 @@ namespace Plugin
 		for (auto& f : gFailed) {
 			f.seen = false;
 		}
-		// "All RELight - Spell Lighting NG lights off" puts every light of the mod out (2.5), and "Lights off while sneaking" her own
-		// spell lights while she sneaks (her held lights the same way - Held.cpp): the body glow goes with them
-		const bool hidden = AllLightsOff();
-		const bool sneaking = SneakOn() && player->IsSneaking();
+		// "All RELight - Spell Lighting NG lights off" puts every light of the mod out (2.5), and while she sneaks her own body glow
+		// fades with her spell lights (her held lights the same way - Held.cpp)
+		const bool  hidden = AllLightsOff();
+		const float sneak = SneakLevel();  // Hooks.cpp: her body glow comes off once it has faded out
 		const auto [scale, reachScale] = OwnLightScale();
 		if (!hidden) {
 			lists->ForEachMagicTempEffect([&](RE::BSTempEffect* a_effect) {
@@ -136,7 +137,7 @@ namespace Plugin
 				}
 				const auto ref = art->target.get();
 				auto*      actor = ref ? ref->As<RE::Actor>() : nullptr;
-				if (!actor || !actor->Is3DLoaded() || (sneaking && actor == player) || LeftOutByBudget(actor)) {
+				if (!actor || !actor->Is3DLoaded() || (sneak <= 0.0f && actor == player) || LeftOutByBudget(actor)) {
 					return RE::BSContainer::ForEachResult::kContinue;
 				}
 				auto* node = NodeFor(art, actor);
@@ -168,7 +169,8 @@ namespace Plugin
 					}
 					return RE::BSContainer::ForEachResult::kContinue;
 				}
-				const float       fade = body->fade * scale;
+				const bool        hers = actor == player;
+				const float       fade = body->fade * scale * (hers ? sneak : 1.0f);
 				const float       reach = body->radius * reachScale;
 				RE::NiPointLight* light = nullptr;
 				auto*             bs = MakeOwnLight(*body, fade, reach, node, scene, kLightName, light);
@@ -186,7 +188,7 @@ namespace Plugin
 					gFailed.erase(failed);  // made at last: a later failure warns again
 				}
 				gLive.push_back({ RE::NiPointer<RE::ModelReferenceEffect>(art), body, RE::NiPointer<RE::NiNode>(node),
-					RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), fade, reach, true });
+					RE::NiPointer<RE::BSLight>(bs), RE::NiPointer<RE::NiPointLight>(light), fade, reach, true, hers });
 				if (++gMade <= 16) {
 					SKSE::log::info("[BODY] {} | on {:08X} at {} | fade {:.2f} | radius {:.0f}", body->key, actor->GetFormID(),
 						node->name.c_str(), fade, reach);
@@ -204,7 +206,7 @@ namespace Plugin
 		std::erase_if(gFailed, [](const Failed& f) { return !f.seen; });  // its art is gone: a new art there warns again
 		// the sliders and the daylight reach a light already hung
 		for (auto& v : gLive) {
-			const float fade = v.body->fade * scale;
+			const float fade = v.body->fade * scale * (v.hers ? sneak : 1.0f);
 			const float reach = v.body->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
 				RetuneOwnLight(v.light.get(), *v.body, fade, reach, reach != v.wroteReach);

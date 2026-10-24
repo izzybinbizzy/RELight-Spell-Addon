@@ -271,7 +271,12 @@ namespace Plugin
 			return;
 		}
 		++gUpdate;
-		const bool               hidden = SneakOn() && player->IsSneaking();
+		// her own held lights fade with her spell lights while she sneaks (Hooks.cpp), and come off once faded out
+		const float sneak = SneakLevel();
+		const bool  hidden = sneak <= 0.0f;
+		const auto  ownFade = [&](const Stream& a_held, RE::FormID a_actor) {
+			return a_held.fade * (a_actor == player->GetFormID() ? sneak : 1.0f);
+		};
 		static std::vector<Want> want;  // main thread; kept between frames so its storage is not made again each one
 		want.clear();
 		WantsOf(player, hidden, want);
@@ -312,7 +317,7 @@ namespace Plugin
 				}
 				continue;
 			}
-			const float       fade = w.held->fade * scale;
+			const float       fade = ownFade(*w.held, w.actor->GetFormID()) * scale;
 			const float       reach = w.held->radius * reachScale;
 			RE::NiPointLight* light = nullptr;
 			auto*             bs = MakeOwnLight(*w.held, fade, reach, w.node, scene, kLightName, light);
@@ -337,7 +342,7 @@ namespace Plugin
 		}
 		// the sliders and the daylight reach a light already hung
 		for (auto& v : gLive) {
-			const float fade = v.held->fade * scale;
+			const float fade = ownFade(*v.held, v.actor) * scale;
 			const float reach = v.held->radius * reachScale;
 			if (fade != v.written || reach != v.wroteReach) {
 				RetuneOwnLight(v.light.get(), *v.held, fade, reach, reach != v.wroteReach);
