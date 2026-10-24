@@ -11,7 +11,8 @@
 // (Brightness, the fading module, sneaking and the switches all keep writing to it) but hidden, and a twin made the way
 // Dynamic Wards makes its hand light (land and water lighting on) copies it every frame. The twin hangs beside the hand's
 // magic node, not under it (the fading module scales every light under the magic node; the twin copies a light it scaled).
-// A light the mod keeps dark now (sneaking, a switched-off option, a hand light held out - WantedDark) keeps its twin dark too.
+// A light the mod keeps dark now (a switched-off option, a hand light held out - WantedDark) keeps its twin dark too; a light
+// the sneak fade dims gives its twin the dimmed fade.
 // Under Community Shaders the casting light lights the ground itself: nothing is made.
 //
 // CREDIT: a light is made and registered the way ReLight by Truman does it (github.com/TrumanGIT/ReLight, GPL-3.0-or-later,

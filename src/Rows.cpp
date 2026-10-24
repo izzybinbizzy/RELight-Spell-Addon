@@ -9,7 +9,7 @@
 // up using". The projectile wears its own light at its own size (Streams.cpp); the row lights its length - lights no farther
 // apart than 80 units, laid again every frame to where its art ends, where it hit something, or its range (BeamRow.h, the
 // same file as Illuminated's). Off on Performance (his Quality / Performance order of 2026-10-20), with All lights off, with
-// its option switched off, and while the player sneaks with "Lights off while sneaking" on. With Dynamic Lighting on the row
+// its option switched off, and once the sneak fade has her lights out (Hooks.cpp). With Dynamic Lighting on the row
 // flickers (BeamRow::Flicker), held under its cap so the peak can swing (BeamRow::Steady); with it off it holds still.
 // Truman's call after the Lightning Bolt freeze still stands for the loader threads: the Load3D hook only QUEUES the
 // projectile (QueueRow, any thread); every light is made, moved and taken off here on the main thread (UpdateRows, in the
@@ -74,9 +74,11 @@ namespace Plugin
 			return a_lighting == Lighting::kShaders ? 1.0f : 2.0f;
 		}
 
-		[[nodiscard]] bool RowsOn(const RE::PlayerCharacter* a_player)
+		[[nodiscard]] bool RowsOn()
 		{
-			return !PerformanceMode() && !AllLightsOff() && !(SneakOn() && a_player && a_player->IsSneaking());
+			// while she sneaks the rows fade with her spell lights (Hooks.cpp dims every light on a magic projectile), and
+			// come off once faded out
+			return !PerformanceMode() && !AllLightsOff() && SneakLevel() > 0.0f;
 		}
 
 		// Community Shaders draws an inverse-square point light at four times its fade and writes back the reach that gives, so the
@@ -343,7 +345,7 @@ namespace Plugin
 			std::lock_guard l{ gQueueLock };
 			queued.swap(gQueue);
 		}
-		const bool on = RowsOn(RE::PlayerCharacter::GetSingleton());
+		const bool on = RowsOn();
 		// gone (its 3D out of the world or rebuilt), switched off, or every row off: taken off the scene now
 		std::vector<const RE::NiAVObject*> drop;
 		for (const auto& [root, live] : gLive) {

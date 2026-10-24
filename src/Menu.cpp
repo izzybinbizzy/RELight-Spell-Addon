@@ -522,15 +522,25 @@ namespace Plugin
 				"full strength at night and in the dark. Follows the time of day as it passes."));
 
 			GlowHeading("While Sneaking", Icon::kBulb);
-			const char* const kSneaking[] = { T("Lights turn off while sneaking"), T("Lights stay on while sneaking") };
+			const char* const kSneaking[] = { T("Lights fade while sneaking"), T("Lights stay on while sneaking") };
 			int               sneak = SneakOn() ? 0 : 1;
 			if (ImGuiMCP::Combo(T("Sneaking"), &sneak, kSneaking, 2)) {
 				SetSneakOn(sneak == 0);
 				SaveSettings();
 			}
 			MenuStyle::Tip(T(
-				"While you sneak, no spell light turns on - hand lights, projectiles, runes, explosions and "
-				"hazards - and the ones already lit go out. They come back when you stand up."));
+				"When you crouch, your spell lights fade down over half a second - hand lights, projectiles, runes, explosions, "
+				"hazards, your weapon lights and the glow on your body - and fade back up when you stand."));
+			if (SneakOn()) {
+				int dim = SneakBrightness();
+				if (ImGuiMCP::SliderInt(T("Sneaking brightness"), &dim, 0, 100, "%d%%")) {
+					SetSneakBrightness(dim);
+				}
+				if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+					SaveSettings();
+				}
+				MenuStyle::Tip(T("How bright your lights stay while you sneak. At 0% they fade out completely."));
+			}
 
 			// the old installer's Dynamic Lighting question, in Illuminated's place for it (its Flicker group)
 			GlowHeading("Flicker", Icon::kBulb);
