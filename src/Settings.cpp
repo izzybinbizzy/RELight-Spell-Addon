@@ -8,7 +8,7 @@
 //   Brightness=100              percent, 10 to 200 - this mod's lights only; the reach is held
 //   Reach=100                   percent, 50 to 150 - the peak is held
 //   LightsOffWhileSneaking=0    1 = her spell lights fade while she sneaks (the key keeps its old name: a player's file reads on)
-//   SneakingBrightness=30       percent, 0 to 100 - how bright they stay while she sneaks (Hooks.cpp)
+//   SneakingBrightness=0        percent, 0 to 100 - how bright they stay while she sneaks; 0 = they fade all the way out (Hooks.cpp)
 //   HandLights=1                the light on your hands while you cast (HandLights.cpp)
 //   WeaponLights=1              every weapon light, the enchantment lights included (Options.cpp)
 //   WardColor=0                 0 vanilla blue, 1 white - the ward's art and light (Wards.cpp); an older file's WardColour is read too
@@ -45,7 +45,7 @@ namespace Plugin
 		std::atomic<int>                gBrightness{ 100 };
 		std::atomic<int>                gReach{ 100 };
 		std::atomic<bool>               gSneak{ false };
-		std::atomic<int>                gSneakBrightness{ 30 };
+		std::atomic<int>                gSneakBrightness{ 0 };
 		std::atomic<bool>               gHands{ true };
 		std::atomic<bool>               gWeapons{ true };
 		std::atomic<int>                gWard{ 0 };
