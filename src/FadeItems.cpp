@@ -85,6 +85,8 @@ namespace Fade::Items
 		std::atomic<bool>         gDirty{ false };
 		std::atomic<std::int64_t> gChangedAt{ 0 };  // steady clock, milliseconds
 		constexpr std::int64_t    kSaveQuietMs = 500;
+		std::atomic<int>          gSaveFailures{ 0 };  // failed writes since the last change or the last good one
+		constexpr int             kSaveRetries = 3;    // then the file waits for the next change: a folder that refuses writes is not hammered
 
 		[[nodiscard]] std::int64_t NowMs() noexcept
 		{
@@ -160,8 +162,8 @@ namespace Fade::Items
 			return c;
 		}
 
-		// a copy of the choices, written outside every lock (main thread, an SKSE task)
-		void Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
+		// a copy of the choices, written outside every lock (main thread, an SKSE task); false when the file was not written
+		[[nodiscard]] bool Save(const std::unordered_map<RE::FormID, Choice>& a_choices)
 		{
 			std::ostringstream text;
 			text << "; " << Mod::kName << " - Lights by Item, written by its menu. One line per item that is not Auto:\n"
@@ -187,20 +189,25 @@ namespace Fade::Items
 			{
 				std::ofstream out(tmp, std::ios::trunc);
 				out << text.str();
-				if (!out.flush()) {
+				out.close();  // a close that fails is a write that failed
+				if (out.fail()) {
 					SKSE::log::warn("lights by item: {} could not be written", Mod::kItemsPath);
-					return;
+					std::filesystem::remove(tmp, ec);
+					return false;
 				}
 			}
 			if (std::filesystem::rename(tmp, Mod::kItemsPath, ec); ec) {
 				SKSE::log::warn("lights by item: {} could not be replaced ({})", Mod::kItemsPath, ec.message());
 				std::filesystem::remove(tmp, ec);
+				return false;
 			}
+			return true;
 		}
 
 		void MarkChanged()
 		{
 			gGeneration.fetch_add(1, std::memory_order_relaxed);
+			gSaveFailures.store(0, std::memory_order_relaxed);
 			gChangedAt.store(NowMs(), std::memory_order_relaxed);
 			gDirty.store(true, std::memory_order_release);
 		}
@@ -230,12 +237,29 @@ namespace Fade::Items
 				return;  // no task to write it with: kept dirty for the next try, never written under the lock
 			}
 			gDirty.store(false, std::memory_order_relaxed);
+			const auto                             generation = gGeneration.load(std::memory_order_relaxed);
 			std::unordered_map<RE::FormID, Choice> copy;
 			{
 				std::lock_guard lock(gLock);
 				copy = gChoices;
 			}
-			tasks->AddTask([c = std::move(copy)]() { Save(c); });
+			// a failed write is tried again after kSaveQuietMs, up to kSaveRetries times, then at the next change. A copy that a
+			// newer change or a read of the file has passed is not tried again: the newer choices are saved with their own tries.
+			tasks->AddTask([c = std::move(copy), generation]() {
+				if (Save(c)) {
+					gSaveFailures.store(0, std::memory_order_relaxed);
+					return;
+				}
+				if (generation != gGeneration.load(std::memory_order_relaxed)) {
+					return;
+				}
+				if (gSaveFailures.fetch_add(1, std::memory_order_relaxed) < kSaveRetries) {
+					gChangedAt.store(NowMs(), std::memory_order_relaxed);
+					gDirty.store(true, std::memory_order_release);
+				} else {
+					SKSE::log::warn("lights by item: {} still not written - the next change tries again", Mod::kItemsPath);
+				}
+			});
 		}
 
 		// ------------------------------------------------------------------ applying, main thread
