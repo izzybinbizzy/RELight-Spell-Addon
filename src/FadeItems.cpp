@@ -85,6 +85,8 @@ namespace Fade::Items
 		std::atomic<bool>         gDirty{ false };
 		std::atomic<std::int64_t> gChangedAt{ 0 };  // steady clock, milliseconds
 		constexpr std::int64_t    kSaveQuietMs = 500;
+		std::atomic<int>          gSaveFailures{ 0 };  // failed writes since the last change or the last good one
+		constexpr int             kSaveRetries = 3;    // then the file waits for the next change: a folder that refuses writes is not hammered
 
 		[[nodiscard]] std::int64_t NowMs() noexcept
 		{
@@ -205,6 +207,7 @@ namespace Fade::Items
 		void MarkChanged()
 		{
 			gGeneration.fetch_add(1, std::memory_order_relaxed);
+			gSaveFailures.store(0, std::memory_order_relaxed);
 			gChangedAt.store(NowMs(), std::memory_order_relaxed);
 			gDirty.store(true, std::memory_order_release);
 		}
@@ -239,11 +242,15 @@ namespace Fade::Items
 				std::lock_guard lock(gLock);
 				copy = gChoices;
 			}
-			// a failed write is tried again once the choices have been quiet for kSaveQuietMs, not lost until the next change
+			// a failed write is tried again after kSaveQuietMs, up to kSaveRetries times, then at the next change
 			tasks->AddTask([c = std::move(copy)]() {
-				if (!Save(c)) {
+				if (Save(c)) {
+					gSaveFailures.store(0, std::memory_order_relaxed);
+				} else if (gSaveFailures.fetch_add(1, std::memory_order_relaxed) < kSaveRetries) {
 					gChangedAt.store(NowMs(), std::memory_order_relaxed);
 					gDirty.store(true, std::memory_order_release);
+				} else {
+					SKSE::log::warn("lights by item: {} still not written - the next change tries again", Mod::kItemsPath);
 				}
 			});
 		}
