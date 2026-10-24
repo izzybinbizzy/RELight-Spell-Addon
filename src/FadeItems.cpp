@@ -189,9 +189,9 @@ namespace Fade::Items
 			{
 				std::ofstream out(tmp, std::ios::trunc);
 				out << text.str();
-				if (!out.flush()) {
+				out.close();  // a close that fails is a write that failed
+				if (out.fail()) {
 					SKSE::log::warn("lights by item: {} could not be written", Mod::kItemsPath);
-					out.close();
 					std::filesystem::remove(tmp, ec);
 					return false;
 				}
@@ -237,16 +237,23 @@ namespace Fade::Items
 				return;  // no task to write it with: kept dirty for the next try, never written under the lock
 			}
 			gDirty.store(false, std::memory_order_relaxed);
+			const auto                             generation = gGeneration.load(std::memory_order_relaxed);
 			std::unordered_map<RE::FormID, Choice> copy;
 			{
 				std::lock_guard lock(gLock);
 				copy = gChoices;
 			}
-			// a failed write is tried again after kSaveQuietMs, up to kSaveRetries times, then at the next change
-			tasks->AddTask([c = std::move(copy)]() {
+			// a failed write is tried again after kSaveQuietMs, up to kSaveRetries times, then at the next change. A copy that a
+			// newer change or a read of the file has passed is not tried again: the newer choices are saved with their own tries.
+			tasks->AddTask([c = std::move(copy), generation]() {
 				if (Save(c)) {
 					gSaveFailures.store(0, std::memory_order_relaxed);
-				} else if (gSaveFailures.fetch_add(1, std::memory_order_relaxed) < kSaveRetries) {
+					return;
+				}
+				if (generation != gGeneration.load(std::memory_order_relaxed)) {
+					return;
+				}
+				if (gSaveFailures.fetch_add(1, std::memory_order_relaxed) < kSaveRetries) {
 					gChangedAt.store(NowMs(), std::memory_order_relaxed);
 					gDirty.store(true, std::memory_order_release);
 				} else {
